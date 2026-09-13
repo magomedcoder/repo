@@ -7,9 +7,16 @@ import (
 	"github.com/magomedcoder/repo/internal/delivery/http/middleware"
 )
 
-func NewRouter(repoHandler *handler.RepositoryHandler) http.Handler {
+func NewRouter(authHandler *handler.AuthHandler, repoHandler *handler.RepositoryHandler, auth middleware.Authenticator) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/user/repos", repoHandler.Create)
+
+	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
+	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
+	mux.HandleFunc("GET /api/auth/me", authHandler.Me)
+
+	requireAuth := middleware.RequireAuth(auth)
+	mux.Handle("POST /api/user/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
 
 	return middleware.Logger(mux)
 }

@@ -60,7 +60,7 @@ func (uc *CreateUseCase) Execute(in CreateInput) (*CreateOutput, error) {
 
 	ownerID := in.OwnerID
 	if ownerID == 0 {
-		ownerID = 1
+		return nil, ErrUnauthorized
 	}
 
 	basePath := in.BasePath

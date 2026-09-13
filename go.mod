@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	github.com/go-git/go-git/v6 v6.0.0-alpha.5
+	golang.org/x/crypto v0.57.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )
@@ -22,7 +23,6 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.52 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect

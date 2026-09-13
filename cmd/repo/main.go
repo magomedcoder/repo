@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/magomedcoder/repo/pkg/bcrypt"
+	"github.com/magomedcoder/repo/pkg/token"
 	"log"
 	"net/http"
 
@@ -17,12 +19,20 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 
-	store := sqlite.NewRepositoryStore(db)
+	userStore := sqlite.NewUserStore(db)
+	sessionStore := sqlite.NewSessionStore(db)
+	repoStore := sqlite.NewRepositoryStore(db)
 	gitRepo := git.NewRepository()
-	createUC := usecase.NewCreateUseCase(store, gitRepo)
+	hasher := bcrypt.NewHasher()
+	tokens := token.NewGenerator()
+
+	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
+	createUC := usecase.NewCreateUseCase(repoStore, gitRepo)
+
+	authHandler := handler.NewAuthHandler(authUC)
 	repoHandler := handler.NewRepositoryHandler(createUC)
 
-	router := deliveryhttp.NewRouter(repoHandler)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, authUC)
 
 	log.Println("listening on :8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/magomedcoder/repo/internal/delivery/http/middleware"
 	"github.com/magomedcoder/repo/internal/usecase"
 )
 
@@ -22,6 +23,12 @@ type createRepoRequest struct {
 }
 
 func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req createRepoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -31,7 +38,7 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	out, err := h.create.Execute(usecase.CreateInput{
 		Name:        req.Name,
 		Description: req.Description,
-		OwnerID:     1,
+		OwnerID:     user.ID,
 		BasePath:    "data/repos",
 	})
 	if err != nil {
@@ -51,14 +58,4 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"name": out.Name,
 		"path": out.Path,
 	})
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
 }

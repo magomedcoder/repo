@@ -18,7 +18,7 @@ func NewDB(dsn string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	if err := db.AutoMigrate(&repositoryModel{}); err != nil {
+	if err := db.AutoMigrate(&userModel{}, &sessionModel{}, &repositoryModel{}); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
