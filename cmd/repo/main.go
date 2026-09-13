@@ -1,8 +1,6 @@
 package main
 
 import (
-	"github.com/magomedcoder/repo/pkg/bcrypt"
-	"github.com/magomedcoder/repo/pkg/token"
 	"log"
 	"net/http"
 
@@ -11,6 +9,8 @@ import (
 	"github.com/magomedcoder/repo/internal/infrastructure/git"
 	"github.com/magomedcoder/repo/internal/infrastructure/persistence/sqlite"
 	"github.com/magomedcoder/repo/internal/usecase"
+	"github.com/magomedcoder/repo/pkg/bcrypt"
+	"github.com/magomedcoder/repo/pkg/token"
 )
 
 func main() {
@@ -27,10 +27,10 @@ func main() {
 	tokens := token.NewGenerator()
 
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
-	createUC := usecase.NewCreateUseCase(repoStore, gitRepo)
+	repoUC := usecase.NewRepositoryUseCase(repoStore, gitRepo)
 
 	authHandler := handler.NewAuthHandler(authUC)
-	repoHandler := handler.NewRepositoryHandler(createUC)
+	repoHandler := handler.NewRepositoryHandler(repoUC)
 
 	router := deliveryhttp.NewRouter(authHandler, repoHandler, authUC)
 

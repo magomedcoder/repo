@@ -10,11 +10,11 @@ import (
 )
 
 type RepositoryHandler struct {
-	create *usecase.CreateUseCase
+	repos *usecase.RepositoryUseCase
 }
 
-func NewRepositoryHandler(create *usecase.CreateUseCase) *RepositoryHandler {
-	return &RepositoryHandler{create: create}
+func NewRepositoryHandler(repos *usecase.RepositoryUseCase) *RepositoryHandler {
+	return &RepositoryHandler{repos: repos}
 }
 
 type createRepoRequest struct {
@@ -35,7 +35,7 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := h.create.Execute(usecase.CreateInput{
+	out, err := h.repos.Create(usecase.CreateRepositoryInput{
 		Name:        req.Name,
 		Description: req.Description,
 		OwnerID:     user.ID,
@@ -47,6 +47,8 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, usecase.ErrAlreadyExists):
 			writeError(w, http.StatusConflict, err.Error())
+		case errors.Is(err, usecase.ErrUnauthorized):
+			writeError(w, http.StatusUnauthorized, err.Error())
 		default:
 			writeError(w, http.StatusInternalServerError, err.Error())
 		}
@@ -54,8 +56,30 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":   out.ID,
-		"name": out.Name,
-		"path": out.Path,
+		"id":          out.ID,
+		"name":        out.Name,
+		"description": out.Description,
+	})
+}
+
+func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	items, err := h.repos.List(user.ID)
+	if err != nil {
+		if errors.Is(err, usecase.ErrUnauthorized) {
+			writeError(w, http.StatusUnauthorized, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"repos": items,
 	})
 }

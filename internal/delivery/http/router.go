@@ -16,6 +16,7 @@ func NewRouter(authHandler *handler.AuthHandler, repoHandler *handler.Repository
 	mux.HandleFunc("GET /api/auth/me", authHandler.Me)
 
 	requireAuth := middleware.RequireAuth(auth)
+	mux.Handle("GET /api/user/repos", requireAuth(http.HandlerFunc(repoHandler.List)))
 	mux.Handle("POST /api/user/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
 
 	return middleware.Logger(mux)

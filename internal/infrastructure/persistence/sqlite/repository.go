@@ -42,6 +42,21 @@ func (s *RepositoryStore) Create(repo *domain.Repository) error {
 	return nil
 }
 
+func (s *RepositoryStore) ListByOwnerID(ownerID uint) ([]domain.Repository, error) {
+	var models []repositoryModel
+	err := s.db.Where("owner_id = ?", ownerID).Order("updated_at DESC").Find(&models).Error
+	if err != nil {
+		return nil, err
+	}
+
+	repos := make([]domain.Repository, 0, len(models))
+	for _, model := range models {
+		repos = append(repos, model.toDomain())
+	}
+
+	return repos, nil
+}
+
 func (s *RepositoryStore) ExistsByName(name string) (bool, error) {
 	var count int64
 	err := s.db.Model(&repositoryModel{}).Where("name = ?", name).Count(&count).Error

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/magomedcoder/repo/internal/domain"
 )
@@ -15,32 +16,40 @@ var (
 	ErrInvalidName   = errors.New("invalid repository name")
 )
 
-type CreateInput struct {
+type CreateRepositoryInput struct {
 	Name        string
 	Description string
 	OwnerID     uint
 	BasePath    string
 }
 
-type CreateOutput struct {
-	ID   uint
-	Name string
-	Path string
+type CreateRepositoryOutput struct {
+	ID          uint
+	Name        string
+	Description string
 }
 
-type CreateUseCase struct {
+type RepositoryItem struct {
+	ID          uint      `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type RepositoryUseCase struct {
 	store domain.RepositoryStore
 	git   domain.GitRepository
 }
 
-func NewCreateUseCase(store domain.RepositoryStore, git domain.GitRepository) *CreateUseCase {
-	return &CreateUseCase{
+func NewRepositoryUseCase(store domain.RepositoryStore, git domain.GitRepository) *RepositoryUseCase {
+	return &RepositoryUseCase{
 		store: store,
 		git:   git,
 	}
 }
 
-func (uc *CreateUseCase) Execute(in CreateInput) (*CreateOutput, error) {
+func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*CreateRepositoryOutput, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return nil, ErrNameRequired
@@ -54,6 +63,7 @@ func (uc *CreateUseCase) Execute(in CreateInput) (*CreateOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("check repository existence: %w", err)
 	}
+
 	if exists {
 		return nil, ErrAlreadyExists
 	}
@@ -84,9 +94,33 @@ func (uc *CreateUseCase) Execute(in CreateInput) (*CreateOutput, error) {
 		return nil, fmt.Errorf("save repository metadata: %w", err)
 	}
 
-	return &CreateOutput{
-		ID:   repo.ID,
-		Name: repo.Name,
-		Path: repo.Path,
+	return &CreateRepositoryOutput{
+		ID:          repo.ID,
+		Name:        repo.Name,
+		Description: repo.Description,
 	}, nil
+}
+
+func (uc *RepositoryUseCase) List(ownerID uint) ([]RepositoryItem, error) {
+	if ownerID == 0 {
+		return nil, ErrUnauthorized
+	}
+
+	repos, err := uc.store.ListByOwnerID(ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("list repositories: %w", err)
+	}
+
+	items := make([]RepositoryItem, 0, len(repos))
+	for _, repo := range repos {
+		items = append(items, RepositoryItem{
+			ID:          repo.ID,
+			Name:        repo.Name,
+			Description: repo.Description,
+			CreatedAt:   repo.CreatedAt,
+			UpdatedAt:   repo.UpdatedAt,
+		})
+	}
+
+	return items, nil
 }

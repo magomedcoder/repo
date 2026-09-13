@@ -15,6 +15,8 @@ type Repository struct {
 type RepositoryStore interface {
 	Create(repo *Repository) error
 
+	ListByOwnerID(ownerID uint) ([]Repository, error)
+
 	ExistsByName(name string) (bool, error)
 }
 

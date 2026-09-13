@@ -61,3 +61,9 @@ curl -X POST http://127.0.0.1:8080/api/user/repos \
   -b cookies.txt \
   -d '{"name":"my-repo","description":"My repository"}'
 ```
+
+## List repositories
+
+```bash
+curl http://127.0.0.1:8080/api/user/repos -b cookies.txt
+```
