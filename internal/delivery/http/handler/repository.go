@@ -20,6 +20,7 @@ func NewRepositoryHandler(repos *usecase.RepositoryUseCase) *RepositoryHandler {
 type createRepoRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	FolderID    *uint  `json:"folder_id"`
 }
 
 func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +40,7 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:        req.Name,
 		Description: req.Description,
 		OwnerID:     user.ID,
+		FolderID:    req.FolderID,
 		BasePath:    "data/repos",
 	})
 	if err != nil {
@@ -47,6 +49,8 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, usecase.ErrAlreadyExists):
 			writeError(w, http.StatusConflict, err.Error())
+		case errors.Is(err, usecase.ErrFolderNotFound):
+			writeError(w, http.StatusNotFound, err.Error())
 		case errors.Is(err, usecase.ErrUnauthorized):
 			writeError(w, http.StatusUnauthorized, err.Error())
 		default:
@@ -59,6 +63,7 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"id":          out.ID,
 		"name":        out.Name,
 		"description": out.Description,
+		"folder_id":   out.FolderID,
 	})
 }
 

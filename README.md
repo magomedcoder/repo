@@ -53,13 +53,59 @@ curl http://127.0.0.1:8080/api/auth/me -b cookies.txt
 curl -X POST http://127.0.0.1:8080/api/auth/logout -b cookies.txt -c cookies.txt
 ```
 
+## Folders
+
+```bash
+# create root folder
+curl -X POST http://127.0.0.1:8080/api/folders \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"name":"work"}'
+
+# create nested folder by parent_id
+curl -X POST http://127.0.0.1:8080/api/folders \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"name":"backend","parent_id":1}'
+
+# or by parent path
+curl -X POST http://127.0.0.1:8080/api/folders \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"name":"frontend","path":"work"}'
+
+# list children (root by default)
+curl "http://127.0.0.1:8080/api/folders" -b cookies.txt
+
+# full tree
+curl "http://127.0.0.1:8080/api/folders?tree=1" -b cookies.txt
+
+# folder contents (subfolders + repos)
+curl http://127.0.0.1:8080/api/folders/1 -b cookies.txt
+
+# rename
+curl -X PATCH http://127.0.0.1:8080/api/folders/2 \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"name":"api"}'
+
+# move to another parent (null = root)
+curl -X POST http://127.0.0.1:8080/api/folders/2/move \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"parent_id":1}'
+
+# delete (only if empty)
+curl -X DELETE http://127.0.0.1:8080/api/folders/2 -b cookies.txt
+```
+
 ## Create repository
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/user/repos \
   -H "Content-Type: application/json" \
   -b cookies.txt \
-  -d '{"name":"my-repo","description":"My repository"}'
+  -d '{"name":"my-repo","description":"My repository","folder_id":1}'
 ```
 
 ## List repositories

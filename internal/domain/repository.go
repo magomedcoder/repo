@@ -6,6 +6,7 @@ type Repository struct {
 	ID          uint
 	Name        string
 	OwnerID     uint
+	FolderID    *uint // nil = user root
 	Description string
 	Path        string
 	CreatedAt   time.Time
@@ -17,7 +18,11 @@ type RepositoryStore interface {
 
 	ListByOwnerID(ownerID uint) ([]Repository, error)
 
+	ListByOwnerAndFolderID(ownerID uint, folderID *uint) ([]Repository, error)
+
 	ExistsByName(name string) (bool, error)
+
+	CountByFolderID(folderID uint) (int64, error)
 }
 
 type GitRepository interface {

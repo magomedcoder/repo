@@ -13,7 +13,8 @@ type repositoryModel struct {
 	UpdatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
 	Name        string         `gorm:"uniqueIndex;not null"`
-	OwnerID     uint
+	OwnerID     uint           `gorm:"index;not null"`
+	FolderID    uint           `gorm:"index;default:0"` // 0 = user root
 	Description string
 	Path        string
 }
@@ -23,7 +24,7 @@ func (repositoryModel) TableName() string {
 }
 
 func (m repositoryModel) toDomain() domain.Repository {
-	return domain.Repository{
+	repo := domain.Repository{
 		ID:          m.ID,
 		Name:        m.Name,
 		OwnerID:     m.OwnerID,
@@ -32,10 +33,16 @@ func (m repositoryModel) toDomain() domain.Repository {
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 	}
+	if m.FolderID != 0 {
+		fid := m.FolderID
+		repo.FolderID = &fid
+	}
+
+	return repo
 }
 
 func fromDomain(repo *domain.Repository) *repositoryModel {
-	return &repositoryModel{
+	m := &repositoryModel{
 		ID:          repo.ID,
 		Name:        repo.Name,
 		OwnerID:     repo.OwnerID,
@@ -44,4 +51,9 @@ func fromDomain(repo *domain.Repository) *repositoryModel {
 		CreatedAt:   repo.CreatedAt,
 		UpdatedAt:   repo.UpdatedAt,
 	}
+	if repo.FolderID != nil {
+		m.FolderID = *repo.FolderID
+	}
+
+	return m
 }

@@ -20,6 +20,7 @@ type CreateRepositoryInput struct {
 	Name        string
 	Description string
 	OwnerID     uint
+	FolderID    *uint
 	BasePath    string
 }
 
@@ -27,25 +28,29 @@ type CreateRepositoryOutput struct {
 	ID          uint
 	Name        string
 	Description string
+	FolderID    *uint
 }
 
 type RepositoryItem struct {
 	ID          uint      `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
+	FolderID    *uint     `json:"folder_id"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type RepositoryUseCase struct {
-	store domain.RepositoryStore
-	git   domain.GitRepository
+	store   domain.RepositoryStore
+	folders domain.FolderStore
+	git     domain.GitRepository
 }
 
-func NewRepositoryUseCase(store domain.RepositoryStore, git domain.GitRepository) *RepositoryUseCase {
+func NewRepositoryUseCase(store domain.RepositoryStore, folders domain.FolderStore, git domain.GitRepository) *RepositoryUseCase {
 	return &RepositoryUseCase{
-		store: store,
-		git:   git,
+		store:   store,
+		folders: folders,
+		git:     git,
 	}
 }
 
@@ -73,6 +78,12 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*CreateRepository
 		return nil, ErrUnauthorized
 	}
 
+	if in.FolderID != nil {
+		if _, err := uc.folders.FindByOwnerAndID(ownerID, *in.FolderID); err != nil {
+			return nil, ErrFolderNotFound
+		}
+	}
+
 	basePath := in.BasePath
 	if basePath == "" {
 		basePath = filepath.Join("data", "repos")
@@ -87,6 +98,7 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*CreateRepository
 	repo := &domain.Repository{
 		Name:        name,
 		OwnerID:     ownerID,
+		FolderID:    in.FolderID,
 		Description: in.Description,
 		Path:        repoPath,
 	}
@@ -98,6 +110,7 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*CreateRepository
 		ID:          repo.ID,
 		Name:        repo.Name,
 		Description: repo.Description,
+		FolderID:    repo.FolderID,
 	}, nil
 }
 
@@ -117,6 +130,7 @@ func (uc *RepositoryUseCase) List(ownerID uint) ([]RepositoryItem, error) {
 			ID:          repo.ID,
 			Name:        repo.Name,
 			Description: repo.Description,
+			FolderID:    repo.FolderID,
 			CreatedAt:   repo.CreatedAt,
 			UpdatedAt:   repo.UpdatedAt,
 		})
