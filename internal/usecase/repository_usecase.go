@@ -59,16 +59,17 @@ type ResolveRepositoryInput struct {
 }
 
 type RepositoryItem struct {
-	ID            uint      `json:"id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	Owner         string    `json:"owner"`
-	FolderID      *uint     `json:"folder_id"`
-	FolderPath    string    `json:"folder_path"`
-	IsPrivate     bool      `json:"is_private"`
-	DefaultBranch string    `json:"default_branch"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             uint       `json:"id"`
+	Name           string     `json:"name"`
+	Description    string     `json:"description"`
+	Owner          string     `json:"owner"`
+	FolderID       *uint      `json:"folder_id"`
+	FolderPath     string     `json:"folder_path"`
+	IsPrivate      bool       `json:"is_private"`
+	DefaultBranch  string     `json:"default_branch"`
+	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type RepositoryUseCase struct {
@@ -134,7 +135,10 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, 
 	}
 	repoPath := buildRepoDiskPath(basePath, in.OwnerID, folderPath, name)
 
-	if err := uc.git.InitBare(repoPath); err != nil {
+	if err := uc.git.InitBare(repoPath, domain.BareInitOptions{
+		DefaultBranch:        branch,
+		DenyForcePushDefault: true,
+	}); err != nil {
 		return nil, fmt.Errorf("init bare repository: %w", err)
 	}
 
@@ -478,15 +482,16 @@ func validateBranchName(name string) error {
 
 func toRepositoryItem(repo *domain.Repository, ownerUsername, folderPath string) RepositoryItem {
 	return RepositoryItem{
-		ID:            repo.ID,
-		Name:          repo.Name,
-		Description:   repo.Description,
-		Owner:         ownerUsername,
-		FolderID:      repo.FolderID,
-		FolderPath:    folderPath,
-		IsPrivate:     repo.IsPrivate,
-		DefaultBranch: repo.DefaultBranch,
-		CreatedAt:     repo.CreatedAt,
-		UpdatedAt:     repo.UpdatedAt,
+		ID:             repo.ID,
+		Name:           repo.Name,
+		Description:    repo.Description,
+		Owner:          ownerUsername,
+		FolderID:       repo.FolderID,
+		FolderPath:     folderPath,
+		IsPrivate:      repo.IsPrivate,
+		DefaultBranch:  repo.DefaultBranch,
+		LastActivityAt: repo.LastActivityAt,
+		CreatedAt:      repo.CreatedAt,
+		UpdatedAt:      repo.UpdatedAt,
 	}
 }

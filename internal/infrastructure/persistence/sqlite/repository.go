@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/magomedcoder/repo/internal/domain"
 	"gorm.io/driver/sqlite"
@@ -18,7 +19,7 @@ func NewDB(dsn string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	if err := db.AutoMigrate(&userModel{}, &sessionModel{}, &folderModel{}); err != nil {
+	if err := db.AutoMigrate(&userModel{}, &sessionModel{}, &folderModel{}, &accessTokenModel{}); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
@@ -50,6 +51,11 @@ func migrateRepositories(db *gorm.DB) error {
 	if !db.Migrator().HasColumn(&repositoryModel{}, "DefaultBranch") {
 		if err := db.Exec("ALTER TABLE repositories ADD COLUMN default_branch text NOT NULL DEFAULT 'main'").Error; err != nil {
 			return fmt.Errorf("add default_branch: %w", err)
+		}
+	}
+	if !db.Migrator().HasColumn(&repositoryModel{}, "LastActivityAt") {
+		if err := db.Exec("ALTER TABLE repositories ADD COLUMN last_activity_at datetime").Error; err != nil {
+			return fmt.Errorf("add last_activity_at: %w", err)
 		}
 	}
 
@@ -159,6 +165,13 @@ func (s *RepositoryStore) CountByFolderID(folderID uint) (int64, error) {
 	var count int64
 	err := s.db.Model(&repositoryModel{}).Where("folder_id = ?", folderID).Count(&count).Error
 	return count, err
+}
+
+func (s *RepositoryStore) TouchLastActivity(id uint, at time.Time) error {
+	return s.db.Model(&repositoryModel{}).Where("id = ?", id).Updates(map[string]any{
+		"last_activity_at": at,
+		"updated_at":       at,
+	}).Error
 }
 
 func repoModelsToDomain(models []repositoryModel) []domain.Repository {

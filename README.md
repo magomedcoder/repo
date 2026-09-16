@@ -151,3 +151,38 @@ curl -X POST http://127.0.0.1:8080/api/repos/user/work/backend/api/move \
 ```bash
 curl -X DELETE http://127.0.0.1:8080/api/repos/user/hello -b cookies.txt
 ```
+
+## Personal access tokens
+
+```bash
+# create (token shown once)
+curl -X POST http://127.0.0.1:8080/api/tokens \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"name":"cli"}'
+
+# list
+curl http://127.0.0.1:8080/api/tokens -b cookies.txt
+
+# revoke
+curl -X DELETE http://127.0.0.1:8080/api/tokens/1 -b cookies.txt
+```
+
+## Git clone / push (Smart HTTP)
+
+```bash
+# public clone
+git clone http://127.0.0.1:8080/user/hello.git
+
+# nested path
+git clone http://127.0.0.1:8080/user/work/backend/api.git
+
+# private / push - Basic auth with password or PAT
+git clone http://user:PASSWORD@127.0.0.1:8080/user/private-repo.git
+
+git clone http://user:repo_TOKEN@127.0.0.1:8080/user/private-repo.git
+
+git push http://user:repo_TOKEN@127.0.0.1:8080/user/hello.git main
+```
+
+Force-push to the default branch is denied by a pre-receive hook.

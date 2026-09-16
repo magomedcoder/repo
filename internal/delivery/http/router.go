@@ -11,6 +11,8 @@ func NewRouter(
 	authHandler *handler.AuthHandler,
 	repoHandler *handler.RepositoryHandler,
 	folderHandler *handler.FolderHandler,
+	tokenHandler *handler.TokenHandler,
+	gitHandler *handler.GitHandler,
 	auth middleware.Authenticator,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -37,5 +39,19 @@ func NewRouter(
 	mux.Handle("DELETE /api/folders/{id}", requireAuth(http.HandlerFunc(folderHandler.Delete)))
 	mux.Handle("POST /api/folders/{id}/move", requireAuth(http.HandlerFunc(folderHandler.Move)))
 
-	return middleware.Logger(mux)
+	mux.Handle("POST /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.Create)))
+	mux.Handle("GET /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.List)))
+	mux.Handle("DELETE /api/tokens/{id}", requireAuth(http.HandlerFunc(tokenHandler.Revoke)))
+
+	api := middleware.Logger(mux)
+	gitHTTP := middleware.Logger(gitHandler)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if handler.IsGitHTTPPath(r.URL.Path) {
+			gitHTTP.ServeHTTP(w, r)
+			return
+		}
+
+		api.ServeHTTP(w, r)
+	})
 }
