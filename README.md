@@ -152,6 +152,30 @@ curl -X POST http://127.0.0.1:8080/api/repos/user/work/backend/api/move \
 curl -X DELETE http://127.0.0.1:8080/api/repos/user/hello -b cookies.txt
 ```
 
+## Browse repository
+
+```bash
+# branches / tags
+curl "http://127.0.0.1:8080/api/repos/user/hello/branches"
+curl "http://127.0.0.1:8080/api/repos/user/hello/tags"
+
+# commits (paginated)
+curl "http://127.0.0.1:8080/api/repos/user/hello/commits?ref=main&offset=0&limit=30"
+curl "http://127.0.0.1:8080/api/repos/user/hello/commits/{sha}"
+curl "http://127.0.0.1:8080/api/repos/user/hello/commits/{sha}/diff"
+
+# tree / blob / raw
+curl "http://127.0.0.1:8080/api/repos/user/hello/tree?ref=main&path="
+curl "http://127.0.0.1:8080/api/repos/user/hello/blob?ref=main&path=README.md"
+curl "http://127.0.0.1:8080/api/repos/user/hello/raw?ref=main&path=README.md"
+
+# readme + stats
+curl "http://127.0.0.1:8080/api/repos/user/hello/readme?ref=main"
+curl "http://127.0.0.1:8080/api/repos/user/hello/stats?ref=main"
+```
+
+Nested repos use the same suffixes, e.g. `/api/repos/user/work/backend/api/tree?ref=main`.
+
 ## Personal access tokens
 
 ```bash

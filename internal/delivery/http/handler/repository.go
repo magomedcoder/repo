@@ -268,7 +268,10 @@ func writeRepoError(w http.ResponseWriter, err error) {
 	case errors.Is(err, usecase.ErrAlreadyExists):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, usecase.ErrRepoNotFound),
-		errors.Is(err, usecase.ErrFolderNotFound):
+		errors.Is(err, usecase.ErrFolderNotFound),
+		errors.Is(err, usecase.ErrRefNotFound),
+		errors.Is(err, usecase.ErrPathNotFound),
+		errors.Is(err, usecase.ErrEmptyRepo):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, usecase.ErrRepoForbidden):
 		writeError(w, http.StatusForbidden, err.Error())
