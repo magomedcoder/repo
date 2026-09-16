@@ -39,8 +39,6 @@ type SessionStore interface {
 	FindByToken(token string) (*Session, error)
 
 	DeleteByToken(token string) error
-
-	DeleteExpired() error
 }
 
 type PasswordHasher interface {

@@ -13,8 +13,8 @@ import (
 type contextKey string
 
 const (
-	userContextKey    contextKey = "user"
-	sessionCookieName            = "session"
+	userContextKey contextKey = "user"
+	SessionCookie             = "session"
 )
 
 type Authenticator interface {
@@ -27,7 +27,7 @@ func UserFromContext(ctx context.Context) (*domain.User, bool) {
 }
 
 func SessionToken(r *http.Request) string {
-	c, err := r.Cookie(sessionCookieName)
+	c, err := r.Cookie(SessionCookie)
 	if err != nil || c.Value == "" {
 		return ""
 	}
@@ -52,6 +52,20 @@ func RequireAuth(auth Authenticator) func(http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), userContextKey, user)
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func OptionalAuth(auth Authenticator) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if token := SessionToken(r); token != "" {
+				if user, _, err := auth.Authenticate(token); err == nil {
+					ctx := context.WithValue(r.Context(), userContextKey, user)
+					r = r.WithContext(ctx)
+				}
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }

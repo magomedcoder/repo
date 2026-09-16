@@ -53,12 +53,14 @@ type FolderContents struct {
 }
 
 type RepositorySummaryItem struct {
-	ID          uint      `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	FolderID    *uint     `json:"folder_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            uint      `json:"id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	FolderID      *uint     `json:"folder_id"`
+	IsPrivate     bool      `json:"is_private"`
+	DefaultBranch string    `json:"default_branch"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type CreateFolderInput struct {
@@ -470,12 +472,14 @@ func toFolderItem(f *domain.Folder) FolderItem {
 
 func toRepoSummary(repo domain.Repository) RepositorySummaryItem {
 	return RepositorySummaryItem{
-		ID:          repo.ID,
-		Name:        repo.Name,
-		Description: repo.Description,
-		FolderID:    repo.FolderID,
-		CreatedAt:   repo.CreatedAt,
-		UpdatedAt:   repo.UpdatedAt,
+		ID:            repo.ID,
+		Name:          repo.Name,
+		Description:   repo.Description,
+		FolderID:      repo.FolderID,
+		IsPrivate:     repo.IsPrivate,
+		DefaultBranch: repo.DefaultBranch,
+		CreatedAt:     repo.CreatedAt,
+		UpdatedAt:     repo.UpdatedAt,
 	}
 }
 

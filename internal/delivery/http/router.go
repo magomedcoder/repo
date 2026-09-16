@@ -21,9 +21,14 @@ func NewRouter(
 	mux.HandleFunc("GET /api/auth/me", authHandler.Me)
 
 	requireAuth := middleware.RequireAuth(auth)
+	optionalAuth := middleware.OptionalAuth(auth)
 
-	mux.Handle("GET /api/user/repos", requireAuth(http.HandlerFunc(repoHandler.List)))
-	mux.Handle("POST /api/user/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
+	mux.Handle("POST /api/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
+	mux.Handle("GET /api/repos", optionalAuth(http.HandlerFunc(repoHandler.List)))
+	mux.Handle("GET /api/repos/{owner}/{path...}", optionalAuth(http.HandlerFunc(repoHandler.Get)))
+	mux.Handle("PATCH /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(repoHandler.Update)))
+	mux.Handle("DELETE /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(repoHandler.Delete)))
+	mux.Handle("POST /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(repoHandler.Move)))
 
 	mux.Handle("POST /api/folders", requireAuth(http.HandlerFunc(folderHandler.Create)))
 	mux.Handle("GET /api/folders", requireAuth(http.HandlerFunc(folderHandler.List)))

@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"errors"
 	"time"
 
 	"github.com/magomedcoder/repo/internal/domain"
@@ -144,20 +143,11 @@ func (s *SessionStore) Create(session *domain.Session) error {
 func (s *SessionStore) FindByToken(token string) (*domain.Session, error) {
 	var model sessionModel
 	if err := s.db.Where("token = ?", token).First(&model).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
-		}
-
 		return nil, err
 	}
-
 	return model.toDomain(), nil
 }
 
 func (s *SessionStore) DeleteByToken(token string) error {
 	return s.db.Where("token = ?", token).Delete(&sessionModel{}).Error
-}
-
-func (s *SessionStore) DeleteExpired() error {
-	return s.db.Where("expires_at <= ?", time.Now()).Delete(&sessionModel{}).Error
 }

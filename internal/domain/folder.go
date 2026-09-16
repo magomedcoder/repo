@@ -20,8 +20,6 @@ type FolderStore interface {
 
 	Delete(id uint) error
 
-	FindByID(id uint) (*Folder, error)
-
 	FindByOwnerAndID(ownerID, id uint) (*Folder, error)
 
 	FindByOwnerAndPath(ownerID uint, path string) (*Folder, error)
@@ -31,7 +29,6 @@ type FolderStore interface {
 	ListByOwnerAndParent(ownerID uint, parentID *uint) ([]Folder, error)
 
 	ExistsByOwnerParentSlug(ownerID uint, parentID *uint, slug string) (bool, error)
-
 	CountChildren(folderID uint) (int64, error)
 
 	ListDescendants(ownerID uint, pathPrefix string) ([]Folder, error)

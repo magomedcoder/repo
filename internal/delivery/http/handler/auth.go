@@ -11,8 +11,6 @@ import (
 	"github.com/magomedcoder/repo/internal/usecase"
 )
 
-const sessionCookieName = "session"
-
 type AuthHandler struct {
 	auth *usecase.AuthUseCase
 }
@@ -112,7 +110,7 @@ func writeAuthError(w http.ResponseWriter, err error) {
 
 func setSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
+		Name:     middleware.SessionCookie,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
@@ -123,7 +121,7 @@ func setSessionCookie(w http.ResponseWriter, token string) {
 
 func clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
+		Name:     middleware.SessionCookie,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,

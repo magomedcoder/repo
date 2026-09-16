@@ -29,7 +29,7 @@ func main() {
 
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore)
-	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, gitRepo)
+	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo)
 
 	authHandler := handler.NewAuthHandler(authUC)
 	folderHandler := handler.NewFolderHandler(folderUC)

@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"errors"
 	"time"
 
 	"github.com/magomedcoder/repo/internal/domain"
@@ -93,16 +92,6 @@ func (s *FolderStore) Delete(id uint) error {
 	return s.db.Delete(&folderModel{}, id).Error
 }
 
-func (s *FolderStore) FindByID(id uint) (*domain.Folder, error) {
-	var model folderModel
-	if err := s.db.First(&model, id).Error; err != nil {
-		return nil, err
-	}
-
-	f := model.toDomain()
-	return &f, nil
-}
-
 func (s *FolderStore) FindByOwnerAndID(ownerID, id uint) (*domain.Folder, error) {
 	var model folderModel
 	err := s.db.Where("owner_id = ? AND id = ?", ownerID, id).First(&model).Error
@@ -188,8 +177,4 @@ func folderModelsToDomain(models []folderModel) []domain.Folder {
 	}
 
 	return out
-}
-
-func IsNotFound(err error) bool {
-	return errors.Is(err, gorm.ErrRecordNotFound)
 }

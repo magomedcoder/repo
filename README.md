@@ -102,14 +102,52 @@ curl -X DELETE http://127.0.0.1:8080/api/folders/2 -b cookies.txt
 ## Create repository
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/user/repos \
+curl -X POST http://127.0.0.1:8080/api/repos \
   -H "Content-Type: application/json" \
   -b cookies.txt \
-  -d '{"name":"my-repo","description":"My repository","folder_id":1}'
+  -d '{"name":"my-repo","description":"My repository","folder_id":1,"private":false,"default_branch":"main"}'
 ```
 
 ## List repositories
 
 ```bash
-curl http://127.0.0.1:8080/api/user/repos -b cookies.txt
+# own repos (auth)
+curl http://127.0.0.1:8080/api/repos -b cookies.txt
+
+# public repos
+curl "http://127.0.0.1:8080/api/repos?scope=public"
+```
+
+## Repository metadata
+
+```bash
+# root repo
+curl http://127.0.0.1:8080/api/repos/user/hello
+
+# nested repo
+curl http://127.0.0.1:8080/api/repos/user/work/backend/api -b cookies.txt
+```
+
+## Update repository
+
+```bash
+curl -X PATCH http://127.0.0.1:8080/api/repos/user/work/backend/api \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"description":"Updated","private":true,"default_branch":"main"}'
+```
+
+## Move repository
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/repos/user/work/backend/api/move \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"folder_id":null}'
+```
+
+## Delete repository
+
+```bash
+curl -X DELETE http://127.0.0.1:8080/api/repos/user/hello -b cookies.txt
 ```
