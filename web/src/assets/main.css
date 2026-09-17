@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-ink: #12181f;
+  --color-ink-muted: #5a6570;
+  --color-paper: #f3f6f4;
+  --color-paper-2: #e7eee9;
+  --color-line: #cfd8d2;
+  --color-moss: #1f6b4f;
+  --color-moss-dark: #15553d;
+  --color-moss-soft: #d7efe4;
+  --color-warn: #9a3412;
+  --color-warn-soft: #ffedd5;
+}
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply min-h-screen bg-paper font-sans text-ink;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgb(31 107 79 / 0.12), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgb(18 24 31 / 0.06), transparent),
+      linear-gradient(180deg, #f7faf8 0%, #f3f6f4 40%, #eef3f0 100%);
+    background-attachment: fixed;
+  }
+
+  #app {
+    @apply min-h-screen;
+  }
+
+  a {
+    @apply text-inherit no-underline;
+  }
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-semibold transition;
+}
+
+@utility btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-md bg-moss px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-moss-dark;
+}
+
+@utility btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-md border border-line bg-white/70 px-3.5 py-2 text-sm font-semibold text-ink transition hover:bg-paper-2;
+}
+
+@utility btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-md bg-warn px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-red-800;
+}
+
+@utility input {
+  @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-moss focus:ring-2 focus:ring-moss/20;
+}
+
+@utility panel {
+  @apply rounded-lg border border-line bg-white/80 shadow-[0_1px_0_rgb(18_24_31_/0.04)];
+}

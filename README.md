@@ -19,6 +19,8 @@ user/
 
 ```bash
 go run ./cmd/repo
+
+cd web && yarn install && yarn dev
 ```
 
 API reference: [API.md](API.md)
