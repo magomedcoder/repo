@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { foldersApi } from '@/api'
 import ModalForm from '@/components/ModalForm.vue'
-import { ApiError } from '@/api/client'
+import { localizeError } from '@/i18n'
 
 const props = defineProps<{
   parentId?: number | null
@@ -28,7 +28,7 @@ async function submit() {
     emit('created')
     emit('close')
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'Failed to create folder'
+    error.value = localizeError(err, 'errors.createFolder')
   } finally {
     busy.value = false
   }
@@ -36,9 +36,9 @@ async function submit() {
 </script>
 
 <template>
-  <ModalForm title="New folder" :submit-label="busy ? 'Creating...' : 'Create folder'" @close="emit('close')" @submit="submit">
+  <ModalForm :title="$t('modal.newFolder')" :submit-label="busy ? $t('modal.creating') : $t('modal.createFolder')" @close="emit('close')" @submit="submit">
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">Name</span>
+      <span class="mb-1 block font-medium">{{ $t('modal.name') }}</span>
       <input v-model="name" class="input" required maxlength="64" placeholder="work" autofocus />
     </label>
     <p v-if="error" class="text-sm text-warn">{{ error }}</p>

@@ -2,7 +2,8 @@
 import { ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { ApiError } from '@/api/client'
+import { localizeError } from '@/i18n'
+import LocaleSwitch from '@/components/LocaleSwitch.vue'
 
 const auth = useAuth()
 const route = useRoute()
@@ -21,7 +22,7 @@ async function submit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     await router.replace(redirect)
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'Login failed'
+    error.value = localizeError(err, 'errors.loginFailed')
   } finally {
     busy.value = false
   }
@@ -31,13 +32,18 @@ async function submit() {
 <template>
   <div class="flex min-h-screen items-center justify-center px-4 py-10">
     <div class="w-full max-w-md">
-      <p class="font-display text-4xl font-extrabold tracking-tight text-ink">Repo</p>
-      <p class="mt-2 text-ink-muted">Sign in to your filesystem of repositories.</p>
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="font-display text-4xl font-extrabold tracking-tight text-ink">Repo</p>
+          <p class="mt-2 text-ink-muted">{{ $t('auth.loginLead') }}</p>
+        </div>
+        <LocaleSwitch />
+      </div>
 
       <form class="panel mt-8 space-y-4 p-6" @submit.prevent="submit">
-        <h1 class="font-display text-2xl font-bold">Log in</h1>
+        <h1 class="font-display text-2xl font-bold">{{ $t('auth.loginTitle') }}</h1>
         <label class="block text-sm">
-          <span class="mb-1 block font-medium">Username or email</span>
+          <span class="mb-1 block font-medium">{{ $t('auth.usernameOrEmail') }}</span>
           <input
             v-model="login"
             class="input"
@@ -46,7 +52,7 @@ async function submit() {
           />
         </label>
         <label class="block text-sm">
-          <span class="mb-1 block font-medium">Password</span>
+          <span class="mb-1 block font-medium">{{ $t('auth.password') }}</span>
           <input
             v-model="password"
             type="password"
@@ -57,11 +63,11 @@ async function submit() {
         </label>
         <p v-if="error" class="text-sm text-warn">{{ error }}</p>
         <button type="submit" class="btn-primary w-full" :disabled="busy">
-          {{ busy ? 'Signing in...' : 'Sign in' }}
+          {{ busy ? $t('auth.signingIn') : $t('auth.signIn') }}
         </button>
         <p class="text-center text-sm text-ink-muted">
-          No account?
-          <RouterLink :to="{ name: 'register' }" class="font-semibold text-moss hover:underline">Register</RouterLink>
+          {{ $t('auth.noAccount') }}
+          <RouterLink :to="{ name: 'register' }" class="font-semibold text-moss hover:underline">{{ $t('auth.register') }}</RouterLink>
         </p>
       </form>
     </div>

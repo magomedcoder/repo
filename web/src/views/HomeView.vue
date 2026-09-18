@@ -7,7 +7,7 @@ import CreateFolderModal from '@/components/CreateFolderModal.vue'
 import CreateRepoModal from '@/components/CreateRepoModal.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
-import { ApiError } from '@/api/client'
+import { localizeError } from '@/i18n'
 
 const auth = useAuth()
 const { setBreadcrumbs, clearBreadcrumbs } = useBreadcrumbs()
@@ -29,7 +29,7 @@ async function load() {
     repos.value = (repoRes.repos ?? []).filter((r) => r.folder_id == null)
     setBreadcrumbs([{ label: auth.user.value?.username || 'home' }])
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'Failed to load'
+    error.value = localizeError(err, 'errors.loadFailed')
   } finally {
     loading.value = false
   }
@@ -48,24 +48,24 @@ onUnmounted(clearBreadcrumbs)
   <div>
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 class="font-display text-3xl font-bold">Dashboard</h1>
-        <p class="mt-1 text-sm text-ink-muted">Root folders and repositories in your namespace.</p>
+        <h1 class="font-display text-3xl font-bold">{{ $t('home.title') }}</h1>
+        <p class="mt-1 text-sm text-ink-muted">{{ $t('home.lead') }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <button
           type="button"
           class="btn-ghost"
           @click="showFolderModal = true"
-        >New folder</button>
+        >{{ $t('home.newFolder') }}</button>
         <button
           type="button"
           class="btn-primary"
           @click="showRepoModal = true"
-        >New repository</button>
+        >{{ $t('home.newRepository') }}</button>
       </div>
     </div>
 
-    <p v-if="loading" class="text-sm text-ink-muted">Loading...</p>
+    <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
     <ContentsList v-else :folders="folders" :repos="repos" />
 

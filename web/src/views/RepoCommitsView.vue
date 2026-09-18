@@ -3,8 +3,8 @@ import { onUnmounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { reposApi } from '@/api'
 import type { CommitInfo, Repository } from '@/api/types'
-import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
-import { ApiError } from '@/api/client'
+import { useBreadcrumbs, type Crumb } from '@/composables/useBreadcrumbs'
+import { formatDate, localizeError } from '@/i18n'
 
 const props = defineProps<{
   owner: string
@@ -21,7 +21,7 @@ const offset = ref(0)
 const limit = 30
 
 function setCrumbs() {
-  const crumbs: { label: string; to?: object | string }[] = [{ label: props.owner, to: '/' }]
+  const crumbs: Crumb[] = [{ label: props.owner, to: '/' }]
   props.repoPath.split('/').forEach((part, i, arr) => {
     crumbs.push(i === arr.length - 1
       ? {
@@ -36,7 +36,7 @@ function setCrumbs() {
         }
       : { label: part })
   })
-  crumbs.push({ label: 'commits' })
+  crumbs.push({ label: 'commits', labelKey: 'nav.commits' })
   setBreadcrumbs(crumbs as never)
 }
 
@@ -53,7 +53,7 @@ async function load() {
     })
     commits.value = res.commits ?? []
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'Failed to load commits'
+    error.value = localizeError(err, 'errors.loadCommits')
   } finally {
     loading.value = false
   }
@@ -77,11 +77,11 @@ onUnmounted(clearBreadcrumbs)
 <template>
   <div>
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-display text-2xl font-bold">Commits</h1>
-      <RouterLink class="btn-ghost" :to="{ name: 'repo', params: { owner, repoPath } }">Repo home</RouterLink>
+      <h1 class="font-display text-2xl font-bold">{{ $t('commits.title') }}</h1>
+      <RouterLink class="btn-ghost" :to="{ name: 'repo', params: { owner, repoPath } }">{{ $t('repo.home') }}</RouterLink>
     </div>
 
-    <p v-if="loading" class="text-sm text-ink-muted">Loading...</p>
+    <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
     <ul v-else class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-white/80">
       <li v-for="c in commits" :key="c.sha">
@@ -98,11 +98,11 @@ onUnmounted(clearBreadcrumbs)
         >
           <p class="font-semibold">{{ firstLine(c.message) }}</p>
           <p class="mt-1 font-mono text-xs text-ink-muted">
-            {{ shortSha(c.sha) }} {{ c.author_name }} {{ new Date(c.authored_at).toLocaleString() }}
+            {{ shortSha(c.sha) }} {{ c.author_name }} {{ formatDate(c.authored_at) }}
           </p>
         </RouterLink>
       </li>
-      <li v-if="!commits.length" class="px-4 py-8 text-center text-sm text-ink-muted">No commits yet.</li>
+      <li v-if="!commits.length" class="px-4 py-8 text-center text-sm text-ink-muted">{{ $t('commits.empty') }}</li>
     </ul>
 
     <div v-if="commits.length === limit || offset > 0" class="mt-4 flex gap-2">
@@ -112,7 +112,7 @@ onUnmounted(clearBreadcrumbs)
         :disabled="offset === 0"
         @click="offset = Math.max(0, offset - limit); load()"
       >
-        Newer
+        {{ $t('commits.newer') }}
       </button>
       <button
         type="button"
@@ -120,7 +120,7 @@ onUnmounted(clearBreadcrumbs)
         :disabled="commits.length < limit"
         @click="offset += limit; load()"
       >
-        Older
+        {{ $t('commits.older') }}
       </button>
     </div>
   </div>

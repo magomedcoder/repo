@@ -4,7 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { reposApi } from '@/api'
 import type { BlobContent } from '@/api/types'
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
-import { ApiError } from '@/api/client'
+import { localizeError } from '@/i18n'
 
 const props = defineProps<{
   owner: string
@@ -50,7 +50,7 @@ async function load() {
   error.value = ''
   try {
     if (!filePath.value) {
-      error.value = 'path required'
+      error.value = localizeError(new Error('path'), 'errors.pathRequired')
       return
     }
     blob.value = await reposApi.blob(props.owner, props.repoPath, {
@@ -59,7 +59,7 @@ async function load() {
     })
     setCrumbs()
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'Failed to load file'
+    error.value = localizeError(err, 'errors.loadFile')
   } finally {
     loading.value = false
   }
@@ -94,7 +94,7 @@ onUnmounted(clearBreadcrumbs)
             },
           }"
         >
-          Tree
+          {{ $t('blob.tree') }}
         </RouterLink>
         <a
           class="btn-ghost"
@@ -102,24 +102,24 @@ onUnmounted(clearBreadcrumbs)
           target="_blank"
           rel="noreferrer"
         >
-          Raw
+          {{ $t('blob.raw') }}
         </a>
       </div>
     </div>
 
-    <p v-if="loading" class="text-sm text-ink-muted">Loading...</p>
+    <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
     <div v-else-if="blob" class="panel overflow-hidden">
       <div class="flex items-center justify-between border-b border-line px-4 py-2 text-xs text-ink-muted">
-        <span>{{ blob.size }} bytes</span>
-        <span>{{ blob.is_binary ? 'binary' : blob.encoding }}</span>
+        <span>{{ $t('common.bytes', { n: blob.size }) }}</span>
+        <span>{{ blob.is_binary ? $t('common.binary') : blob.encoding }}</span>
       </div>
       <pre
         v-if="!blob.is_binary"
         class="overflow-x-auto p-4 font-mono text-sm leading-relaxed"
       >{{ blob.content }}</pre>
       <p v-else class="p-4 text-sm text-ink-muted">
-        Binary file - open Raw to download.
+        {{ $t('blob.binary') }}
       </p>
     </div>
   </div>

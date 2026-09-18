@@ -35,13 +35,13 @@ type moveFolderRequest struct {
 func (h *FolderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	var req createFolderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_json")
 		return
 	}
 
@@ -52,7 +52,7 @@ func (h *FolderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Path:     req.Path,
 	})
 	if err != nil {
-		writeFolderError(w, err)
+		writeFolderError(w, r, err)
 		return
 	}
 
@@ -62,7 +62,7 @@ func (h *FolderHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *FolderHandler) List(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *FolderHandler) List(w http.ResponseWriter, r *http.Request) {
 	if raw := r.URL.Query().Get("parent_id"); raw != "" {
 		id, err := strconv.ParseUint(raw, 10, 64)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid parent_id")
+			writeError(w, r, http.StatusBadRequest, "invalid_parent_id")
 			return
 		}
 
@@ -81,7 +81,7 @@ func (h *FolderHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	out, err := h.folders.List(user.ID, parentID, tree)
 	if err != nil {
-		writeFolderError(w, err)
+		writeFolderError(w, r, err)
 		return
 	}
 
@@ -96,19 +96,19 @@ func (h *FolderHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *FolderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid folder id")
+		writeError(w, r, http.StatusBadRequest, "invalid_folder_id")
 		return
 	}
 
 	out, err := h.folders.GetContents(user.ID, id)
 	if err != nil {
-		writeFolderError(w, err)
+		writeFolderError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -117,19 +117,19 @@ func (h *FolderHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *FolderHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid folder id")
+		writeError(w, r, http.StatusBadRequest, "invalid_folder_id")
 		return
 	}
 
 	var req renameFolderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_json")
 		return
 	}
 
@@ -139,7 +139,7 @@ func (h *FolderHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		Name:    req.Name,
 	})
 	if err != nil {
-		writeFolderError(w, err)
+		writeFolderError(w, r, err)
 		return
 	}
 
@@ -149,18 +149,18 @@ func (h *FolderHandler) Rename(w http.ResponseWriter, r *http.Request) {
 func (h *FolderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid folder id")
+		writeError(w, r, http.StatusBadRequest, "invalid_folder_id")
 		return
 	}
 
 	if err := h.folders.Delete(user.ID, id); err != nil {
-		writeFolderError(w, err)
+		writeFolderError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -169,19 +169,19 @@ func (h *FolderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *FolderHandler) Move(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid folder id")
+		writeError(w, r, http.StatusBadRequest, "invalid_folder_id")
 		return
 	}
 
 	var req moveFolderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_json")
 		return
 	}
 
@@ -191,7 +191,7 @@ func (h *FolderHandler) Move(w http.ResponseWriter, r *http.Request) {
 		NewParentID: req.ParentID,
 	})
 	if err != nil {
-		writeFolderError(w, err)
+		writeFolderError(w, r, err)
 		return
 	}
 
@@ -201,30 +201,30 @@ func (h *FolderHandler) Move(w http.ResponseWriter, r *http.Request) {
 func parseID(raw string) (uint, error) {
 	id, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil || id == 0 {
-		return 0, errors.New("invalid id")
+		return 0, errors.New("invalid_folder_id")
 	}
 
 	return uint(id), nil
 }
 
-func writeFolderError(w http.ResponseWriter, err error) {
+func writeFolderError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrFolderNameRequired),
 		errors.Is(err, usecase.ErrInvalidFolderName),
 		errors.Is(err, usecase.ErrInvalidFolderMove):
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, r, http.StatusBadRequest, err.Error())
 	case errors.Is(err, usecase.ErrFolderExists):
-		writeError(w, http.StatusConflict, err.Error())
+		writeError(w, r, http.StatusConflict, err.Error())
 	case errors.Is(err, usecase.ErrFolderNotFound),
 		errors.Is(err, usecase.ErrParentFolderNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, r, http.StatusNotFound, err.Error())
 	case errors.Is(err, usecase.ErrFolderNotEmpty),
 		errors.Is(err, usecase.ErrFolderDepthExceeded),
 		errors.Is(err, usecase.ErrFolderCycle):
-		writeError(w, http.StatusConflict, err.Error())
+		writeError(w, r, http.StatusConflict, err.Error())
 	case errors.Is(err, usecase.ErrUnauthorized):
-		writeError(w, http.StatusUnauthorized, err.Error())
+		writeError(w, r, http.StatusUnauthorized, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeError(w, r, http.StatusInternalServerError, "internal_error")
 	}
 }

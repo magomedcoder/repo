@@ -24,3 +24,5 @@ cd web && yarn install && yarn dev
 ```
 
 API reference: [API.md](API.md)
+
+Locales: [langs/](langs/) (`en` / `ru`, `api.json` + `web.json`)

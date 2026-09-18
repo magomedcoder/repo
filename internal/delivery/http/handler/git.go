@@ -153,7 +153,7 @@ func parseGitHTTPPath(urlPath string) (owner, folderPath, name, action string, e
 	repoPath := urlPath[:idx] // owner[/folder...]/name
 	parts := strings.Split(repoPath, "/")
 	if len(parts) < 2 {
-		return "", "", "", "", errors.New("invalid repository path")
+		return "", "", "", "", errors.New("invalid_repository_path")
 	}
 
 	owner = parts[0]
@@ -163,7 +163,7 @@ func parseGitHTTPPath(urlPath string) (owner, folderPath, name, action string, e
 	}
 
 	if owner == "" || name == "" || owner == "api" {
-		return "", "", "", "", errors.New("invalid repository path")
+		return "", "", "", "", errors.New("invalid_repository_path")
 	}
 
 	return owner, folderPath, name, action, nil

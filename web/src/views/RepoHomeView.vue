@@ -5,7 +5,7 @@ import { marked } from 'marked'
 import { cloneUrl, reposApi } from '@/api'
 import type { BlobContent, RefInfo, Repository, RepoStats, TreeEntry } from '@/api/types'
 import { useBreadcrumbs, type Crumb } from '@/composables/useBreadcrumbs'
-import { ApiError } from '@/api/client'
+import { localizeError } from '@/i18n'
 
 const props = defineProps<{
   owner: string
@@ -76,7 +76,7 @@ async function load() {
       readme.value = null
     }
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'Failed to load repository'
+    error.value = localizeError(err, 'errors.loadRepository')
   } finally {
     loading.value = false
   }
@@ -125,7 +125,7 @@ onUnmounted(clearBreadcrumbs)
 
 <template>
   <div>
-    <p v-if="loading" class="text-sm text-ink-muted">Loading...</p>
+    <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
     <template v-else-if="repo">
       <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -138,10 +138,10 @@ onUnmounted(clearBreadcrumbs)
               class="rounded border px-2 py-1 font-semibold uppercase tracking-wide"
               :class="repo.is_private ? 'border-warn/30 bg-warn-soft text-warn' : 'border-line text-ink-muted'"
             >
-              {{ repo.is_private ? 'private' : 'public' }}
+              {{ repo.is_private ? $t('common.private') : $t('common.public') }}
             </span>
             <span v-if="stats" class="rounded border border-line px-2 py-1 text-ink-muted">
-              {{ stats.commit_count }} commits
+              {{ $t('repo.commits', { n: stats.commit_count }) }}
             </span>
           </div>
         </div>
@@ -153,7 +153,7 @@ onUnmounted(clearBreadcrumbs)
               params: { owner, repoPath }
             }"
           >
-            Commits
+            {{ $t('nav.commits') }}
           </RouterLink>
           <RouterLink
             class="btn-ghost"
@@ -163,7 +163,7 @@ onUnmounted(clearBreadcrumbs)
               query: { ref: refName }
             }"
           >
-            Files
+            {{ $t('nav.files') }}
           </RouterLink>
           <RouterLink
             class="btn-ghost"
@@ -172,20 +172,20 @@ onUnmounted(clearBreadcrumbs)
               params: { owner, repoPath }
             }"
           >
-            Settings
+            {{ $t('nav.settings') }}
           </RouterLink>
         </div>
       </div>
 
       <div class="panel mb-6 flex flex-wrap items-center gap-2 p-3">
-        <span class="text-xs font-semibold uppercase tracking-wide text-ink-muted">Clone</span>
+        <span class="text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('repo.clone') }}</span>
         <code class="min-w-0 flex-1 truncate rounded-md bg-paper px-2 py-1.5 font-mono text-sm">{{ clone }}</code>
-        <button type="button" class="btn-ghost" @click="copyClone">{{ copied ? 'Copied' : 'Copy' }}</button>
+        <button type="button" class="btn-ghost" @click="copyClone">{{ copied ? $t('common.copied') : $t('common.copy') }}</button>
       </div>
 
       <div class="mb-6 grid gap-4 lg:grid-cols-[1fr_220px]">
         <div>
-          <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Files</h2>
+          <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('repo.files') }}</h2>
           <ul v-if="tree.length" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-white/80">
             <li v-for="entry in tree" :key="entry.sha + entry.path">
               <RouterLink :to="entryLink(entry)" class="flex items-center gap-3 px-4 py-2.5 hover:bg-moss-soft/40">
@@ -195,20 +195,20 @@ onUnmounted(clearBreadcrumbs)
             </li>
           </ul>
           <p v-else class="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
-            Empty repository - push a commit to get started.
+            {{ $t('repo.empty') }}
           </p>
         </div>
 
         <aside class="space-y-4">
           <div class="panel p-3">
-            <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Branches</h2>
+            <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('repo.branches') }}</h2>
             <ul v-if="branches.length" class="space-y-1 text-sm">
               <li v-for="b in branches" :key="b.name" class="font-mono">{{ b.name }}</li>
             </ul>
-            <p v-else class="text-sm text-ink-muted">None yet</p>
+            <p v-else class="text-sm text-ink-muted">{{ $t('repo.noneYet') }}</p>
           </div>
           <div v-if="stats && Object.keys(stats.languages).length" class="panel p-3">
-            <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Languages</h2>
+            <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('repo.languages') }}</h2>
             <ul class="space-y-1 text-sm">
               <li v-for="(bytes, lang) in stats.languages" :key="lang" class="flex justify-between gap-2">
                 <span>{{ lang }}</span>

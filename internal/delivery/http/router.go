@@ -5,6 +5,7 @@ import (
 
 	"github.com/magomedcoder/repo/internal/delivery/http/handler"
 	"github.com/magomedcoder/repo/internal/delivery/http/middleware"
+	"github.com/magomedcoder/repo/pkg/i18n"
 )
 
 func NewRouter(
@@ -43,7 +44,7 @@ func NewRouter(
 	mux.Handle("GET /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.List)))
 	mux.Handle("DELETE /api/tokens/{id}", requireAuth(http.HandlerFunc(tokenHandler.Revoke)))
 
-	api := middleware.Logger(mux)
+	api := middleware.Logger(i18n.Middleware(mux))
 	gitHTTP := middleware.Logger(gitHandler)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

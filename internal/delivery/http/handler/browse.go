@@ -15,7 +15,7 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 	owner := strings.TrimSpace(r.PathValue("owner"))
 	rest := strings.Trim(r.PathValue("path"), "/")
 	if owner == "" || rest == "" {
-		writeError(w, http.StatusBadRequest, "invalid repository path")
+		writeError(w, r, http.StatusBadRequest, "invalid_repository_path")
 		return
 	}
 
@@ -28,7 +28,7 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 
 	folderPath, name, err := folderAndName(repoParts)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -51,7 +51,7 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 	case "branches":
 		items, err := h.repos.ListBranches(in)
 		if err != nil {
-			writeRepoError(w, err)
+			writeRepoError(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"branches": items})
@@ -59,7 +59,7 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 	case "tags":
 		items, err := h.repos.ListTags(in)
 		if err != nil {
-			writeRepoError(w, err)
+			writeRepoError(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"tags": items})
@@ -69,7 +69,7 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 			offset, limit := usecase.ParseOffsetLimit(r.URL.Query().Get("offset"), r.URL.Query().Get("limit"))
 			items, err := h.repos.ListCommits(in, ref, offset, limit)
 			if err != nil {
-				writeRepoError(w, err)
+				writeRepoError(w, r, err)
 				return
 			}
 
@@ -80,7 +80,7 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 		if len(extra) == 1 {
 			item, err := h.repos.GetCommit(in, sha)
 			if err != nil {
-				writeRepoError(w, err)
+				writeRepoError(w, r, err)
 				return
 			}
 
@@ -90,19 +90,19 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 		if len(extra) == 2 && extra[1] == "diff" {
 			item, err := h.repos.GetCommitDiff(in, sha)
 			if err != nil {
-				writeRepoError(w, err)
+				writeRepoError(w, r, err)
 				return
 			}
 
 			writeJSON(w, http.StatusOK, item)
 			return
 		}
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, r, http.StatusNotFound, "not_found")
 
 	case "tree":
 		items, err := h.repos.ListTree(in, ref, path)
 		if err != nil {
-			writeRepoError(w, err)
+			writeRepoError(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ref": ref, "path": path, "tree": items})
@@ -110,7 +110,7 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 	case "blob":
 		item, err := h.repos.GetBlob(in, ref, path)
 		if err != nil {
-			writeRepoError(w, err)
+			writeRepoError(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, item)
@@ -118,14 +118,14 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 	case "raw":
 		item, err := h.repos.GetBlob(in, ref, path)
 		if err != nil {
-			writeRepoError(w, err)
+			writeRepoError(w, r, err)
 			return
 		}
 		var data []byte
 		if item.Encoding == "base64" {
 			decoded, err := base64.StdEncoding.DecodeString(item.Content)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, "internal error")
+				writeError(w, r, http.StatusInternalServerError, "internal_error")
 				return
 			}
 			data = decoded
@@ -146,7 +146,7 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 	case "readme":
 		item, err := h.repos.GetReadme(in, ref)
 		if err != nil {
-			writeRepoError(w, err)
+			writeRepoError(w, r, err)
 			return
 		}
 
@@ -155,14 +155,14 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 	case "stats":
 		item, err := h.repos.GetStats(in, ref)
 		if err != nil {
-			writeRepoError(w, err)
+			writeRepoError(w, r, err)
 			return
 		}
 
 		writeJSON(w, http.StatusOK, item)
 
 	default:
-		writeError(w, http.StatusNotFound, "not found")
+		writeError(w, r, http.StatusNotFound, "not_found")
 	}
 }
 
@@ -192,7 +192,7 @@ func splitBrowsePath(parts []string) (action string, repoParts, extra []string, 
 
 func folderAndName(parts []string) (folderPath, name string, err error) {
 	if len(parts) == 0 || parts[len(parts)-1] == "" {
-		return "", "", errors.New("invalid repository path")
+		return "", "", errors.New("invalid_repository_path")
 	}
 
 	name = parts[len(parts)-1]

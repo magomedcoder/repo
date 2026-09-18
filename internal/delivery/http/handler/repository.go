@@ -39,13 +39,13 @@ type moveRepoRequest struct {
 func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	var req createRepoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_json")
 		return
 	}
 
@@ -59,7 +59,7 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		BasePath:      "data/repos",
 	})
 	if err != nil {
-		writeRepoError(w, err)
+		writeRepoError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
@@ -72,7 +72,7 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	if scope == "public" || !loggedIn {
 		items, err := h.repos.ListPublic()
 		if err != nil {
-			writeRepoError(w, err)
+			writeRepoError(w, r, err)
 			return
 		}
 
@@ -82,7 +82,7 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	items, err := h.repos.ListOwn(user.ID)
 	if err != nil {
-		writeRepoError(w, err)
+		writeRepoError(w, r, err)
 		return
 	}
 
@@ -92,7 +92,7 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *RepositoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 	owner, folderPath, name, err := parseRepoPath(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -108,7 +108,7 @@ func (h *RepositoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 		ViewerID:      viewerID,
 	})
 	if err != nil {
-		writeRepoError(w, err)
+		writeRepoError(w, r, err)
 		return
 	}
 
@@ -118,19 +118,19 @@ func (h *RepositoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	owner, folderPath, name, err := parseRepoPath(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	var req updateRepoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_json")
 		return
 	}
 
@@ -144,7 +144,7 @@ func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		DefaultBranch: req.DefaultBranch,
 	})
 	if err != nil {
-		writeRepoError(w, err)
+		writeRepoError(w, r, err)
 		return
 	}
 
@@ -154,13 +154,13 @@ func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *RepositoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	owner, folderPath, name, err := parseRepoPath(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -171,7 +171,7 @@ func (h *RepositoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		ViewerID:      user.ID,
 	})
 	if err != nil {
-		writeRepoError(w, err)
+		writeRepoError(w, r, err)
 		return
 	}
 
@@ -181,19 +181,19 @@ func (h *RepositoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *RepositoryHandler) Move(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	owner, folderPath, name, err := parseRepoMovePath(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	var req moveRepoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_json")
 		return
 	}
 
@@ -206,7 +206,7 @@ func (h *RepositoryHandler) Move(w http.ResponseWriter, r *http.Request) {
 		BasePath:      "data/repos",
 	})
 	if err != nil {
-		writeRepoError(w, err)
+		writeRepoError(w, r, err)
 		return
 	}
 
@@ -217,12 +217,12 @@ func parseRepoPath(r *http.Request) (owner, folderPath, name string, err error) 
 	owner = strings.TrimSpace(r.PathValue("owner"))
 	rest := strings.Trim(r.PathValue("path"), "/")
 	if owner == "" || rest == "" {
-		return "", "", "", errors.New("invalid repository path")
+		return "", "", "", errors.New("invalid_repository_path")
 	}
 
 	parts := strings.Split(rest, "/")
 	if len(parts) == 0 || parts[len(parts)-1] == "" {
-		return "", "", "", errors.New("invalid repository path")
+		return "", "", "", errors.New("invalid_repository_path")
 	}
 
 	name = parts[len(parts)-1]
@@ -237,17 +237,17 @@ func parseRepoMovePath(r *http.Request) (owner, folderPath, name string, err err
 	owner = strings.TrimSpace(r.PathValue("owner"))
 	rest := strings.Trim(r.PathValue("path"), "/")
 	if owner == "" || rest == "" {
-		return "", "", "", errors.New("invalid repository path")
+		return "", "", "", errors.New("invalid_repository_path")
 	}
 
 	if !strings.HasSuffix(rest, "/move") && rest != "move" {
-		return "", "", "", errors.New("use POST /api/repos/{owner}/.../{name}/move")
+		return "", "", "", errors.New("invalid_repo_move_path")
 	}
 
 	rest = strings.TrimSuffix(rest, "/move")
 	rest = strings.Trim(rest, "/")
 	if rest == "" {
-		return "", "", "", errors.New("invalid repository path")
+		return "", "", "", errors.New("invalid_repository_path")
 	}
 
 	parts := strings.Split(rest, "/")
@@ -259,25 +259,25 @@ func parseRepoMovePath(r *http.Request) (owner, folderPath, name string, err err
 	return owner, folderPath, name, nil
 }
 
-func writeRepoError(w http.ResponseWriter, err error) {
+func writeRepoError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrNameRequired),
 		errors.Is(err, usecase.ErrInvalidName),
 		errors.Is(err, usecase.ErrInvalidBranchName):
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, r, http.StatusBadRequest, err.Error())
 	case errors.Is(err, usecase.ErrAlreadyExists):
-		writeError(w, http.StatusConflict, err.Error())
+		writeError(w, r, http.StatusConflict, err.Error())
 	case errors.Is(err, usecase.ErrRepoNotFound),
 		errors.Is(err, usecase.ErrFolderNotFound),
 		errors.Is(err, usecase.ErrRefNotFound),
 		errors.Is(err, usecase.ErrPathNotFound),
 		errors.Is(err, usecase.ErrEmptyRepo):
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, r, http.StatusNotFound, err.Error())
 	case errors.Is(err, usecase.ErrRepoForbidden):
-		writeError(w, http.StatusForbidden, err.Error())
+		writeError(w, r, http.StatusForbidden, err.Error())
 	case errors.Is(err, usecase.ErrUnauthorized):
-		writeError(w, http.StatusUnauthorized, err.Error())
+		writeError(w, r, http.StatusUnauthorized, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeError(w, r, http.StatusInternalServerError, "internal_error")
 	}
 }

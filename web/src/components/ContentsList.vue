@@ -37,7 +37,7 @@ function repoLink(repo: RepoSummary | Repository) {
 <template>
   <div class="space-y-6">
     <section v-if="folders.length">
-      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Folders</h2>
+      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('nav.folders') }}</h2>
       <ul class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-white/80">
         <li v-for="folder in folders" :key="folder.id">
           <RouterLink
@@ -60,7 +60,7 @@ function repoLink(repo: RepoSummary | Repository) {
     </section>
 
     <section>
-      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Repositories</h2>
+      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('nav.repositories') }}</h2>
       <ul v-if="repos.length" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-white/80">
         <li v-for="repo in repos" :key="repo.id">
           <RouterLink
@@ -75,7 +75,7 @@ function repoLink(repo: RepoSummary | Repository) {
                   class="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                   :class="repo.is_private ? 'border-warn/30 bg-warn-soft text-warn' : 'border-line text-ink-muted'"
                 >
-                  {{ repo.is_private ? 'private' : 'public' }}
+                  {{ repo.is_private ? $t('common.private') : $t('common.public') }}
                 </span>
               </div>
               <p v-if="repo.description" class="mt-0.5 text-sm text-ink-muted">{{ repo.description }}</p>
@@ -84,7 +84,7 @@ function repoLink(repo: RepoSummary | Repository) {
         </li>
       </ul>
       <p v-else class="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
-        No repositories here yet.
+        {{ $t('list.noRepos') }}
       </p>
     </section>
   </div>

@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	ErrTokenNameRequired = errors.New("token name required")
-	ErrTokenNotFound     = errors.New("token not found")
+	ErrTokenNameRequired = errors.New("token_name_required")
+	ErrTokenNotFound     = errors.New("token_not_found")
 )
 
 type CreateTokenInput struct {

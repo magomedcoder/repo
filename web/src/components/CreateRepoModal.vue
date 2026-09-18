@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { reposApi } from '@/api'
 import ModalForm from '@/components/ModalForm.vue'
-import { ApiError } from '@/api/client'
+import { localizeError } from '@/i18n'
 
 const props = defineProps<{
   folderId?: number | null
@@ -34,7 +34,7 @@ async function submit() {
     emit('created')
     emit('close')
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'Failed to create repository'
+    error.value = localizeError(err, 'errors.createRepository')
   } finally {
     busy.value = false
   }
@@ -43,13 +43,13 @@ async function submit() {
 
 <template>
   <ModalForm
-    title="New repository"
-    :submit-label="busy ? 'Creating...' : 'Create repository'"
+    :title="$t('modal.newRepository')"
+    :submit-label="busy ? $t('modal.creating') : $t('modal.createRepository')"
     @close="emit('close')"
     @submit="submit"
   >
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">Name</span>
+      <span class="mb-1 block font-medium">{{ $t('modal.name') }}</span>
       <input
         v-model="name"
         class="input"
@@ -60,15 +60,15 @@ async function submit() {
       />
     </label>
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">Description</span>
+      <span class="mb-1 block font-medium">{{ $t('modal.description') }}</span>
       <input
         v-model="description"
         class="input"
-        placeholder="Optional"
+        :placeholder="$t('modal.optional')"
       />
     </label>
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">Default branch</span>
+      <span class="mb-1 block font-medium">{{ $t('modal.defaultBranch') }}</span>
       <input
         v-model="defaultBranch"
         class="input font-mono"
@@ -80,7 +80,7 @@ async function submit() {
         type="checkbox"
         class="accent-moss"
       />
-      Private repository
+      {{ $t('modal.private') }}
     </label>
     <p v-if="error" class="text-sm text-warn">{{ error }}</p>
   </ModalForm>

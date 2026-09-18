@@ -1,0 +1,135 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied",
+    "private": "private",
+    "public": "public",
+    "binary": "binary",
+    "bytes": "{n} bytes",
+    "sizeB": "{n} B"
+  },
+  "auth": {
+    "loginLead": "Sign in to your filesystem of repositories.",
+    "loginTitle": "Log in",
+    "usernameOrEmail": "Username or email",
+    "password": "Password",
+    "signingIn": "Signing in...",
+    "signIn": "Sign in",
+    "noAccount": "No account?",
+    "register": "Register",
+    "registerLead": "Create an account and nest projects like folders.",
+    "username": "Username",
+    "email": "Email",
+    "creating": "Creating...",
+    "createAccount": "Create account",
+    "haveAccount": "Already have an account?"
+  },
+  "nav": {
+    "folders": "Folders",
+    "repositories": "Repositories",
+    "root": "Root",
+    "logout": "Log out",
+    "breadcrumb": "Breadcrumb",
+    "language": "Language",
+    "commits": "Commits",
+    "settings": "Settings",
+    "files": "Files"
+  },
+  "home": {
+    "title": "Dashboard",
+    "lead": "Root folders and repositories in your namespace.",
+    "newFolder": "New folder",
+    "newRepository": "New repository"
+  },
+  "folder": {
+    "fallback": "Folder"
+  },
+  "list": {
+    "noRepos": "No repositories here yet."
+  },
+  "repo": {
+    "home": "Repo home",
+    "clone": "Clone",
+    "files": "Files",
+    "branches": "Branches",
+    "languages": "Languages",
+    "noneYet": "None yet",
+    "empty": "Empty repository - push a commit to get started.",
+    "commits": "{n} commits"
+  },
+  "tree": {
+    "title": "Files",
+    "parent": "<- Parent directory"
+  },
+  "blob": {
+    "tree": "Tree",
+    "raw": "Raw",
+    "binary": "Binary file - open Raw to download."
+  },
+  "commits": {
+    "title": "Commits",
+    "empty": "No commits yet.",
+    "newer": "Newer",
+    "older": "Older"
+  },
+  "commit": {
+    "title": "Commit",
+    "all": "All commits",
+    "filesChanged": "{n} files changed",
+    "from": "from {path}"
+  },
+  "status": {
+    "added": "added",
+    "deleted": "deleted",
+    "modified": "modified",
+    "renamed": "renamed"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Description",
+    "defaultBranch": "Default branch",
+    "private": "Private repository",
+    "folder": "Folder",
+    "saving": "Saving...",
+    "save": "Save changes",
+    "saved": "Saved",
+    "savedMoved": "Saved and moved",
+    "danger": "Danger zone",
+    "dangerText": "Permanently delete this repository and its git data.",
+    "deleting": "Deleting...",
+    "delete": "Delete repository",
+    "confirmDelete": "Delete repository {path}? This cannot be undone."
+  },
+  "modal": {
+    "newFolder": "New folder",
+    "creating": "Creating...",
+    "createFolder": "Create folder",
+    "name": "Name",
+    "newRepository": "New repository",
+    "createRepository": "Create repository",
+    "description": "Description",
+    "optional": "Optional",
+    "defaultBranch": "Default branch",
+    "private": "Private repository"
+  },
+  "errors": {
+    "loginFailed": "Login failed",
+    "registerFailed": "Registration failed",
+    "loadFailed": "Failed to load",
+    "loadFolder": "Failed to load folder",
+    "loadRepository": "Failed to load repository",
+    "loadTree": "Failed to load tree",
+    "loadFile": "Failed to load file",
+    "loadCommits": "Failed to load commits",
+    "loadCommit": "Failed to load commit",
+    "loadSettings": "Failed to load settings",
+    "createFolder": "Failed to create folder",
+    "createRepository": "Failed to create repository",
+    "saveFailed": "Save failed",
+    "deleteFailed": "Delete failed",
+    "pathRequired": "Path is required"
+  }
+}

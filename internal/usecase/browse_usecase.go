@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	ErrRefNotFound  = errors.New("ref not found")
-	ErrPathNotFound = errors.New("path not found")
-	ErrEmptyRepo    = errors.New("empty repository")
+	ErrRefNotFound  = errors.New("ref_not_found")
+	ErrPathNotFound = errors.New("path_not_found")
+	ErrEmptyRepo    = errors.New("empty_repository")
 )
 
 func (uc *RepositoryUseCase) ListBranches(in ResolveRepositoryInput) ([]domain.RefInfo, error) {

@@ -12,12 +12,12 @@ import (
 )
 
 var (
-	ErrNameRequired      = errors.New("repository name required")
-	ErrAlreadyExists     = errors.New("repository already exists")
-	ErrInvalidName       = errors.New("invalid repository name")
-	ErrRepoNotFound      = errors.New("repository not found")
-	ErrRepoForbidden     = errors.New("repository access denied")
-	ErrInvalidBranchName = errors.New("invalid default branch")
+	ErrNameRequired      = errors.New("repository_name_required")
+	ErrAlreadyExists     = errors.New("repository_already_exists")
+	ErrInvalidName       = errors.New("invalid_repository_name")
+	ErrRepoNotFound      = errors.New("repository_not_found")
+	ErrRepoForbidden     = errors.New("repository_access_denied")
+	ErrInvalidBranchName = errors.New("invalid_default_branch")
 )
 
 var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)

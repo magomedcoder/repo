@@ -4,7 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { reposApi } from '@/api'
 import type { TreeEntry } from '@/api/types'
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
-import { ApiError } from '@/api/client'
+import { localizeError } from '@/i18n'
 
 const props = defineProps<{
   owner: string
@@ -62,7 +62,7 @@ async function load() {
     tree.value = res.tree ?? []
     setCrumbs()
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'Failed to load tree'
+    error.value = localizeError(err, 'errors.loadTree')
   } finally {
     loading.value = false
   }
@@ -112,7 +112,7 @@ onUnmounted(clearBreadcrumbs)
   <div>
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="font-display text-2xl font-bold">Files</h1>
+        <h1 class="font-display text-2xl font-bold">{{ $t('tree.title') }}</h1>
         <p class="font-mono text-sm text-ink-muted">
           {{ refName }}<span v-if="dirPath"> / {{ dirPath }}</span>
         </p>
@@ -122,7 +122,7 @@ onUnmounted(clearBreadcrumbs)
         :to="{
           name: 'repo',
           params: { owner, repoPath }
-        }">Repo home</RouterLink>
+        }">{{ $t('repo.home') }}</RouterLink>
     </div>
 
     <div v-if="dirPath" class="mb-3">
@@ -137,18 +137,18 @@ onUnmounted(clearBreadcrumbs)
           },
         }"
       >
-        <- Parent directory
+        {{ $t('tree.parent') }}
       </RouterLink>
     </div>
 
-    <p v-if="loading" class="text-sm text-ink-muted">Loading...</p>
+    <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
     <ul v-else class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-white/80">
       <li v-for="entry in tree" :key="entry.path">
         <RouterLink :to="entryLink(entry)" class="flex items-center gap-3 px-4 py-2.5 hover:bg-moss-soft/40">
           <span class="w-10 font-mono text-xs text-ink-muted">{{ entry.type }}</span>
           <span class="flex-1 font-medium">{{ entry.name }}</span>
-          <span v-if="entry.type === 'blob'" class="font-mono text-xs text-ink-muted">{{ entry.size }} B</span>
+          <span v-if="entry.type === 'blob'" class="font-mono text-xs text-ink-muted">{{ $t('common.sizeB', { n: entry.size }) }}</span>
         </RouterLink>
       </li>
     </ul>

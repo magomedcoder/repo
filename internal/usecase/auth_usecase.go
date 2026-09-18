@@ -11,17 +11,17 @@ import (
 )
 
 var (
-	ErrUsernameRequired   = errors.New("username required")
-	ErrEmailRequired      = errors.New("email required")
-	ErrPasswordRequired   = errors.New("password required")
-	ErrInvalidUsername    = errors.New("username must match [a-z0-9_-]+")
-	ErrInvalidEmail       = errors.New("invalid email")
-	ErrPasswordTooShort   = errors.New("password must be at least 8 characters")
-	ErrUsernameTaken      = errors.New("username already taken")
-	ErrEmailTaken         = errors.New("email already taken")
-	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrUsernameRequired   = errors.New("username_required")
+	ErrEmailRequired      = errors.New("email_required")
+	ErrPasswordRequired   = errors.New("password_required")
+	ErrInvalidUsername    = errors.New("invalid_username")
+	ErrInvalidEmail       = errors.New("invalid_email")
+	ErrPasswordTooShort   = errors.New("password_too_short")
+	ErrUsernameTaken      = errors.New("username_taken")
+	ErrEmailTaken         = errors.New("email_taken")
+	ErrInvalidCredentials = errors.New("invalid_credentials")
 	ErrUnauthorized       = errors.New("unauthorized")
-	ErrSessionExpired     = errors.New("session expired")
+	ErrSessionExpired     = errors.New("session_expired")
 )
 
 var (

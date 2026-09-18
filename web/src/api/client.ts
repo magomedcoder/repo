@@ -12,6 +12,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
+  if (!headers.has('Accept-Language')) {
+    const locale = localStorage.getItem('repo.locale') || (navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en')
+    headers.set('Accept-Language', locale)
+  }
 
   const res = await fetch(path, {
     ...init,

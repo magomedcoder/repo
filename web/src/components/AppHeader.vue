@@ -3,6 +3,7 @@ import { RouterLink } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
 import { useRouter } from 'vue-router'
+import LocaleSwitch from '@/components/LocaleSwitch.vue'
 
 const auth = useAuth()
 const { crumbs } = useBreadcrumbs()
@@ -24,25 +25,26 @@ async function onLogout() {
       <nav
         v-if="crumbs.length"
         class="hidden min-w-0 flex-1 items-center gap-1.5 overflow-x-auto font-mono text-sm text-ink-muted sm:flex"
-        aria-label="Breadcrumb"
+        :aria-label="$t('nav.breadcrumb')"
       >
-        <template v-for="(crumb, i) in crumbs" :key="`${crumb.label}-${i}`">
+        <template v-for="(crumb, i) in crumbs" :key="`${crumb.labelKey || crumb.label}-${i}`">
           <span v-if="i > 0" class="text-line">/</span>
           <RouterLink v-if="crumb.to" :to="crumb.to" class="truncate text-ink hover:text-moss">
-            {{ crumb.label }}
+            {{ crumb.labelKey ? $t(crumb.labelKey) : crumb.label }}
           </RouterLink>
-          <span v-else class="truncate text-ink">{{ crumb.label }}</span>
+          <span v-else class="truncate text-ink">{{ crumb.labelKey ? $t(crumb.labelKey) : crumb.label }}</span>
         </template>
       </nav>
       <div v-else class="flex-1" />
 
       <div class="flex items-center gap-3 text-sm">
         <span class="hidden font-mono text-ink-muted sm:inline">{{ auth.user.value?.username }}</span>
+        <LocaleSwitch />
         <button
           type="button"
           class="btn-ghost"
           @click="onLogout"
-        >Log out</button>
+        >{{ $t('nav.logout') }}</button>
       </div>
     </div>
   </header>
