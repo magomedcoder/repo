@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, RefInfo, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
+import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, RefInfo, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
 
 export const authApi = {
   register(body: {
@@ -156,6 +156,53 @@ export const reposApi = {
   stats(owner: string, path: string, ref?: string) {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
     return api<RepoStats>(`/api/repos/${owner}/${path}/stats${q}`)
+  },
+}
+
+export const issuesApi = {
+  list(owner: string, path: string, state = 'open', offset = 0, limit = 30) {
+    const q = new URLSearchParams({
+      state,
+      offset: String(offset),
+      limit: String(limit)
+    })
+    return api<{ issues: Issue[] }>(`/api/repos/${owner}/${path}/issues?${q}`)
+  },
+  get(owner: string, path: string, number: number) {
+    return api<IssueDetail>(`/api/repos/${owner}/${path}/issues/${number}`)
+  },
+  create(owner: string, path: string, body: { title: string; body?: string; label_ids?: number[] }) {
+    return api<Issue>(`/api/repos/${owner}/${path}/issues`, { method: 'POST', body: JSON.stringify(body) })
+  },
+  update(owner: string, path: string, number: number, body: { title?: string; body?: string; state?: string; label_ids?: number[] }) {
+    return api<Issue>(`/api/repos/${owner}/${path}/issues/${number}`, { method: 'PATCH', body: JSON.stringify(body) })
+  },
+  remove(owner: string, path: string, number: number) {
+    return api<void>(`/api/repos/${owner}/${path}/issues/${number}`, { method: 'DELETE' })
+  },
+  comment(owner: string, path: string, number: number, body: string) {
+    return api<IssueComment>(`/api/repos/${owner}/${path}/issues/${number}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    })
+  },
+  updateComment(owner: string, path: string, number: number, id: number, body: string) {
+    return api<IssueComment>(`/api/repos/${owner}/${path}/issues/${number}/comments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ body }),
+    })
+  },
+  removeComment(owner: string, path: string, number: number, id: number) {
+    return api<void>(`/api/repos/${owner}/${path}/issues/${number}/comments/${id}`, { method: 'DELETE' })
+  },
+  labels(owner: string, path: string) {
+    return api<{ labels: Label[] }>(`/api/repos/${owner}/${path}/labels`)
+  },
+  createLabel(owner: string, path: string, body: { name: string; color?: string }) {
+    return api<Label>(`/api/repos/${owner}/${path}/labels`, { method: 'POST', body: JSON.stringify(body) })
+  },
+  removeLabel(owner: string, path: string, id: number) {
+    return api<void>(`/api/repos/${owner}/${path}/labels/${id}`, { method: 'DELETE' })
   },
 }
 

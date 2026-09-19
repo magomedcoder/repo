@@ -29,6 +29,7 @@ func main() {
 	folderStore := sqlite.NewFolderStore(db)
 	repoStore := sqlite.NewRepositoryStore(db)
 	tokenStore := sqlite.NewAccessTokenStore(db)
+	issueStore := sqlite.NewIssueStore(db)
 	gitRepo := git.NewRepository()
 	hasher := bcrypt.NewHasher()
 	tokens := token.NewGenerator()
@@ -38,14 +39,16 @@ func main() {
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
+	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
 
 	authHandler := handler.NewAuthHandler(authUC)
 	folderHandler := handler.NewFolderHandler(folderUC)
 	repoHandler := handler.NewRepositoryHandler(repoUC)
 	tokenHandler := handler.NewTokenHandler(tokenUC)
 	gitHandler := handler.NewGitHandler(gitUC)
+	issueHandler := handler.NewIssueHandler(issueUC)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, gitHandler, authUC)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, gitHandler, issueHandler, authUC)
 
 	log.Println("listening on :8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {

@@ -36,7 +36,8 @@
     "language": "Language",
     "commits": "Commits",
     "settings": "Settings",
-    "files": "Files"
+    "files": "Files",
+    "issues": "Issues"
   },
   "home": {
     "title": "Dashboard",
@@ -130,6 +131,37 @@
     "createRepository": "Failed to create repository",
     "saveFailed": "Save failed",
     "deleteFailed": "Delete failed",
-    "pathRequired": "Path is required"
+    "pathRequired": "Path is required",
+    "loadIssues": "Failed to load issues",
+    "loadIssue": "Failed to load issue",
+    "createIssue": "Failed to create issue",
+    "createComment": "Failed to add comment",
+    "createLabel": "Failed to create label"
+  },
+  "issues": {
+    "title": "Issues",
+    "open": "Open",
+    "closed": "Closed",
+    "empty": "No issues yet.",
+    "new": "New issue",
+    "titleField": "Title",
+    "bodyField": "Description",
+    "creating": "Creating...",
+    "create": "Create issue",
+    "labels": "Labels",
+    "labelName": "Label name",
+    "addLabel": "Add label",
+    "delete": "Delete",
+    "back": "All issues",
+    "close": "Close issue",
+    "reopen": "Reopen",
+    "noBody": "No description.",
+    "saveLabels": "Save labels",
+    "discussion": "Discussion",
+    "noComments": "No comments yet.",
+    "comment": "Write a comment",
+    "commentAction": "Comment",
+    "editComment": "Edit",
+    "saveComment": "Save"
   }
 }

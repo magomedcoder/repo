@@ -148,6 +148,12 @@ onUnmounted(clearBreadcrumbs)
         <div class="flex flex-wrap gap-2">
           <RouterLink
             class="btn-ghost"
+            :to="{ name: 'repo-issues', params: { owner, repoPath } }"
+          >
+            {{ $t('nav.issues') }}
+          </RouterLink>
+          <RouterLink
+            class="btn-ghost"
             :to="{
               name: 'repo-commits',
               params: { owner, repoPath }

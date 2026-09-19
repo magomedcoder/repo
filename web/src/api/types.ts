@@ -99,3 +99,33 @@ export interface RepoStats {
   size_bytes: number
   languages: Record<string, number>
 }
+
+export interface Label {
+  id: number
+  name: string
+  color: string
+}
+
+export interface Issue {
+  number: number
+  title: string
+  body: string
+  state: 'open' | 'closed'
+  author: string
+  labels: Label[]
+  comment_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface IssueComment {
+  id: number
+  body: string
+  author: string
+  created_at: string
+  updated_at: string
+}
+
+export interface IssueDetail extends Issue {
+  comments: IssueComment[]
+}

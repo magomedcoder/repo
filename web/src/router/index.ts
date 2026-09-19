@@ -31,9 +31,15 @@ const routes: RouteRecordRaw[] = [
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/settings',
-        name: 'repo-settings',
-        component: () => import('@/views/RepoSettingsView.vue'),
+        path: ':owner/:repoPath(.*)/issues/:number',
+        name: 'repo-issue',
+        component: () => import('@/views/IssueView.vue'),
+        props: true,
+      },
+      {
+        path: ':owner/:repoPath(.*)/issues',
+        name: 'repo-issues',
+        component: () => import('@/views/IssuesView.vue'),
         props: true,
       },
       {
@@ -58,6 +64,12 @@ const routes: RouteRecordRaw[] = [
         path: ':owner/:repoPath(.*)/tree',
         name: 'repo-tree',
         component: () => import('@/views/RepoTreeView.vue'),
+        props: true,
+      },
+      {
+        path: ':owner/:repoPath(.*)/settings',
+        name: 'repo-settings',
+        component: () => import('@/views/RepoSettingsView.vue'),
         props: true,
       },
       {

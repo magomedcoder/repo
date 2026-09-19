@@ -37,5 +37,15 @@
   "invalid_token_id": "Некорректный id токена",
   "token_name_required": "Нужно указать имя токена",
   "token_not_found": "Токен не найден",
-  "invalid_repo_move_path": "Используйте POST /api/repos/{owner}/.../{name}/move"
+  "invalid_repo_move_path": "Используйте POST /api/repos/{owner}/.../{name}/move",
+  "issue_title_required": "Нужно указать заголовок задачи",
+  "issue_not_found": "Задача не найдена",
+  "issue_forbidden": "Нельзя изменить эту задачу",
+  "invalid_issue_state": "Состояние должно быть open или closed",
+  "comment_body_required": "Нужно написать комментарий",
+  "comment_not_found": "Комментарий не найден",
+  "label_name_required": "Нужно указать название метки",
+  "label_not_found": "Метка не найдена",
+  "label_already_exists": "Такая метка уже есть",
+  "invalid_label": "Метка не относится к этому репозиторию"
 }

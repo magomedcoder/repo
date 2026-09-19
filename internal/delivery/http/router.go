@@ -14,6 +14,7 @@ func NewRouter(
 	folderHandler *handler.FolderHandler,
 	tokenHandler *handler.TokenHandler,
 	gitHandler *handler.GitHandler,
+	issueHandler *handler.IssueHandler,
 	auth middleware.Authenticator,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -28,10 +29,30 @@ func NewRouter(
 
 	mux.Handle("POST /api/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
 	mux.Handle("GET /api/repos", optionalAuth(http.HandlerFunc(repoHandler.List)))
-	mux.Handle("GET /api/repos/{owner}/{path...}", optionalAuth(http.HandlerFunc(repoHandler.DispatchGet)))
-	mux.Handle("PATCH /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(repoHandler.Update)))
-	mux.Handle("DELETE /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(repoHandler.Delete)))
-	mux.Handle("POST /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(repoHandler.Move)))
+	mux.Handle("GET /api/repos/{owner}/{path...}", optionalAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if issueHandler.Handle(w, r) {
+			return
+		}
+		repoHandler.DispatchGet(w, r)
+	})))
+	mux.Handle("PATCH /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if issueHandler.Handle(w, r) {
+			return
+		}
+		repoHandler.Update(w, r)
+	})))
+	mux.Handle("DELETE /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if issueHandler.Handle(w, r) {
+			return
+		}
+		repoHandler.Delete(w, r)
+	})))
+	mux.Handle("POST /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if issueHandler.Handle(w, r) {
+			return
+		}
+		repoHandler.Move(w, r)
+	})))
 
 	mux.Handle("POST /api/folders", requireAuth(http.HandlerFunc(folderHandler.Create)))
 	mux.Handle("GET /api/folders", requireAuth(http.HandlerFunc(folderHandler.List)))

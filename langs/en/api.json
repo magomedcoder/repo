@@ -37,5 +37,15 @@
   "invalid_token_id": "Invalid token id",
   "token_name_required": "Token name is required",
   "token_not_found": "Token not found",
-  "invalid_repo_move_path": "Use POST /api/repos/{owner}/.../{name}/move"
+  "invalid_repo_move_path": "Use POST /api/repos/{owner}/.../{name}/move",
+  "issue_title_required": "Issue title is required",
+  "issue_not_found": "Issue not found",
+  "issue_forbidden": "You cannot change this issue",
+  "invalid_issue_state": "Issue state must be open or closed",
+  "comment_body_required": "Comment body is required",
+  "comment_not_found": "Comment not found",
+  "label_name_required": "Label name is required",
+  "label_not_found": "Label not found",
+  "label_already_exists": "Label already exists",
+  "invalid_label": "Label does not belong to this repository"
 }

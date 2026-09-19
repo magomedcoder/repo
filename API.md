@@ -153,6 +153,48 @@ curl "http://127.0.0.1:8080/api/repos/user/hello/stats?ref=main"
 
 Nested repos use the same suffixes, e.g. `/api/repos/user/work/backend/api/tree?ref=main`.
 
+## Issues
+
+```bash
+# list (state=open|closed|all, default open)
+curl "http://127.0.0.1:8080/api/repos/user/hello/issues?state=open&offset=0&limit=30"
+
+# create
+curl -X POST http://127.0.0.1:8080/api/repos/user/hello/issues \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"title":"Bug","body":"steps","label_ids":[1]}'
+
+# get
+curl http://127.0.0.1:8080/api/repos/user/hello/issues/1
+
+# update (title, body, state, label_ids are optional)
+curl -X PATCH http://127.0.0.1:8080/api/repos/user/hello/issues/1 \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"state":"closed"}'
+
+# delete
+curl -X DELETE http://127.0.0.1:8080/api/repos/user/hello/issues/1 -b cookies.txt
+
+# comments
+curl -X POST http://127.0.0.1:8080/api/repos/user/hello/issues/1/comments \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"body":"looks good"}'
+curl -X PATCH http://127.0.0.1:8080/api/repos/user/hello/issues/1/comments/1 \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"body":"updated"}'
+curl -X DELETE http://127.0.0.1:8080/api/repos/user/hello/issues/1/comments/1 -b cookies.txt
+
+# labels (list is readable with the repo; create/update/delete are owner-only)
+curl http://127.0.0.1:8080/api/repos/user/hello/labels
+curl -X POST http://127.0.0.1:8080/api/repos/user/hello/labels \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"name":"bug","color":"#1f6b4f"}'
+curl -X PATCH http://127.0.0.1:8080/api/repos/user/hello/labels/1 \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"name":"bugfix"}'
+curl -X DELETE http://127.0.0.1:8080/api/repos/user/hello/labels/1 -b cookies.txt
+```
+
 ## Personal access tokens
 
 ```bash
