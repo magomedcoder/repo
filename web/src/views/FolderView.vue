@@ -35,7 +35,10 @@ async function load() {
     repos.value = res.repos ?? []
 
     const owner = auth.user.value?.username || ''
-    const crumbs: Crumb[] = [{ label: owner, to: '/' }]
+    const crumbs: Crumb[] = [{
+      label: owner,
+      to: '/'
+    }]
     if (folder.value?.path) {
       folder.value.path.split('/').forEach((part) => {
         crumbs.push({ label: part })
@@ -62,12 +65,20 @@ onUnmounted(clearBreadcrumbs)
   <div>
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 class="font-display text-3xl font-bold">{{ folder?.name || $t('folder.fallback') }}</h1>
+        <h1 class="text-2xl font-semibold">{{ folder?.name || $t('folder.fallback') }}</h1>
         <p v-if="folder" class="mt-1 font-mono text-sm text-ink-muted">{{ folder.path }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button type="button" class="btn-ghost" @click="showFolderModal = true">{{ $t('home.newFolder') }}</button>
-        <button type="button" class="btn-primary" @click="showRepoModal = true">{{ $t('home.newRepository') }}</button>
+        <button
+          type="button"
+          class="btn-ghost"
+          @click="showFolderModal = true"
+        >{{ $t('home.newFolder') }}</button>
+        <button
+          type="button"
+          class="btn-primary"
+          @click="showRepoModal = true"
+        >{{ $t('home.newRepository') }}</button>
       </div>
     </div>
 

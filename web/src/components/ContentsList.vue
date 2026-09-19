@@ -2,6 +2,8 @@
 import { RouterLink } from 'vue-router'
 import type { Folder, Repository, RepoSummary } from '@/api/types'
 import { useAuth } from '@/composables/useAuth'
+import Icon from '@/components/ui/Icon.vue'
+import VisibilityBadge from '@/components/ui/VisibilityBadge.vue'
 
 const props = defineProps<{
   folders: Folder[]
@@ -15,30 +17,20 @@ function repoPath(repo: RepoSummary | Repository) {
   if ('folder_path' in repo && repo.folder_path) {
     return `${repo.folder_path}/${repo.name}`
   }
-
+  
   if (props.folderPath) {
     return `${props.folderPath}/${repo.name}`
   }
 
   return repo.name
 }
-
-function repoLink(repo: RepoSummary | Repository) {
-  return {
-    name: 'repo' as const,
-    params: {
-      owner: auth.user.value?.username ?? '',
-      repoPath: repoPath(repo),
-    },
-  }
-}
 </script>
 
 <template>
   <div class="space-y-6">
-    <section v-if="folders.length">
-      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('nav.folders') }}</h2>
-      <ul class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-white/80">
+    <section v-if="folders.length" class="overflow-hidden rounded-md border border-line bg-white">
+      <h2 class="border-b border-line bg-paper px-4 py-2 text-sm font-semibold">{{ $t('nav.folders') }}</h2>
+      <ul class="divide-y divide-line">
         <li v-for="folder in folders" :key="folder.id">
           <RouterLink
             :to="{
@@ -47,45 +39,42 @@ function repoLink(repo: RepoSummary | Repository) {
                 id: String(folder.id)
               }
             }"
-            class="flex items-center gap-3 px-4 py-3 transition hover:bg-moss-soft/40"
+            class="flex items-center gap-2 px-4 py-2.5 hover:bg-paper"
           >
-            <span class="flex h-8 w-8 items-center justify-center rounded-md bg-paper-2 font-mono text-xs text-moss">dir</span>
-            <div class="min-w-0">
-              <p class="font-semibold">{{ folder.name }}</p>
-              <p class="truncate font-mono text-xs text-ink-muted">{{ folder.path }}</p>
-            </div>
+            <Icon name="folder" class="text-accent" />
+            <span class="font-semibold text-accent">{{ folder.name }}</span>
+            <span class="truncate font-mono text-xs text-ink-muted">{{ folder.path }}</span>
           </RouterLink>
         </li>
       </ul>
     </section>
 
-    <section>
-      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('nav.repositories') }}</h2>
-      <ul v-if="repos.length" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-white/80">
+    <section class="overflow-hidden rounded-md border border-line bg-white">
+      <h2 class="border-b border-line bg-paper px-4 py-2 text-sm font-semibold">{{ $t('nav.repositories') }}</h2>
+      <ul v-if="repos.length" class="divide-y divide-line">
         <li v-for="repo in repos" :key="repo.id">
           <RouterLink
-            :to="repoLink(repo)"
-            class="flex items-start gap-3 px-4 py-3 transition hover:bg-moss-soft/40"
+            :to="{
+              name: 'repo',
+              params: {
+                owner: auth.user.value?.username ?? '',
+                repoPath: repoPath(repo)
+                }
+            }"
+            class="flex items-start gap-2 px-4 py-3 hover:bg-paper"
           >
-            <span class="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-paper-2 font-mono text-xs text-moss">git</span>
+            <Icon name="repo" class="mt-0.5 text-ink-muted" />
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
-                <p class="font-semibold">{{ repo.name }}</p>
-                <span
-                  class="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                  :class="repo.is_private ? 'border-warn/30 bg-warn-soft text-warn' : 'border-line text-ink-muted'"
-                >
-                  {{ repo.is_private ? $t('common.private') : $t('common.public') }}
-                </span>
+                <span class="font-semibold text-accent">{{ repo.name }}</span>
+                <VisibilityBadge :is-private="repo.is_private" />
               </div>
-              <p v-if="repo.description" class="mt-0.5 text-sm text-ink-muted">{{ repo.description }}</p>
+              <p v-if="repo.description" class="mt-0.5 text-xs text-ink-muted">{{ repo.description }}</p>
             </div>
           </RouterLink>
         </li>
       </ul>
-      <p v-else class="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
-        {{ $t('list.noRepos') }}
-      </p>
+      <p v-else class="px-4 py-8 text-center text-sm text-ink-muted">{{ $t('list.noRepos') }}</p>
     </section>
   </div>
 </template>

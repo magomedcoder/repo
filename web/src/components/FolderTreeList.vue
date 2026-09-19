@@ -18,9 +18,11 @@ defineProps<{
             id: String(node.id)
           }
         }"
-        class="block rounded-md py-1.5 pr-2 hover:bg-moss-soft/60"
-        :style="{ paddingLeft: `${(depth ?? 0) * 12 + 8}px` }"
-        active-class="bg-moss-soft text-moss-dark"
+        class="block rounded-md py-1.5 pr-2 text-ink hover:bg-paper-2"
+        :style="{
+          paddingLeft: `${(depth ?? 0) * 12 + 8}px`
+        }"
+        active-class="bg-paper-2 font-semibold"
       >
         {{ node.name }}
       </RouterLink>

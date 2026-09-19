@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { issuesApi } from '@/api'
 import type { IssueDetail, Label } from '@/api/types'
+import CommentCard from '@/components/issues/CommentCard.vue'
+import LabelPicker from '@/components/issues/LabelPicker.vue'
+import RepoShell from '@/components/repo/RepoShell.vue'
+import Icon from '@/components/ui/Icon.vue'
+import LabelPill from '@/components/ui/LabelPill.vue'
+import PageState from '@/components/ui/PageState.vue'
 import { useAuth } from '@/composables/useAuth'
-import { useBreadcrumbs, type Crumb } from '@/composables/useBreadcrumbs'
 import { formatDate, localizeError } from '@/i18n'
 
 const props = defineProps<{
@@ -12,15 +17,12 @@ const props = defineProps<{
   repoPath: string
   number: string
 }>()
+
 const auth = useAuth()
 const router = useRouter()
-const { setBreadcrumbs, clearBreadcrumbs } = useBreadcrumbs()
-
 const issue = ref<IssueDetail | null>(null)
 const labels = ref<Label[]>([])
 const comment = ref('')
-const editingId = ref<number | null>(null)
-const editBody = ref('')
 const error = ref('')
 const loading = ref(true)
 const busy = ref(false)
@@ -29,52 +31,21 @@ const selected = ref<number[]>([])
 const isOwner = computed(() => auth.user.value?.username === props.owner)
 const canEdit = computed(() => isOwner.value || auth.user.value?.username === issue.value?.author)
 
-function setCrumbs() {
-  const items: Crumb[] = [{
-    label: props.owner,
-    to: '/'
-  }]
-  props.repoPath.split('/').forEach((part, i, arr) => {
-    items.push(i === arr.length - 1
-      ? {
-          label: part,
-          to: {
-            name: 'repo',
-            params: {
-              owner: props.owner,
-              repoPath: props.repoPath
-            }
-          }
-        }
-      : { label: part })
-  })
-  items.push({
-    label: 'issues',
-    labelKey: 'nav.issues',
-    to: {
-      name: 'repo-issues',
-      params: {
-        owner: props.owner,
-        repoPath: props.repoPath
-      }
-    },
-  })
-  items.push({ label: `#${props.number}` })
-  setBreadcrumbs(items)
+function canEditComment(author: string) {
+  return isOwner.value || auth.user.value?.username === author
 }
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    setCrumbs()
     const [detail, labelRes] = await Promise.all([
       issuesApi.get(props.owner, props.repoPath, Number(props.number)),
       issuesApi.labels(props.owner, props.repoPath),
     ])
     issue.value = detail
     labels.value = labelRes.labels ?? []
-    selected.value = detail.labels.map((l) => l.id)
+    selected.value = detail.labels.map((label) => label.id)
   } catch (err) {
     error.value = localizeError(err, 'errors.loadIssue')
   } finally {
@@ -83,9 +54,7 @@ async function load() {
 }
 
 async function toggleState() {
-  if (!issue.value) {
-    return
-  }
+  if (!issue.value) return
   busy.value = true
   error.value = ''
   try {
@@ -100,9 +69,7 @@ async function toggleState() {
 }
 
 async function saveLabels() {
-  if (!issue.value) {
-    return
-  }
+  if (!issue.value) return
   busy.value = true
   error.value = ''
   try {
@@ -116,9 +83,7 @@ async function saveLabels() {
 }
 
 async function addComment() {
-  if (!issue.value) {
-    return
-  }
+  if (!issue.value) return
   busy.value = true
   error.value = ''
   try {
@@ -132,15 +97,12 @@ async function addComment() {
   }
 }
 
-async function saveComment(id: number) {
-  if (!issue.value) {
-    return
-  }
+async function saveComment(id: number, body: string) {
+  if (!issue.value) return
   busy.value = true
   error.value = ''
   try {
-    await issuesApi.updateComment(props.owner, props.repoPath, issue.value.number, id, editBody.value)
-    editingId.value = null
+    await issuesApi.updateComment(props.owner, props.repoPath, issue.value.number, id, body)
     await load()
   } catch (err) {
     error.value = localizeError(err, 'errors.saveFailed')
@@ -150,9 +112,7 @@ async function saveComment(id: number) {
 }
 
 async function removeComment(id: number) {
-  if (!issue.value) {
-    return
-  }
+  if (!issue.value) return
   busy.value = true
   error.value = ''
   try {
@@ -165,18 +125,18 @@ async function removeComment(id: number) {
   }
 }
 
-function canEditComment(author: string) {
-  return isOwner.value || auth.user.value?.username === author
-}
-
 async function remove() {
-  if (!issue.value || !confirm(`#${issue.value.number}`)) {
-    return
-  }
+  if (!issue.value || !confirm(`#${issue.value.number}`)) return
   busy.value = true
   try {
     await issuesApi.remove(props.owner, props.repoPath, issue.value.number)
-    await router.push({ name: 'repo-issues', params: { owner: props.owner, repoPath: props.repoPath } })
+    await router.push({
+      name: 'repo-issues',
+      params: {
+        owner: props.owner,
+        repoPath: props.repoPath
+      }
+    })
   } catch (err) {
     error.value = localizeError(err, 'errors.deleteFailed')
     busy.value = false
@@ -184,147 +144,121 @@ async function remove() {
 }
 
 watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true })
-onUnmounted(clearBreadcrumbs)
 </script>
 
 <template>
-  <div>
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <RouterLink
-        class="btn-ghost"
-        :to="{
-          name: 'repo-issues',
-          params: { owner, repoPath }
-        }"
-      >{{ $t('issues.back') }}</RouterLink>
-    </div>
-
-    <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
-    <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
-    <template v-else-if="issue">
-      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 class="font-display text-3xl font-bold">{{ issue.title }} <span class="text-ink-muted">#{{ issue.number }}</span></h1>
-          <p class="mt-1 font-mono text-xs text-ink-muted">{{ issue.author }} {{ formatDate(issue.created_at) }} {{ $t(`issues.${issue.state}`) }}</p>
-        </div>
-        <div class="flex gap-2">
-          <button
-            v-if="canEdit"
-            type="button"
-            class="btn-ghost"
-            :disabled="busy"
-            @click="toggleState"
-          >
-            {{ issue.state === 'open' ? $t('issues.close') : $t('issues.reopen') }}
-          </button>
-          <button
-            v-if="canEdit"
-            type="button"
-            class="btn-danger"
-            :disabled="busy"
-            @click="remove"
-          >{{ $t('issues.delete') }}</button>
-        </div>
-      </div>
-
-      <div class="mb-4 flex flex-wrap gap-2">
-        <span
-          v-for="label in issue.labels"
-          :key="label.id"
-          class="rounded px-2 py-0.5 text-xs text-white"
-          :style="{
-            background: label.color
-          }"
-        >{{ label.name }}</span>
-      </div>
-
-      <article class="panel mb-6 whitespace-pre-wrap p-4 text-sm">{{ issue.body || $t('issues.noBody') }}</article>
-
-      <form
-        v-if="isOwner"
-        class="panel mb-6 space-y-2 p-4"
-        @submit.prevent="saveLabels"
-      >
-        <h2 class="text-sm font-semibold">{{ $t('issues.labels') }}</h2>
-        <label
-          v-for="label in labels"
-          :key="label.id"
-          class="mr-3 inline-flex items-center gap-1 text-sm"
-        >
-          <input
-            v-model="selected"
-            type="checkbox"
-            :value="label.id"
-            class="accent-moss"
-          />
-          {{ label.name }}
-        </label>
-        <div>
-          <button
-            type="submit"
-            class="btn-ghost"
-            :disabled="busy"
-          >{{ $t('issues.saveLabels') }}</button>
-        </div>
-      </form>
-
-      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('issues.discussion') }}</h2>
-      <ul class="mb-4 space-y-3">
-        <li
-          v-for="item in issue.comments"
-          :key="item.id"
-          class="panel p-4"
-        >
-          <div class="flex items-center justify-between gap-2">
-            <p class="font-mono text-xs text-ink-muted">{{ item.author }} {{ formatDate(item.created_at) }}</p>
-            <div v-if="canEditComment(item.author)" class="flex gap-2">
-              <button
-                type="button"
-                class="text-xs text-moss"
-                @click="editingId = item.id; editBody = item.body"
-              >{{ $t('issues.editComment') }}</button>
-              <button
-                type="button"
-                class="text-xs text-warn"
-                :disabled="busy"
-                @click="removeComment(item.id)"
-              >{{ $t('issues.delete') }}</button>
-            </div>
-          </div>
-          <form
-            v-if="editingId === item.id"
-            class="mt-2 space-y-2"
-            @submit.prevent="saveComment(item.id)"
-          >
-            <textarea
-              v-model="editBody"
-              class="input min-h-20"
-              required
-            />
+  <RepoShell
+    :owner="owner"
+    :repo-path="repoPath"
+    tab="issues"
+  >
+    <PageState :loading="loading" :error="error">
+      <template v-if="issue">
+        <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <h1 class="text-2xl font-semibold">
+            {{ issue.title }}
+            <span class="font-normal text-ink-muted">#{{ issue.number }}</span>
+          </h1>
+          <div class="flex gap-2">
             <button
-              type="submit"
+              v-if="canEdit"
+              type="button"
               class="btn-ghost"
               :disabled="busy"
-            >{{ $t('issues.saveComment') }}</button>
-          </form>
-          <p v-else class="mt-2 whitespace-pre-wrap text-sm">{{ item.body }}</p>
-        </li>
-        <li v-if="!issue.comments.length" class="text-sm text-ink-muted">{{ $t('issues.noComments') }}</li>
-      </ul>
+              @click="toggleState"
+            >{{ issue.state === 'open' ? $t('issues.close') : $t('issues.reopen') }}</button>
+            <button
+              v-if="canEdit"
+              type="button"
+              class="btn-danger"
+              :disabled="busy"
+              @click="remove"
+            >{{ $t('issues.delete') }}</button>
+          </div>
+        </div>
 
-      <form class="space-y-2" @submit.prevent="addComment">
-        <textarea
-          v-model="comment"
-          class="input min-h-24"
-          required
-          :placeholder="$t('issues.comment')"
-        />
-        <button
-          type="submit"
-          class="btn-primary"
-          :disabled="busy"
-        >{{ $t('issues.commentAction') }}</button>
-      </form>
-    </template>
-  </div>
+        <div class="mb-4 flex items-center gap-2 text-sm">
+          <span
+            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+            :class="issue.state === 'open' ? 'bg-open' : 'bg-done'"
+          >
+            <Icon :name="issue.state === 'open' ? 'issue' : 'issue-closed'" />
+            {{ $t(`issues.${issue.state}`) }}
+          </span>
+          <span class="text-ink-muted">{{ issue.author }} {{ formatDate(issue.created_at) }}</span>
+        </div>
+
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <div class="space-y-4">
+            <article class="overflow-hidden rounded-md border border-line bg-white">
+              <header class="border-b border-line bg-paper px-4 py-2 text-xs">
+                <span class="font-semibold">{{ issue.author }}</span>
+                <span class="text-ink-muted"> {{ formatDate(issue.created_at) }}</span>
+              </header>
+              <p class="whitespace-pre-wrap px-4 py-3 text-sm">{{ issue.body || $t('issues.noBody') }}</p>
+            </article>
+
+            <CommentCard
+              v-for="item in issue.comments"
+              :key="item.id"
+              :author="item.author"
+              :body="item.body"
+              :created-at="item.created_at"
+              :can-edit="canEditComment(item.author)"
+              :busy="busy"
+              @save="saveComment(item.id, $event)"
+              @remove="removeComment(item.id)"
+            />
+            <p v-if="!issue.comments.length" class="text-sm text-ink-muted">{{ $t('issues.noComments') }}</p>
+
+            <form class="space-y-2" @submit.prevent="addComment">
+              <textarea
+                v-model="comment"
+                class="input min-h-24"
+                required
+                :placeholder="$t('issues.comment')"
+              />
+              <button
+                type="submit"
+                class="btn-primary"
+                :disabled="busy"
+              >{{ $t('issues.commentAction') }}</button>
+            </form>
+          </div>
+
+          <aside class="space-y-4">
+            <section class="rounded-md border border-line bg-white p-4">
+              <h2 class="mb-2 text-xs font-semibold text-ink-muted">{{ $t('issues.labels') }}</h2>
+              <div class="mb-2 flex flex-wrap gap-1">
+                <LabelPill
+                  v-for="label in issue.labels"
+                  :key="label.id"
+                  :label="label"
+                />
+                <span
+                  v-if="!issue.labels.length"
+                  class="text-xs text-ink-muted"
+                >{{ $t('repo.noneYet') }}</span>
+              </div>
+              <form
+                v-if="isOwner"
+                class="space-y-2"
+                @submit.prevent="saveLabels"
+              >
+                <LabelPicker
+                v-model="selected"
+                  :labels="labels"
+                />
+                <button
+                  type="submit"
+                  class="btn-ghost"
+                  :disabled="busy"
+                >{{ $t('issues.saveLabels') }}</button>
+              </form>
+            </section>
+          </aside>
+        </div>
+      </template>
+    </PageState>
+  </RepoShell>
 </template>

@@ -26,7 +26,7 @@ function onBackdrop() {
   >
     <div class="panel w-full max-w-md p-5 shadow-lg" role="dialog" aria-modal="true">
       <div class="mb-4 flex items-start justify-between gap-3">
-        <h2 class="font-display text-xl font-bold">{{ title }}</h2>
+        <h2 class="text-base font-semibold">{{ title }}</h2>
         <button type="button" class="text-ink-muted hover:text-ink" :aria-label="$t('common.close')" @click="emit('close')">
           ✕
         </button>
@@ -34,8 +34,15 @@ function onBackdrop() {
       <form class="space-y-3" @submit.prevent="emit('submit')">
         <slot />
         <div class="flex justify-end gap-2 pt-2">
-          <button type="button" class="btn-ghost" @click="emit('close')">{{ $t('common.cancel') }}</button>
-          <button type="submit" class="btn-primary">{{ submitLabel || $t('modal.createFolder') }}</button>
+          <button
+            type="button"
+            class="btn-ghost"
+            @click="emit('close')"
+          >{{ $t('common.cancel') }}</button>
+          <button
+            type="submit"
+            class="btn-primary"
+          >{{ submitLabel || $t('modal.createFolder') }}</button>
         </div>
       </form>
     </div>

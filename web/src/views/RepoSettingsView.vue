@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { inject, onUnmounted, ref, watch } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { inject, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { foldersApi, reposApi } from '@/api'
 import type { FolderTreeNode, Repository } from '@/api/types'
-import { useBreadcrumbs, type Crumb } from '@/composables/useBreadcrumbs'
+import RepoShell from '@/components/repo/RepoShell.vue'
+import PageState from '@/components/ui/PageState.vue'
 import { i18n, localizeError } from '@/i18n'
 
 const props = defineProps<{
@@ -12,7 +13,6 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
-const { setBreadcrumbs, clearBreadcrumbs } = useBreadcrumbs()
 const reloadSidebar = inject<() => void>('reloadSidebar', () => {})
 
 const repo = ref<Repository | null>(null)
@@ -21,13 +21,14 @@ const isPrivate = ref(false)
 const defaultBranch = ref('main')
 const folderKey = ref('')
 const folderOptions = ref<{
-  id: string;
+  id: string
   label: string
 }[]>([{
   id: '',
   label: 'Root'
 }])
-const error = ref('')
+const loadError = ref('')
+const formError = ref('')
 const message = ref('')
 const loading = ref(true)
 const saving = ref(false)
@@ -37,31 +38,14 @@ function parseFolderKey(key: string): number | null {
   return key === '' ? null : Number(key)
 }
 
-function setCrumbs() {
-  const crumbs: Crumb[] = [{ label: props.owner, to: '/' }]
-  props.repoPath.split('/').forEach((part, i, arr) => {
-    crumbs.push(i === arr.length - 1
-      ? {
-        label: part,
-        to: {
-          name: 'repo',
-          params: {
-            owner: props.owner,
-            repoPath: props.repoPath
-          }
-        }
-      }
-      : { label: part })
-  })
-  crumbs.push({ label: 'settings', labelKey: 'nav.settings' })
-  setBreadcrumbs(crumbs as never)
-}
-
 function flattenFolders(nodes: FolderTreeNode[], acc: { id: number; label: string }[] = []) {
-  for (const n of nodes) {
-    acc.push({ id: n.id, label: n.path })
-    if (n.children?.length) {
-      flattenFolders(n.children, acc)
+  for (const node of nodes) {
+    acc.push({
+      id: node.id,
+      label: node.path
+    })
+    if (node.children?.length) {
+      flattenFolders(node.children, acc)
     }
   }
   return acc
@@ -69,7 +53,7 @@ function flattenFolders(nodes: FolderTreeNode[], acc: { id: number; label: strin
 
 async function load() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   message.value = ''
   try {
     repo.value = await reposApi.get(props.owner, props.repoPath)
@@ -77,30 +61,30 @@ async function load() {
     isPrivate.value = repo.value.is_private
     defaultBranch.value = repo.value.default_branch
     folderKey.value = repo.value.folder_id == null ? '' : String(repo.value.folder_id)
-    setCrumbs()
-
     const tree = await foldersApi.tree()
     folderOptions.value = [
       {
         id: '',
         label: 'Root'
       },
-      ...flattenFolders(tree.tree ?? []).map((f) => ({
-        id: String(f.id),
-        label: f.label
+      ...flattenFolders(tree.tree ?? []).map((folder) => ({
+        id: String(folder.id),
+        label: folder.label
       })),
     ]
   } catch (err) {
-    error.value = localizeError(err, 'errors.loadSettings')
+    loadError.value = localizeError(err, 'errors.loadSettings')
   } finally {
     loading.value = false
   }
 }
 
 async function save() {
-  if (!repo.value) return
+  if (!repo.value) {
+    return
+  }
   saving.value = true
-  error.value = ''
+  formError.value = ''
   message.value = ''
   try {
     const updated = await reposApi.update(props.owner, props.repoPath, {
@@ -108,7 +92,6 @@ async function save() {
       private: isPrivate.value,
       default_branch: defaultBranch.value,
     })
-
     const currentFolder = repo.value.folder_id ?? null
     const nextFolder = parseFolderKey(folderKey.value)
     if (currentFolder !== nextFolder) {
@@ -121,90 +104,103 @@ async function save() {
         params: {
           owner: props.owner,
           repoPath: newPath
-        },
+        }
       })
       message.value = i18n.global.t('settings.savedMoved')
       return
     }
-
     repo.value = updated
     message.value = i18n.global.t('settings.saved')
   } catch (err) {
-    error.value = localizeError(err, 'errors.saveFailed')
+    formError.value = localizeError(err, 'errors.saveFailed')
   } finally {
     saving.value = false
   }
 }
 
 async function remove() {
-  if (!confirm(i18n.global.t('settings.confirmDelete', { path: props.repoPath }))) return
+  if (!confirm(i18n.global.t('settings.confirmDelete', { path: props.repoPath }))) {
+    return
+  }
   deleting.value = true
-  error.value = ''
+  formError.value = ''
   try {
     await reposApi.remove(props.owner, props.repoPath)
     reloadSidebar()
     await router.push({ name: 'home' })
   } catch (err) {
-    error.value = localizeError(err, 'errors.deleteFailed')
+    formError.value = localizeError(err, 'errors.deleteFailed')
     deleting.value = false
   }
 }
 
 watch(() => [props.owner, props.repoPath], load, { immediate: true })
-onUnmounted(clearBreadcrumbs)
 </script>
 
 <template>
-  <div>
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-display text-2xl font-bold">{{ $t('settings.title') }}</h1>
-      <RouterLink
-        class="btn-ghost"
-        :to="{
-          name: 'repo',
-          params: { owner, repoPath }
-        }">{{ $t('repo.home') }}</RouterLink>
-    </div>
-
-    <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
-    <form v-else class="panel max-w-xl space-y-4 p-5" @submit.prevent="save">
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium">{{ $t('settings.description') }}</span>
-        <input v-model="description" class="input" />
-      </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium">{{ $t('settings.defaultBranch') }}</span>
-        <input v-model="defaultBranch" class="input font-mono" />
-      </label>
-      <label class="flex items-center gap-2 text-sm">
-        <input v-model="isPrivate" type="checkbox" class="accent-moss" />
-        {{ $t('settings.private') }}
-      </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium">{{ $t('settings.folder') }}</span>
-        <select v-model="folderKey" class="input">
-          <option v-for="opt in folderOptions" :key="opt.id" :value="opt.id">
-            {{ opt.id === '' ? $t('nav.root') : opt.label }}
-          </option>
-        </select>
-      </label>
-
-      <p v-if="error" class="text-sm text-warn">{{ error }}</p>
-      <p v-else-if="message" class="text-sm text-moss">{{ message }}</p>
-
-      <div class="flex flex-wrap gap-2 pt-2">
+  <RepoShell
+    :owner="owner"
+    :repo-path="repoPath"
+    tab="settings"
+  >
+    <PageState :loading="loading" :error="loadError">
+      <form
+        v-if="repo" class="max-w-2xl space-y-4 rounded-md border border-line bg-white p-4"
+        @submit.prevent="save"
+      >
+        <h1 class="text-xl font-semibold">{{ $t('settings.title') }}</h1>
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{{ $t('settings.description') }}</span>
+          <input v-model="description" class="input" />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{{ $t('settings.defaultBranch') }}</span>
+          <input v-model="defaultBranch" class="input font-mono" />
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            v-model="isPrivate"
+            type="checkbox"
+            class="accent-[#1f883d]"
+          />
+          {{ $t('settings.private') }}
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{{ $t('settings.folder') }}</span>
+          <select v-model="folderKey" class="input">
+            <option
+              v-for="opt in folderOptions"
+              :key="opt.id"
+              :value="opt.id"
+            >
+              {{ opt.id === '' ? $t('nav.root') : opt.label }}
+            </option>
+          </select>
+        </label>
+        <p v-if="formError" class="text-sm text-warn">{{ formError }}</p>
+        <p v-else-if="message" class="text-sm text-moss">{{ message }}</p>
         <button type="submit" class="btn-primary" :disabled="saving">
           {{ saving ? $t('settings.saving') : $t('settings.save') }}
         </button>
-      </div>
-    </form>
+      </form>
 
-    <div class="panel mt-8 max-w-xl border-warn/30 p-5">
-      <h2 class="font-display text-lg font-bold text-warn">{{ $t('settings.danger') }}</h2>
-      <p class="mt-1 text-sm text-ink-muted">{{ $t('settings.dangerText') }}</p>
-      <button type="button" class="btn-danger mt-4" :disabled="deleting" @click="remove">
-        {{ deleting ? $t('settings.deleting') : $t('settings.delete') }}
-      </button>
-    </div>
-  </div>
+      <div v-if="repo" class="mt-6 max-w-2xl overflow-hidden rounded-md border border-warn">
+        <h2 class="border-b border-warn px-4 py-2 text-sm font-semibold">{{ $t('settings.danger') }}</h2>
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div>
+            <p class="font-semibold">{{ $t('settings.delete') }}</p>
+            <p class="text-sm text-ink-muted">{{ $t('settings.dangerText') }}</p>
+          </div>
+          <button
+            type="button"
+            class="btn-danger"
+            :disabled="deleting"
+            @click="remove"
+          >
+            {{ deleting ? $t('settings.deleting') : $t('settings.delete') }}
+          </button>
+        </div>
+      </div>
+    </PageState>
+  </RepoShell>
 </template>

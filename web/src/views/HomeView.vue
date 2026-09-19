@@ -27,7 +27,9 @@ async function load() {
     const [folderRes, repoRes] = await Promise.all([foldersApi.list(), reposApi.listOwn()])
     folders.value = folderRes.folders ?? []
     repos.value = (repoRes.repos ?? []).filter((r) => r.folder_id == null)
-    setBreadcrumbs([{ label: auth.user.value?.username || 'home' }])
+    setBreadcrumbs([{
+      label: auth.user.value?.username || 'home'
+    }])
   } catch (err) {
     error.value = localizeError(err, 'errors.loadFailed')
   } finally {
@@ -48,7 +50,7 @@ onUnmounted(clearBreadcrumbs)
   <div>
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 class="font-display text-3xl font-bold">{{ $t('home.title') }}</h1>
+        <h1 class="text-2xl font-semibold">{{ $t('home.title') }}</h1>
         <p class="mt-1 text-sm text-ink-muted">{{ $t('home.lead') }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
@@ -67,9 +69,21 @@ onUnmounted(clearBreadcrumbs)
 
     <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
-    <ContentsList v-else :folders="folders" :repos="repos" />
+    <ContentsList
+      v-else
+      :folders="folders"
+      :repos="repos"
+    />
 
-    <CreateFolderModal v-if="showFolderModal" @close="showFolderModal = false" @created="onCreated" />
-    <CreateRepoModal v-if="showRepoModal" @close="showRepoModal = false" @created="onCreated" />
+    <CreateFolderModal
+      v-if="showFolderModal"
+      @close="showFolderModal = false"
+      @created="onCreated"
+    />
+    <CreateRepoModal
+      v-if="showRepoModal"
+      @close="showRepoModal = false"
+      @created="onCreated"
+    />
   </div>
 </template>

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { reposApi } from '@/api'
 import type { CommitDiff, CommitInfo } from '@/api/types'
-import { useBreadcrumbs, type Crumb } from '@/composables/useBreadcrumbs'
-import { diffStatus, formatDate, localizeError } from '@/i18n'
+import DiffFileList from '@/components/repo/DiffFileList.vue'
+import RepoShell from '@/components/repo/RepoShell.vue'
+import PageState from '@/components/ui/PageState.vue'
+import { formatDate, localizeError } from '@/i18n'
 
 const props = defineProps<{
   owner: string
@@ -12,55 +14,21 @@ const props = defineProps<{
   sha: string
 }>()
 
-const { setBreadcrumbs, clearBreadcrumbs } = useBreadcrumbs()
-
 const commit = ref<CommitInfo | null>(null)
 const diff = ref<CommitDiff | null>(null)
 const error = ref('')
 const loading = ref(true)
 
-function setCrumbs() {
-  const crumbs: Crumb[] = [{ label: props.owner, to: '/' }]
-  props.repoPath.split('/').forEach((part, i, arr) => {
-    crumbs.push(i === arr.length - 1
-      ? {
-        label: part,
-        to: {
-          name: 'repo',
-          params: {
-            owner: props.owner,
-            repoPath: props.repoPath
-          }
-        }
-      }
-      : { label: part })
-  })
-  crumbs.push({
-    label: 'commits',
-    labelKey: 'nav.commits',
-    to: {
-      name: 'repo-commits',
-      params: {
-        owner: props.owner,
-        repoPath: props.repoPath
-      }
-    },
-  })
-  crumbs.push({ label: props.sha.slice(0, 7) })
-  setBreadcrumbs(crumbs as never)
-}
-
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [c, d] = await Promise.all([
+    const [info, patch] = await Promise.all([
       reposApi.commit(props.owner, props.repoPath, props.sha),
       reposApi.diff(props.owner, props.repoPath, props.sha),
     ])
-    commit.value = c
-    diff.value = d
-    setCrumbs()
+    commit.value = info
+    diff.value = patch
   } catch (err) {
     error.value = localizeError(err, 'errors.loadCommit')
   } finally {
@@ -69,50 +37,43 @@ async function load() {
 }
 
 watch(() => [props.owner, props.repoPath, props.sha], load, { immediate: true })
-onUnmounted(clearBreadcrumbs)
 </script>
 
 <template>
-  <div>
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-display text-2xl font-bold">{{ $t('commit.title') }}</h1>
-      <RouterLink
-        class="btn-ghost"
-        :to="{
-          name: 'repo-commits',
-          params: {
-            owner, repoPath
-          }
-        }"
-      >
-        {{ $t('commit.all') }}
-      </RouterLink>
-    </div>
-
-    <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
-    <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
-    <template v-else-if="commit">
-      <div class="panel mb-4 p-4">
-        <pre class="whitespace-pre-wrap font-sans text-sm">{{ commit.message }}</pre>
-        <p class="mt-3 font-mono text-xs text-ink-muted">
-          {{ commit.sha }} {{ commit.author_name }} &lt;{{ commit.author_email }}&gt;
-          {{ formatDate(commit.authored_at) }}
-        </p>
-      </div>
-
-      <div v-if="diff" class="space-y-3">
-        <h2 class="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-          {{ $t('commit.filesChanged', { n: diff.files.length }) }}
-        </h2>
-        <article v-for="file in diff.files" :key="file.path + file.status" class="panel overflow-hidden">
-          <header class="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 text-sm">
-            <span class="rounded bg-paper-2 px-1.5 py-0.5 text-xs font-semibold uppercase">{{ diffStatus(file.status) }}</span>
-            <span class="font-mono">{{ file.path }}</span>
-            <span v-if="file.old_path" class="font-mono text-ink-muted">{{ $t('commit.from', { path: file.old_path }) }}</span>
+  <RepoShell
+    :owner="owner"
+    :repo-path="repoPath"
+    tab="code"
+  >
+    <PageState :loading="loading" :error="error">
+      <template v-if="commit">
+        <article class="mb-4 overflow-hidden rounded-md border border-line bg-white">
+          <header class="border-b border-line bg-paper px-4 py-3">
+            <h1 class="text-xl font-semibold">{{ commit.message.split('\n')[0] }}</h1>
+            <p class="mt-1 text-xs text-ink-muted">
+              {{ commit.author_name }}
+              &lt;{{ commit.author_email }}&gt;
+              {{ formatDate(commit.authored_at) }}
+            </p>
           </header>
-          <pre class="overflow-x-auto p-4 font-mono text-xs leading-relaxed">{{ file.patch }}</pre>
+          <pre v-if="commit.message.includes('\n')" class="whitespace-pre-wrap px-4 py-3 text-sm">{{ commit.message }}</pre>
+          <div class="flex items-center justify-between border-t border-line px-4 py-2 text-xs">
+            <span class="font-mono text-ink-muted">{{ commit.sha }}</span>
+            <RouterLink
+              :to="{
+                name: 'repo-commits',
+                params: { owner, repoPath }
+              }" class="text-accent hover:underline"
+            >
+              {{ $t('commit.all') }}
+            </RouterLink>
+          </div>
         </article>
-      </div>
-    </template>
-  </div>
+        <h2 v-if="diff" class="mb-2 text-sm font-semibold">{{ $t('commit.filesChanged', { n: diff.files.length }) }}</h2>
+        <div v-if="diff" class="space-y-3">
+          <DiffFileList :files="diff.files" />
+        </div>
+      </template>
+    </PageState>
+  </RepoShell>
 </template>

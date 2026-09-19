@@ -21,14 +21,14 @@ defineExpose({ reload: load })
 </script>
 
 <template>
-  <aside class="panel sticky top-4 hidden h-fit w-56 shrink-0 p-3 lg:block">
-    <p class="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{{ $t('nav.folders') }}</p>
+  <aside class="sticky top-4 hidden h-fit w-56 shrink-0 lg:block">
+    <p class="mb-2 px-2 text-xs font-semibold text-ink">{{ $t('nav.folders') }}</p>
     <ul class="space-y-0.5 text-sm">
       <li>
         <RouterLink
           to="/"
-          class="block rounded-md px-2 py-1.5 hover:bg-moss-soft/60"
-          active-class="bg-moss-soft text-moss-dark"
+          class="block rounded-md px-2 py-1.5 text-ink hover:bg-paper-2"
+          active-class="bg-paper-2 font-semibold"
         >
           {{ $t('nav.root') }}
         </RouterLink>
