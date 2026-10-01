@@ -3,10 +3,13 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
+	"strings"
 
 	deliveryhttp "github.com/magomedcoder/repo/internal/delivery/http"
 	"github.com/magomedcoder/repo/internal/delivery/http/handler"
+	deliveryssh "github.com/magomedcoder/repo/internal/delivery/ssh"
 	"github.com/magomedcoder/repo/internal/infrastructure/git"
 	"github.com/magomedcoder/repo/internal/infrastructure/persistence/sqlite"
 	"github.com/magomedcoder/repo/internal/usecase"
@@ -29,6 +32,7 @@ func main() {
 	folderStore := sqlite.NewFolderStore(db)
 	repoStore := sqlite.NewRepositoryStore(db)
 	tokenStore := sqlite.NewAccessTokenStore(db)
+	sshKeyStore := sqlite.NewSSHKeyStore(db)
 	issueStore := sqlite.NewIssueStore(db)
 	gitRepo := git.NewRepository()
 	hasher := bcrypt.NewHasher()
@@ -38,6 +42,7 @@ func main() {
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
+	sshKeyUC := usecase.NewSSHKeyUseCase(sshKeyStore, userStore)
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
 
@@ -45,13 +50,30 @@ func main() {
 	folderHandler := handler.NewFolderHandler(folderUC)
 	repoHandler := handler.NewRepositoryHandler(repoUC)
 	tokenHandler := handler.NewTokenHandler(tokenUC)
+	sshKeyHandler := handler.NewSSHKeyHandler(sshKeyUC)
 	gitHandler := handler.NewGitHandler(gitUC)
 	issueHandler := handler.NewIssueHandler(issueUC)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, gitHandler, issueHandler, authUC)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, sshKeyHandler, gitHandler, issueHandler, authUC)
+
+	sshAddr := envOr("REPO_SSH_ADDR", ":2222")
+	sshServer := deliveryssh.NewServer(sshKeyUC, gitUC, "data/ssh", sshAddr)
+	go func() {
+		if err := sshServer.ListenAndServe(); err != nil {
+			log.Fatalf("ssh: %v", err)
+		}
+	}()
 
 	log.Println("listening on :8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+func envOr(key, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+
+	return fallback
 }

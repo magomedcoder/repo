@@ -1,5 +1,7 @@
 # Repo
 
+[Русская версия](README-ru.md)
+
 Lightweight self-hosted Git hosting.
 
 Built with go-git, SQLite, GORM.
@@ -22,6 +24,8 @@ go run ./cmd/repo
 
 cd web && yarn install && yarn dev
 ```
+
+HTTP API listens on `:8080`. SSH git transport listens on `:2222` (`REPO_SSH_ADDR`).
 
 API reference: [API.md](API.md)
 

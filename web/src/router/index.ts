@@ -31,6 +31,11 @@ const routes: RouteRecordRaw[] = [
         props: true,
       },
       {
+        path: 'settings/keys',
+        name: 'ssh-keys',
+        component: () => import('@/views/SSHKeysView.vue'),
+      },
+      {
         path: ':owner/:repoPath(.*)/issues/:number',
         name: 'repo-issue',
         component: () => import('@/views/IssueView.vue'),

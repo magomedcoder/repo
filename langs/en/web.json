@@ -38,7 +38,9 @@
     "settings": "Settings",
     "files": "Files",
     "issues": "Issues",
-    "code": "Code"
+    "code": "Code",
+    "profile": "Profile",
+    "sshKeys": "SSH keys"
   },
   "home": {
     "title": "Dashboard",
@@ -55,6 +57,8 @@
   "repo": {
     "home": "Repo home",
     "clone": "Clone",
+    "cloneHttps": "HTTPS",
+    "cloneSsh": "SSH",
     "files": "Files",
     "branches": "Branches",
     "languages": "Languages",
@@ -138,7 +142,24 @@
     "loadIssue": "Failed to load issue",
     "createIssue": "Failed to create issue",
     "createComment": "Failed to add comment",
-    "createLabel": "Failed to create label"
+    "createLabel": "Failed to create label",
+    "loadSSHKeys": "Failed to load SSH keys",
+    "createSSHKey": "Failed to add SSH key"
+  },
+  "sshKeys": {
+    "title": "SSH keys",
+    "lead": "Keys used to clone and push over SSH.",
+    "empty": "No SSH keys yet.",
+    "add": "Add SSH key",
+    "titleField": "Title",
+    "titlePlaceholder": "Work laptop",
+    "keyField": "Key",
+    "keyPlaceholder": "ssh-ed25519 AAAA... comment",
+    "adding": "Adding...",
+    "submit": "Add key",
+    "delete": "Delete",
+    "fingerprint": "Fingerprint",
+    "confirmDelete": "Delete this SSH key?"
   },
   "issues": {
     "title": "Issues",

@@ -148,6 +148,10 @@ func (uc *GitUseCase) ServePack(repoPath string, service GitService, stdin io.Re
 	return uc.git.ServePack(repoPath, string(service), stdin, stdout)
 }
 
+func (uc *GitUseCase) ServeSSHPack(repoPath string, service GitService, stdin io.Reader, stdout, stderr io.Writer) error {
+	return uc.git.ServeSSHPack(repoPath, string(service), stdin, stdout, stderr)
+}
+
 func (uc *GitUseCase) TouchActivity(repoID uint) error {
 	return uc.repos.TouchLastActivity(repoID, time.Now())
 }

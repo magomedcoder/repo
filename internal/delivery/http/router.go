@@ -13,6 +13,7 @@ func NewRouter(
 	repoHandler *handler.RepositoryHandler,
 	folderHandler *handler.FolderHandler,
 	tokenHandler *handler.TokenHandler,
+	sshKeyHandler *handler.SSHKeyHandler,
 	gitHandler *handler.GitHandler,
 	issueHandler *handler.IssueHandler,
 	auth middleware.Authenticator,
@@ -64,6 +65,10 @@ func NewRouter(
 	mux.Handle("POST /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.Create)))
 	mux.Handle("GET /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.List)))
 	mux.Handle("DELETE /api/tokens/{id}", requireAuth(http.HandlerFunc(tokenHandler.Revoke)))
+
+	mux.Handle("POST /api/ssh-keys", requireAuth(http.HandlerFunc(sshKeyHandler.Create)))
+	mux.Handle("GET /api/ssh-keys", requireAuth(http.HandlerFunc(sshKeyHandler.List)))
+	mux.Handle("DELETE /api/ssh-keys/{id}", requireAuth(http.HandlerFunc(sshKeyHandler.Delete)))
 
 	api := middleware.Logger(i18n.Middleware(mux))
 	gitHTTP := middleware.Logger(gitHandler)

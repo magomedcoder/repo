@@ -211,6 +211,22 @@ curl http://127.0.0.1:8080/api/tokens -b cookies.txt
 curl -X DELETE http://127.0.0.1:8080/api/tokens/1 -b cookies.txt
 ```
 
+## SSH keys
+
+```bash
+# add
+curl -X POST http://127.0.0.1:8080/api/ssh-keys \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"title":"laptop","public_key":"ssh-ed25519 AAAA... comment"}'
+
+# list
+curl http://127.0.0.1:8080/api/ssh-keys -b cookies.txt
+
+# delete
+curl -X DELETE http://127.0.0.1:8080/api/ssh-keys/1 -b cookies.txt
+```
+
 ## Git clone / push (Smart HTTP)
 
 ```bash
@@ -226,6 +242,19 @@ git clone http://user:PASSWORD@127.0.0.1:8080/user/private-repo.git
 git clone http://user:repo_TOKEN@127.0.0.1:8080/user/private-repo.git
 
 git push http://user:repo_TOKEN@127.0.0.1:8080/user/hello.git main
+```
+
+## Git clone / push (SSH)
+
+The app listens for SSH on `:2222` by default (`REPO_SSH_ADDR`). Host keys are stored in `data/ssh/`. Auth is by registered public key; the SSH username is ignored.
+
+```bash
+# custom port
+git clone ssh://git@127.0.0.1:2222/user/hello.git
+git clone ssh://git@127.0.0.1:2222/user/work/backend/api.git
+
+# if REPO_SSH_ADDR=:22
+git clone git@host:user/hello.git
 ```
 
 Force-push to the default branch is denied by a pre-receive hook.

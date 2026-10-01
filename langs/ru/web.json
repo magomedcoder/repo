@@ -38,7 +38,9 @@
     "settings": "Настройки",
     "files": "Файлы",
     "issues": "Задачи",
-    "code": "Код"
+    "code": "Код",
+    "profile": "Профиль",
+    "sshKeys": "SSH-ключи"
   },
   "home": {
     "title": "Обзор",
@@ -55,6 +57,8 @@
   "repo": {
     "home": "К репозиторию",
     "clone": "Клонировать",
+    "cloneHttps": "HTTPS",
+    "cloneSsh": "SSH",
     "files": "Файлы",
     "branches": "Ветки",
     "languages": "Языки",
@@ -138,7 +142,24 @@
     "loadIssue": "Не удалось загрузить задачу",
     "createIssue": "Не удалось создать задачу",
     "createComment": "Не удалось добавить комментарий",
-    "createLabel": "Не удалось создать метку"
+    "createLabel": "Не удалось создать метку",
+    "loadSSHKeys": "Не удалось загрузить SSH-ключи",
+    "createSSHKey": "Не удалось добавить SSH-ключ"
+  },
+  "sshKeys": {
+    "title": "SSH-ключи",
+    "lead": "Ключи для clone и push по SSH.",
+    "empty": "SSH-ключей пока нет.",
+    "add": "Добавить SSH-ключ",
+    "titleField": "Название",
+    "titlePlaceholder": "Рабочий ноутбук",
+    "keyField": "Ключ",
+    "keyPlaceholder": "ssh-ed25519 AAAA... comment",
+    "adding": "Добавление...",
+    "submit": "Добавить ключ",
+    "delete": "Удалить",
+    "fingerprint": "Отпечаток",
+    "confirmDelete": "Удалить этот SSH-ключ?"
   },
   "issues": {
     "title": "Задачи",

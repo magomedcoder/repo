@@ -45,6 +45,10 @@ func (r *Repository) InitBare(path string, opts domain.BareInitOptions) error {
 	_ = r.setConfig(path, "init.defaultBranch", branch)
 	_ = r.setConfig(path, "http.receivepack", "true")
 	_ = r.setConfig(path, "core.bare", "true")
+	if err := r.setHEAD(path, branch); err != nil {
+		_ = os.RemoveAll(path)
+		return err
+	}
 
 	if opts.DenyForcePushDefault {
 		if err := r.installForcePushHook(path, branch); err != nil {
@@ -127,9 +131,32 @@ func (r *Repository) ServePack(repoPath, service string, stdin io.Reader, stdout
 	return nil
 }
 
+func (r *Repository) ServeSSHPack(repoPath, service string, stdin io.Reader, stdout, stderr io.Writer) error {
+	service = normalizeService(service)
+	cmdName := strings.TrimPrefix(service, "git-")
+	cmd := exec.Command(r.gitBin, cmdName, repoPath)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git %s: %w", cmdName, err)
+	}
+
+	return nil
+}
+
 func (r *Repository) setConfig(repoPath, key, value string) error {
 	cmd := exec.Command(r.gitBin, "config", "--file", filepath.Join(repoPath, "config"), key, value)
 	return cmd.Run()
+}
+
+func (r *Repository) setHEAD(repoPath, branch string) error {
+	cmd := exec.Command(r.gitBin, "--git-dir", repoPath, "symbolic-ref", "HEAD", "refs/heads/"+branch)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("set HEAD to %s: %w (%s)", branch, err, strings.TrimSpace(string(out)))
+	}
+
+	return nil
 }
 
 func (r *Repository) installForcePushHook(repoPath, defaultBranch string) error {

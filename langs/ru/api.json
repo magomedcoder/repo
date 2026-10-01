@@ -47,5 +47,11 @@
   "label_name_required": "Нужно указать название метки",
   "label_not_found": "Метка не найдена",
   "label_already_exists": "Такая метка уже есть",
-  "invalid_label": "Метка не относится к этому репозиторию"
+  "invalid_label": "Метка не относится к этому репозиторию",
+  "ssh_key_title_required": "Нужно указать название SSH-ключа",
+  "ssh_key_required": "Нужно указать публичный ключ",
+  "invalid_ssh_key": "Некорректный SSH-ключ",
+  "ssh_key_already_exists": "Такой SSH-ключ уже добавлен",
+  "ssh_key_not_found": "SSH-ключ не найден",
+  "invalid_ssh_key_id": "Некорректный id SSH-ключа"
 }

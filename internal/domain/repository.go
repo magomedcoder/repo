@@ -107,6 +107,8 @@ type GitRepository interface {
 
 	ServePack(repoPath, service string, stdin io.Reader, stdout io.Writer) error
 
+	ServeSSHPack(repoPath, service string, stdin io.Reader, stdout, stderr io.Writer) error
+
 	ListBranches(repoPath string) ([]RefInfo, error)
 
 	ListTags(repoPath string) ([]RefInfo, error)

@@ -47,5 +47,11 @@
   "label_name_required": "Label name is required",
   "label_not_found": "Label not found",
   "label_already_exists": "Label already exists",
-  "invalid_label": "Label does not belong to this repository"
+  "invalid_label": "Label does not belong to this repository",
+  "ssh_key_title_required": "SSH key title is required",
+  "ssh_key_required": "Public key is required",
+  "invalid_ssh_key": "Invalid SSH public key",
+  "ssh_key_already_exists": "SSH key already exists",
+  "ssh_key_not_found": "SSH key not found",
+  "invalid_ssh_key_id": "Invalid SSH key id"
 }

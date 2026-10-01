@@ -129,3 +129,11 @@ export interface IssueComment {
 export interface IssueDetail extends Issue {
   comments: IssueComment[]
 }
+
+export interface SSHKey {
+  id: number
+  title: string
+  fingerprint: string
+  created_at: string
+  last_used_at?: string
+}

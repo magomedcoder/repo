@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, RefInfo, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
+import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, RefInfo, RepoStats, Repository, RepoSummary, SSHKey, TreeEntry, User } from './types'
 
 export const authApi = {
   register(body: {
@@ -211,11 +211,35 @@ export function repoFullPath(repo: Pick<Repository, 'folder_path' | 'name'> | Pi
   return folderPath ? `${folderPath}/${repo.name}` : repo.name
 }
 
+export const sshKeysApi = {
+  list() {
+    return api<{ keys: SSHKey[] }>('/api/ssh-keys')
+  },
+  create(body: { title?: string; public_key: string }) {
+    return api<SSHKey>('/api/ssh-keys', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  },
+  remove(id: number) {
+    return api<void>(`/api/ssh-keys/${id}`, { method: 'DELETE' })
+  },
+}
+
 export function cloneUrl(owner: string, fullPath: string) {
-  const origin = window.location.origin.replace(/:\d+$/, ':8080')
   if (import.meta.env.DEV) {
     return `http://127.0.0.1:8080/${owner}/${fullPath}.git`
   }
-  
+
   return `${window.location.origin}/${owner}/${fullPath}.git`
+}
+
+export function sshCloneUrl(owner: string, fullPath: string) {
+  const host = window.location.hostname || '127.0.0.1'
+  const port = import.meta.env.VITE_SSH_PORT || '2222'
+  if (port === '22') {
+    return `git@${host}:${owner}/${fullPath}.git`
+  }
+
+  return `ssh://git@${host}:${port}/${owner}/${fullPath}.git`
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { cloneUrl, reposApi } from '@/api'
+import { cloneUrl, reposApi, sshCloneUrl } from '@/api'
 import type { BlobContent, RefInfo, Repository, RepoStats, TreeEntry } from '@/api/types'
 import CloneMenu from '@/components/repo/CloneMenu.vue'
 import FileTable from '@/components/repo/FileTable.vue'
@@ -25,7 +25,8 @@ const error = ref('')
 const loading = ref(true)
 
 const refName = computed(() => repo.value?.default_branch || 'main')
-const clone = computed(() => (repo.value ? cloneUrl(props.owner, props.repoPath) : ''))
+const httpsClone = computed(() => (repo.value ? cloneUrl(props.owner, props.repoPath) : ''))
+const sshClone = computed(() => (repo.value ? sshCloneUrl(props.owner, props.repoPath) : ''))
 const hasReadme = computed(() => !!readme.value?.content && !readme.value.is_binary)
 
 async function load() {
@@ -86,7 +87,7 @@ watch(() => [props.owner, props.repoPath], load, { immediate: true })
               </RouterLink>
             </template>
             <template #actions>
-              <CloneMenu v-if="clone" :url="clone" />
+              <CloneMenu v-if="httpsClone" :https-url="httpsClone" :ssh-url="sshClone" />
             </template>
           </FileTable>
           <ReadmePanel v-if="readme && hasReadme" :readme="readme" />

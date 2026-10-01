@@ -48,9 +48,16 @@ async function onLogout() {
       <div v-else class="flex-1" />
 
       <LocaleSwitch inverted />
+      <RouterLink
+        :to="{ name: 'ssh-keys' }"
+        class="hidden text-sm text-white/80 hover:text-white sm:inline"
+      >
+        {{ $t('nav.sshKeys') }}
+      </RouterLink>
       <span class="hidden text-sm text-white/80 sm:inline">{{ auth.user.value?.username }}</span>
       <button
-        type="button" class="text-sm text-white/80 hover:text-white"
+        type="button"
+        class="text-sm text-white/80 hover:text-white"
         @click="onLogout"
       >
         {{ $t('nav.logout') }}

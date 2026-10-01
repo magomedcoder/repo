@@ -19,7 +19,7 @@ func NewDB(dsn string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	if err := db.AutoMigrate(&userModel{}, &sessionModel{}, &folderModel{}, &accessTokenModel{}, &issueModel{}, &issueCommentModel{}, &labelModel{}, &issueLabelModel{}); err != nil {
+	if err := db.AutoMigrate(&userModel{}, &sessionModel{}, &folderModel{}, &accessTokenModel{}, &sshKeyModel{}, &issueModel{}, &issueCommentModel{}, &labelModel{}, &issueLabelModel{}); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
