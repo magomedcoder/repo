@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, RefInfo, RepoStats, Repository, RepoSummary, SSHKey, TreeEntry, User } from './types'
+import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, PullCompare, PullDetail, PullRequest, RefInfo, RepoStats, Repository, RepoSummary, SSHKey, TreeEntry, User } from './types'
 
 export const authApi = {
   register(body: {
@@ -209,6 +209,52 @@ export const issuesApi = {
 export function repoFullPath(repo: Pick<Repository, 'folder_path' | 'name'> | Pick<RepoSummary, 'name'> & { folder_path?: string }) {
   const folderPath = 'folder_path' in repo ? repo.folder_path || '' : ''
   return folderPath ? `${folderPath}/${repo.name}` : repo.name
+}
+
+export const pullsApi = {
+  list(owner: string, path: string, state = 'open', offset = 0, limit = 30) {
+    const q = new URLSearchParams({ state, offset: String(offset), limit: String(limit) })
+    return api<{ pulls: PullRequest[] }>(`/api/repos/${owner}/${path}/pulls?${q}`)
+  },
+  get(owner: string, path: string, number: number) {
+    return api<PullDetail>(`/api/repos/${owner}/${path}/pulls/${number}`)
+  },
+  create(owner: string, path: string, body: { title: string; body?: string; base_branch?: string; head_branch: string }) {
+    return api<PullRequest>(`/api/repos/${owner}/${path}/pulls`, { method: 'POST', body: JSON.stringify(body) })
+  },
+  update(owner: string, path: string, number: number, body: { title?: string; body?: string; state?: string; base_branch?: string; head_branch?: string }) {
+    return api<PullRequest>(`/api/repos/${owner}/${path}/pulls/${number}`, { method: 'PATCH', body: JSON.stringify(body) })
+  },
+  remove(owner: string, path: string, number: number) {
+    return api<void>(`/api/repos/${owner}/${path}/pulls/${number}`, { method: 'DELETE' })
+  },
+  diff(owner: string, path: string, number: number) {
+    return api<PullCompare>(`/api/repos/${owner}/${path}/pulls/${number}/diff`)
+  },
+  commits(owner: string, path: string, number: number) {
+    return api<{ commits: CommitInfo[] }>(`/api/repos/${owner}/${path}/pulls/${number}/commits`)
+  },
+  merge(owner: string, path: string, number: number, strategy = 'merge') {
+    return api<PullRequest>(`/api/repos/${owner}/${path}/pulls/${number}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ strategy }),
+    })
+  },
+  comment(owner: string, path: string, number: number, body: string) {
+    return api<IssueComment>(`/api/repos/${owner}/${path}/pulls/${number}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    })
+  },
+  updateComment(owner: string, path: string, number: number, id: number, body: string) {
+    return api<IssueComment>(`/api/repos/${owner}/${path}/pulls/${number}/comments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ body }),
+    })
+  },
+  removeComment(owner: string, path: string, number: number, id: number) {
+    return api<void>(`/api/repos/${owner}/${path}/pulls/${number}/comments/${id}`, { method: 'DELETE' })
+  },
 }
 
 export const sshKeysApi = {

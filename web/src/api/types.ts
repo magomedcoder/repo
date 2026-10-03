@@ -137,3 +137,33 @@ export interface SSHKey {
   created_at: string
   last_used_at?: string
 }
+
+export interface PullRequest {
+  number: number
+  title: string
+  body: string
+  state: 'open' | 'closed' | 'merged'
+  author: string
+  base_branch: string
+  head_branch: string
+  comment_count: number
+  merged_at?: string
+  merged_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PullDetail extends PullRequest {
+  comments: IssueComment[]
+  can_fast_forward: boolean
+  commits: number
+  files_changed: number
+}
+
+export interface PullCompare {
+  base_sha: string
+  head_sha: string
+  can_fast_forward: boolean
+  commits: CommitInfo[]
+  files: FileDiff[]
+}

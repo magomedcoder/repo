@@ -34,6 +34,7 @@ func main() {
 	tokenStore := sqlite.NewAccessTokenStore(db)
 	sshKeyStore := sqlite.NewSSHKeyStore(db)
 	issueStore := sqlite.NewIssueStore(db)
+	pullStore := sqlite.NewPullRequestStore(db)
 	gitRepo := git.NewRepository()
 	hasher := bcrypt.NewHasher()
 	tokens := token.NewGenerator()
@@ -45,6 +46,7 @@ func main() {
 	sshKeyUC := usecase.NewSSHKeyUseCase(sshKeyStore, userStore)
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
+	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo)
 
 	authHandler := handler.NewAuthHandler(authUC)
 	folderHandler := handler.NewFolderHandler(folderUC)
@@ -53,8 +55,9 @@ func main() {
 	sshKeyHandler := handler.NewSSHKeyHandler(sshKeyUC)
 	gitHandler := handler.NewGitHandler(gitUC)
 	issueHandler := handler.NewIssueHandler(issueUC)
+	pullHandler := handler.NewPullRequestHandler(pullUC)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, sshKeyHandler, gitHandler, issueHandler, authUC)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, sshKeyHandler, gitHandler, issueHandler, pullHandler, authUC)
 
 	sshAddr := envOr("REPO_SSH_ADDR", ":2222")
 	sshServer := deliveryssh.NewServer(sshKeyUC, gitUC, "data/ssh", sshAddr)

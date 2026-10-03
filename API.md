@@ -195,6 +195,39 @@ curl -X PATCH http://127.0.0.1:8080/api/repos/user/hello/labels/1 \
 curl -X DELETE http://127.0.0.1:8080/api/repos/user/hello/labels/1 -b cookies.txt
 ```
 
+## Pull requests
+
+Same-repository branch compare only (no forks). Create/comment: any logged-in user who can read the repo. Merge and base/head changes: owner only. Close/reopen/delete: author or owner. States: `open`, `closed`, `merged`. Merge strategies: `merge` (default) or `ff-only`.
+
+```bash
+# list (state=open|closed|merged|all)
+curl "http://127.0.0.1:8080/api/repos/user/hello/pulls?state=open"
+
+# create
+curl -X POST http://127.0.0.1:8080/api/repos/user/hello/pulls \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"title":"Add feature","body":"details","base_branch":"main","head_branch":"feature"}'
+
+# get / diff / commits
+curl http://127.0.0.1:8080/api/repos/user/hello/pulls/1
+curl http://127.0.0.1:8080/api/repos/user/hello/pulls/1/diff
+curl http://127.0.0.1:8080/api/repos/user/hello/pulls/1/commits
+
+# update / merge / delete
+curl -X PATCH http://127.0.0.1:8080/api/repos/user/hello/pulls/1 \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"state":"closed"}'
+curl -X POST http://127.0.0.1:8080/api/repos/user/hello/pulls/1/merge \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"strategy":"merge"}'
+curl -X DELETE http://127.0.0.1:8080/api/repos/user/hello/pulls/1 -b cookies.txt
+
+# comments
+curl -X POST http://127.0.0.1:8080/api/repos/user/hello/pulls/1/comments \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"body":"lgtm"}'
+```
+
 ## Personal access tokens
 
 ```bash

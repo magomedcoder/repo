@@ -36,6 +36,18 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/SSHKeysView.vue'),
       },
       {
+        path: ':owner/:repoPath(.*)/pulls/:number',
+        name: 'repo-pull',
+        component: () => import('@/views/PullView.vue'),
+        props: true,
+      },
+      {
+        path: ':owner/:repoPath(.*)/pulls',
+        name: 'repo-pulls',
+        component: () => import('@/views/PullsView.vue'),
+        props: true,
+      },
+      {
         path: ':owner/:repoPath(.*)/issues/:number',
         name: 'repo-issue',
         component: () => import('@/views/IssueView.vue'),

@@ -9,7 +9,7 @@ import VisibilityBadge from '@/components/ui/VisibilityBadge.vue'
 const props = defineProps<{
   owner: string
   repoPath: string
-  tab: 'code' | 'issues' | 'settings'
+  tab: 'code' | 'issues' | 'pulls' | 'settings'
 }>()
 
 const repo = ref<Repository | null>(null)
@@ -80,6 +80,17 @@ watch(() => [props.owner, props.repoPath], load)
           >
             <Icon name="issue" />
             {{ $t('nav.issues') }}
+          </RouterLink>
+          <RouterLink
+            :to="{
+              name: 'repo-pulls',
+              params: { owner, repoPath }
+            }"
+            class="inline-flex items-center gap-2 border-b-2 px-3 py-2"
+            :class="tab === 'pulls' ? 'border-[#fd8c73] font-semibold' : 'border-transparent text-ink hover:border-line'"
+          >
+            <Icon name="pull" />
+            {{ $t('nav.pulls') }}
           </RouterLink>
           <RouterLink
             :to="{

@@ -53,5 +53,15 @@
   "invalid_ssh_key": "Некорректный SSH-ключ",
   "ssh_key_already_exists": "Такой SSH-ключ уже добавлен",
   "ssh_key_not_found": "SSH-ключ не найден",
-  "invalid_ssh_key_id": "Некорректный id SSH-ключа"
+  "invalid_ssh_key_id": "Некорректный id SSH-ключа",
+  "pull_title_required": "Нужно указать заголовок pull request",
+  "pull_not_found": "Pull request не найден",
+  "pull_forbidden": "Нельзя изменить этот pull request",
+  "invalid_pull_state": "Некорректное состояние pull request",
+  "branch_not_found": "Ветка не найдена",
+  "same_branch": "Базовая и head-ветка должны отличаться",
+  "merge_conflict": "Конфликт слияния",
+  "not_fast_forward": "Невозможно выполнить fast-forward",
+  "invalid_merge_strategy": "Стратегия должна быть merge или ff-only",
+  "pull_not_open": "Pull request не открыт"
 }

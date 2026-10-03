@@ -53,5 +53,15 @@
   "invalid_ssh_key": "Invalid SSH public key",
   "ssh_key_already_exists": "SSH key already exists",
   "ssh_key_not_found": "SSH key not found",
-  "invalid_ssh_key_id": "Invalid SSH key id"
+  "invalid_ssh_key_id": "Invalid SSH key id",
+  "pull_title_required": "Pull request title is required",
+  "pull_not_found": "Pull request not found",
+  "pull_forbidden": "You cannot change this pull request",
+  "invalid_pull_state": "Invalid pull request state",
+  "branch_not_found": "Branch not found",
+  "same_branch": "Base and head branches must differ",
+  "merge_conflict": "Merge conflict",
+  "not_fast_forward": "Not a fast-forward merge",
+  "invalid_merge_strategy": "Merge strategy must be merge or ff-only",
+  "pull_not_open": "Pull request is not open"
 }

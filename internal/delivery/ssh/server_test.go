@@ -58,6 +58,7 @@ func TestSSHCloneFlow(t *testing.T) {
 	tokenStore := sqlite.NewAccessTokenStore(db)
 	sshKeyStore := sqlite.NewSSHKeyStore(db)
 	issueStore := sqlite.NewIssueStore(db)
+	pullStore := sqlite.NewPullRequestStore(db)
 	gitRepo := git.NewRepository()
 	hasher := bcrypt.NewHasher()
 	tokens := token.NewGenerator()
@@ -69,6 +70,7 @@ func TestSSHCloneFlow(t *testing.T) {
 	sshKeyUC := usecase.NewSSHKeyUseCase(sshKeyStore, userStore)
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
+	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo)
 
 	router := deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),
@@ -78,6 +80,7 @@ func TestSSHCloneFlow(t *testing.T) {
 		handler.NewSSHKeyHandler(sshKeyUC),
 		handler.NewGitHandler(gitUC),
 		handler.NewIssueHandler(issueUC),
+		handler.NewPullRequestHandler(pullUC),
 		authUC,
 	)
 	httpSrv := httptest.NewServer(router)

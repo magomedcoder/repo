@@ -123,6 +123,12 @@ type GitRepository interface {
 
 	GetCommitDiff(repoPath, sha string) (*CommitDiff, error)
 
+	Compare(repoPath, base, head string) (*CompareResult, error)
+
+	CanFastForward(repoPath, base, head string) (bool, error)
+
+	Merge(repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error)
+
 	GetStats(repoPath, ref string) (*RepoStats, error)
 
 	FindReadme(repoPath, ref string) (*BlobContent, error)
