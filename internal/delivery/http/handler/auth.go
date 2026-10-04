@@ -136,6 +136,7 @@ func userResponse(user *domain.User) map[string]any {
 		"id":         user.ID,
 		"username":   user.Username,
 		"email":      user.Email,
+		"has_avatar": user.AvatarPath != "",
 		"created_at": user.CreatedAt,
 	}
 }

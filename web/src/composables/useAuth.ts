@@ -52,6 +52,10 @@ export function useAuth() {
     }
   }
 
+  function setUser(next: User | null) {
+    state.user = next
+  }
+
   return {
     user,
     isAuthenticated,
@@ -61,5 +65,6 @@ export function useAuth() {
     login,
     register,
     logout,
+    setUser,
   }
 }

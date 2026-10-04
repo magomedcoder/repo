@@ -34,6 +34,8 @@ type RepositoryStore interface {
 
 	ListPublic(limit int) ([]Repository, error)
 
+	SearchByName(query string, ownerID uint, publicOnly bool, limit int) ([]Repository, error)
+
 	ExistsByOwnerFolderName(ownerID uint, folderID *uint, name string) (bool, error)
 
 	CountByFolderID(folderID uint) (int64, error)

@@ -224,8 +224,8 @@ func splitRepoPath(repoPath string) (owner, folderPath, name string, err error) 
 	repoPath = strings.TrimSpace(repoPath)
 	repoPath = strings.TrimPrefix(repoPath, "/")
 	repoPath = strings.TrimSuffix(repoPath, "/")
-	if strings.HasSuffix(repoPath, ".git") {
-		repoPath = strings.TrimSuffix(repoPath, ".git")
+	if before, ok := strings.CutSuffix(repoPath, ".git"); ok {
+		repoPath = before
 	}
 
 	parts := strings.Split(repoPath, "/")

@@ -47,6 +47,7 @@ func main() {
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo)
+	profileUC := usecase.NewProfileUseCase(userStore, "data/avatars")
 
 	authHandler := handler.NewAuthHandler(authUC)
 	folderHandler := handler.NewFolderHandler(folderUC)
@@ -56,8 +57,9 @@ func main() {
 	gitHandler := handler.NewGitHandler(gitUC)
 	issueHandler := handler.NewIssueHandler(issueUC)
 	pullHandler := handler.NewPullRequestHandler(pullUC)
+	profileHandler := handler.NewProfileHandler(profileUC)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, sshKeyHandler, gitHandler, issueHandler, pullHandler, authUC)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, sshKeyHandler, gitHandler, issueHandler, pullHandler, profileHandler, authUC)
 
 	sshAddr := envOr("REPO_SSH_ADDR", ":2222")
 	sshServer := deliveryssh.NewServer(sshKeyUC, gitUC, "data/ssh", sshAddr)

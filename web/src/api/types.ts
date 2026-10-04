@@ -2,6 +2,15 @@ export interface User {
   id: number
   username: string
   email: string
+  has_avatar?: boolean
+  created_at: string
+}
+
+export interface Profile {
+  id: number
+  username: string
+  email?: string
+  has_avatar: boolean
   created_at: string
 }
 

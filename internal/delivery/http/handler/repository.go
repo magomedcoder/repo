@@ -67,15 +67,32 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	scope := r.URL.Query().Get("scope")
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	user, loggedIn := middleware.UserFromContext(r.Context())
+	publicOnly := scope == "public" || !loggedIn
 
-	if scope == "public" || !loggedIn {
+	var ownerID uint
+	if loggedIn {
+		ownerID = user.ID
+	}
+
+	if q != "" {
+		items, err := h.repos.Search(q, ownerID, publicOnly)
+		if err != nil {
+			writeRepoError(w, r, err)
+			return
+		}
+		
+		writeJSON(w, http.StatusOK, map[string]any{"repos": items})
+		return
+	}
+
+	if publicOnly {
 		items, err := h.repos.ListPublic()
 		if err != nil {
 			writeRepoError(w, r, err)
 			return
 		}
-
 		writeJSON(w, http.StatusOK, map[string]any{"repos": items})
 		return
 	}
@@ -85,7 +102,6 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeRepoError(w, r, err)
 		return
 	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"repos": items})
 }
 

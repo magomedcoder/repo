@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, PullCompare, PullDetail, PullRequest, RefInfo, RepoStats, Repository, RepoSummary, SSHKey, TreeEntry, User } from './types'
+import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoStats, Repository, RepoSummary, SSHKey, TreeEntry, User } from './types'
 
 export const authApi = {
   register(body: {
@@ -58,9 +58,42 @@ export const foldersApi = {
   },
 }
 
+export const usersApi = {
+  get(username: string) {
+    return api<Profile>(`/api/users/${username}`)
+  },
+  updateMe(body: { email: string }) {
+    return api<Profile>('/api/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+  uploadAvatar(file: File) {
+    const body = new FormData()
+    body.append('avatar', file)
+    return api<Profile>('/api/users/me/avatar', {
+      method: 'POST',
+      body,
+    })
+  },
+  deleteAvatar() {
+    return api<Profile>('/api/users/me/avatar', {
+      method: 'DELETE',
+    })
+  },
+  avatarURL(username: string) {
+    return `/api/users/${encodeURIComponent(username)}/avatar`
+  },
+}
+
 export const reposApi = {
   listOwn() {
     return api<{ repos: Repository[] }>('/api/repos')
+  },
+  search(q: string, scope?: 'public') {
+    const params = new URLSearchParams({ q })
+    if (scope) params.set('scope', scope)
+    return api<{ repos: Repository[] }>(`/api/repos?${params}`)
   },
   get(owner: string, path: string) {
     return api<Repository>(`/api/repos/${owner}/${path}`)

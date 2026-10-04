@@ -63,5 +63,10 @@
   "merge_conflict": "Merge conflict",
   "not_fast_forward": "Not a fast-forward merge",
   "invalid_merge_strategy": "Merge strategy must be merge or ff-only",
-  "pull_not_open": "Pull request is not open"
+  "pull_not_open": "Pull request is not open",
+  "user_not_found": "User not found",
+  "invalid_avatar": "Avatar must be a JPEG, PNG, WebP, or GIF image",
+  "avatar_too_large": "Avatar must be at most 1 MB",
+  "avatar_not_found": "Avatar not found",
+  "rate_limited": "Too many requests"
 }

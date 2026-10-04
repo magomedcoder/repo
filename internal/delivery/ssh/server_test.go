@@ -71,6 +71,7 @@ func TestSSHCloneFlow(t *testing.T) {
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo)
+	profileUC := usecase.NewProfileUseCase(userStore, filepath.Join(dir, "data", "avatars"))
 
 	router := deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),
@@ -81,6 +82,7 @@ func TestSSHCloneFlow(t *testing.T) {
 		handler.NewGitHandler(gitUC),
 		handler.NewIssueHandler(issueUC),
 		handler.NewPullRequestHandler(pullUC),
+		handler.NewProfileHandler(profileUC),
 		authUC,
 	)
 	httpSrv := httptest.NewServer(router)

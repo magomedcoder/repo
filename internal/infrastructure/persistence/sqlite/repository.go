@@ -148,6 +148,29 @@ func (s *RepositoryStore) ListPublic(limit int) ([]domain.Repository, error) {
 	return repoModelsToDomain(models), nil
 }
 
+func (s *RepositoryStore) SearchByName(query string, ownerID uint, publicOnly bool, limit int) ([]domain.Repository, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	
+	q := "%" + query + "%"
+	db := s.db.Model(&repositoryModel{}).Where("name LIKE ?", q)
+	if publicOnly {
+		db = db.Where("is_private = ?", false)
+	} else if ownerID > 0 {
+		db = db.Where("owner_id = ?", ownerID)
+	} else {
+		db = db.Where("is_private = ?", false)
+	}
+
+	var models []repositoryModel
+	if err := db.Order("updated_at DESC").Limit(limit).Find(&models).Error; err != nil {
+		return nil, err
+	}
+
+	return repoModelsToDomain(models), nil
+}
+
 func (s *RepositoryStore) ExistsByOwnerFolderName(ownerID uint, folderID *uint, name string) (bool, error) {
 	fid := uint(0)
 	if folderID != nil {

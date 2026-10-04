@@ -36,6 +36,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/SSHKeysView.vue'),
       },
       {
+        path: 'settings/profile',
+        name: 'profile',
+        component: () => import('@/views/ProfileView.vue'),
+      },
+      {
+        path: 'search',
+        name: 'search',
+        component: () => import('@/views/SearchView.vue'),
+      },
+      {
         path: ':owner/:repoPath(.*)/pulls/:number',
         name: 'repo-pull',
         component: () => import('@/views/PullView.vue'),

@@ -7,6 +7,7 @@ type User struct {
 	Username     string
 	Email        string
 	PasswordHash string
+	AvatarPath   string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -31,6 +32,8 @@ type UserStore interface {
 	ExistsByUsername(username string) (bool, error)
 
 	ExistsByEmail(email string) (bool, error)
+
+	Update(user *User) error
 }
 
 type SessionStore interface {

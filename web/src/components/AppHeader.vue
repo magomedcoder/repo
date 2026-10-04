@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
@@ -8,11 +9,20 @@ import LocaleSwitch from '@/components/LocaleSwitch.vue'
 const auth = useAuth()
 const { crumbs } = useBreadcrumbs()
 const router = useRouter()
+const searchQ = ref('')
 
 async function onLogout() {
   await auth.logout()
   await router.push({
     name: 'login'
+  })
+}
+
+async function onSearch() {
+  const q = searchQ.value.trim()
+  await router.push({
+    name: 'search',
+    query: q ? { q } : {},
   })
 }
 </script>
@@ -47,7 +57,25 @@ async function onLogout() {
       </nav>
       <div v-else class="flex-1" />
 
+      <form
+        class="hidden min-w-0 max-w-xs flex-1 sm:block"
+        @submit.prevent="onSearch"
+      >
+        <input
+          v-model="searchQ"
+          type="search"
+          class="w-full rounded-md border-0 bg-white/10 px-3 py-1.5 text-sm text-white placeholder:text-white/50 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/40"
+          :placeholder="$t('search.placeholder')"
+          :aria-label="$t('search.title')"
+        >
+      </form>
       <LocaleSwitch inverted />
+      <RouterLink
+        :to="{ name: 'profile' }"
+        class="hidden text-sm text-white/80 hover:text-white sm:inline"
+      >
+        {{ $t('nav.profile') }}
+      </RouterLink>
       <RouterLink
         :to="{ name: 'ssh-keys' }"
         class="hidden text-sm text-white/80 hover:text-white sm:inline"

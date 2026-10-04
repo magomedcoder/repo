@@ -17,6 +17,7 @@ func NewRouter(
 	gitHandler *handler.GitHandler,
 	issueHandler *handler.IssueHandler,
 	pullHandler *handler.PullRequestHandler,
+	profileHandler *handler.ProfileHandler,
 	auth middleware.Authenticator,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -28,6 +29,12 @@ func NewRouter(
 
 	requireAuth := middleware.RequireAuth(auth)
 	optionalAuth := middleware.OptionalAuth(auth)
+
+	mux.Handle("GET /api/users/{username}", optionalAuth(http.HandlerFunc(profileHandler.Get)))
+	mux.Handle("GET /api/users/{username}/avatar", http.HandlerFunc(profileHandler.ServeAvatar))
+	mux.Handle("PATCH /api/users/me", requireAuth(http.HandlerFunc(profileHandler.UpdateMe)))
+	mux.Handle("POST /api/users/me/avatar", requireAuth(http.HandlerFunc(profileHandler.UploadAvatar)))
+	mux.Handle("DELETE /api/users/me/avatar", requireAuth(http.HandlerFunc(profileHandler.DeleteAvatar)))
 
 	mux.Handle("POST /api/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
 	mux.Handle("GET /api/repos", optionalAuth(http.HandlerFunc(repoHandler.List)))
@@ -87,8 +94,10 @@ func NewRouter(
 	mux.Handle("GET /api/ssh-keys", requireAuth(http.HandlerFunc(sshKeyHandler.List)))
 	mux.Handle("DELETE /api/ssh-keys/{id}", requireAuth(http.HandlerFunc(sshKeyHandler.Delete)))
 
-	api := middleware.Logger(i18n.Middleware(mux))
-	gitHTTP := middleware.Logger(gitHandler)
+	apiLimiter := middleware.NewRateLimiter(180, 60)
+	authLimiter := middleware.NewRateLimiter(30, 10)
+	api := middleware.SecurityHeaders(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(mux))))
+	gitHTTP := middleware.SecurityHeaders(middleware.Logger(gitHandler))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if handler.IsGitHTTPPath(r.URL.Path) {

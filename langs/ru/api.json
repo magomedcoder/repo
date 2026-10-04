@@ -63,5 +63,10 @@
   "merge_conflict": "Конфликт слияния",
   "not_fast_forward": "Невозможно выполнить fast-forward",
   "invalid_merge_strategy": "Стратегия должна быть merge или ff-only",
-  "pull_not_open": "Pull request не открыт"
+  "pull_not_open": "Pull request не открыт",
+  "user_not_found": "Пользователь не найден",
+  "invalid_avatar": "Аватар должен быть JPEG, PNG, WebP или GIF",
+  "avatar_too_large": "Аватар не больше 1 МБ",
+  "avatar_not_found": "Аватар не найден",
+  "rate_limited": "Слишком много запросов"
 }

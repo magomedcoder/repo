@@ -1,9 +1,7 @@
 package http_test
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -66,6 +64,7 @@ func TestPullRequestFlow(t *testing.T) {
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo)
+	profileUC := usecase.NewProfileUseCase(userStore, filepath.Join(dir, "data", "avatars"))
 
 	router := deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),
@@ -76,6 +75,7 @@ func TestPullRequestFlow(t *testing.T) {
 		handler.NewGitHandler(gitUC),
 		handler.NewIssueHandler(issueUC),
 		handler.NewPullRequestHandler(pullUC),
+		handler.NewProfileHandler(profileUC),
 		authUC,
 	)
 	srv := httptest.NewServer(router)
@@ -141,46 +141,6 @@ func TestPullRequestFlow(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(merged.Body), &item); err != nil || item.State != "merged" {
 		t.Fatalf("merged body %s", merged.Body)
-	}
-}
-
-type jsonResp struct {
-	StatusCode int
-	Body       string
-	Cookies    []*http.Cookie
-}
-
-func doJSON(t *testing.T, srv *httptest.Server, method, path, body string, cookies []*http.Cookie) jsonResp {
-	t.Helper()
-	var reader io.Reader
-	if body != "" {
-		reader = bytes.NewReader([]byte(body))
-	}
-
-	req, err := http.NewRequest(method, srv.URL+path, reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if body != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	for _, c := range cookies {
-		req.AddCookie(c)
-	}
-
-	res, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
-	return jsonResp{
-		StatusCode: res.StatusCode,
-		Body:       string(raw),
-		Cookies:    res.Cookies(),
 	}
 }
 

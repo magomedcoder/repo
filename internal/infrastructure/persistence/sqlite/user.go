@@ -15,6 +15,7 @@ type userModel struct {
 	Username     string         `gorm:"uniqueIndex;size:39;not null"`
 	Email        string         `gorm:"uniqueIndex;not null"`
 	PasswordHash string         `gorm:"not null"`
+	AvatarPath   string         `gorm:"size:255"`
 }
 
 func (userModel) TableName() string {
@@ -27,6 +28,7 @@ func (m userModel) toDomain() *domain.User {
 		Username:     m.Username,
 		Email:        m.Email,
 		PasswordHash: m.PasswordHash,
+		AvatarPath:   m.AvatarPath,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 	}
@@ -115,6 +117,14 @@ func (s *UserStore) ExistsByEmail(email string) (bool, error) {
 	var count int64
 	err := s.db.Model(&userModel{}).Where("email = ?", email).Count(&count).Error
 	return count > 0, err
+}
+
+func (s *UserStore) Update(user *domain.User) error {
+	return s.db.Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]any{
+		"email":         user.Email,
+		"password_hash": user.PasswordHash,
+		"avatar_path":   user.AvatarPath,
+	}).Error
 }
 
 type SessionStore struct {

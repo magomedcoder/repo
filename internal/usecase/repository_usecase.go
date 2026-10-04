@@ -186,6 +186,32 @@ func (uc *RepositoryUseCase) ListPublic() ([]RepositoryItem, error) {
 	return uc.mapReposWithOwners(repos)
 }
 
+func (uc *RepositoryUseCase) Search(query string, ownerID uint, publicOnly bool) ([]RepositoryItem, error) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		if publicOnly || ownerID == 0 {
+			return uc.ListPublic()
+		}
+		return uc.ListOwn(ownerID)
+	}
+
+	repos, err := uc.store.SearchByName(q, ownerID, publicOnly || ownerID == 0, 100)
+	if err != nil {
+		return nil, fmt.Errorf("search repositories: %w", err)
+	}
+	
+	if publicOnly || ownerID == 0 {
+		return uc.mapReposWithOwners(repos)
+	}
+
+	owner, err := uc.users.FindByID(ownerID)
+	if err != nil {
+		return nil, ErrUnauthorized
+	}
+
+	return uc.mapRepos(repos, owner.Username)
+}
+
 func (uc *RepositoryUseCase) Get(in ResolveRepositoryInput) (*RepositoryItem, error) {
 	repo, owner, folderPath, err := uc.resolve(in)
 	if err != nil {

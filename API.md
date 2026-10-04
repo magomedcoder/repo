@@ -93,6 +93,28 @@ curl http://127.0.0.1:8080/api/repos -b cookies.txt
 
 # public repos
 curl "http://127.0.0.1:8080/api/repos?scope=public"
+
+# search by name (optional scope=public)
+curl "http://127.0.0.1:8080/api/repos?q=hello" -b cookies.txt
+curl "http://127.0.0.1:8080/api/repos?q=hello&scope=public"
+```
+
+## Profile and avatar
+
+```bash
+# public profile (email only when viewing yourself)
+curl http://127.0.0.1:8080/api/users/user -b cookies.txt
+
+# update own email
+curl -X PATCH http://127.0.0.1:8080/api/users/me \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"email":"new@example.com"}'
+
+# upload / delete avatar (JPEG, PNG, WebP, GIF, max 1 MiB)
+curl -X POST http://127.0.0.1:8080/api/users/me/avatar \
+  -b cookies.txt -F "avatar=@./avatar.png"
+curl -X DELETE http://127.0.0.1:8080/api/users/me/avatar -b cookies.txt
+curl -o avatar.png http://127.0.0.1:8080/api/users/user/avatar
 ```
 
 ## Repository metadata

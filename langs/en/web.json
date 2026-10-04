@@ -149,7 +149,32 @@
     "loadPulls": "Failed to load pull requests",
     "loadPull": "Failed to load pull request",
     "createPull": "Failed to create pull request",
-    "mergeFailed": "Merge failed"
+    "mergeFailed": "Merge failed",
+    "loadProfile": "Failed to load profile",
+    "saveProfile": "Failed to save profile",
+    "uploadAvatar": "Failed to update avatar",
+    "searchFailed": "Search failed"
+  },
+  "search": {
+    "title": "Search",
+    "lead": "Find repositories by name.",
+    "query": "Query",
+    "placeholder": "Search repositories...",
+    "scope": "Scope",
+    "scopeOwn": "My repositories",
+    "scopePublic": "Public repositories",
+    "hint": "Type a repository name to search.",
+    "empty": "No repositories matched."
+  },
+  "profile": {
+    "title": "Profile",
+    "lead": "Your account settings and avatar.",
+    "email": "Email",
+    "save": "Save",
+    "saving": "Saving...",
+    "changeAvatar": "Change avatar",
+    "removeAvatar": "Remove avatar",
+    "uploading": "Uploading..."
   },
   "pulls": {
     "open": "Open",

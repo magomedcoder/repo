@@ -149,7 +149,32 @@
     "loadPulls": "Не удалось загрузить pull requests",
     "loadPull": "Не удалось загрузить pull request",
     "createPull": "Не удалось создать pull request",
-    "mergeFailed": "Не удалось выполнить merge"
+    "mergeFailed": "Не удалось выполнить merge",
+    "loadProfile": "Не удалось загрузить профиль",
+    "saveProfile": "Не удалось сохранить профиль",
+    "uploadAvatar": "Не удалось обновить аватар",
+    "searchFailed": "Ошибка поиска"
+  },
+  "search": {
+    "title": "Поиск",
+    "lead": "Найти репозитории по имени.",
+    "query": "Запрос",
+    "placeholder": "Поиск репозиториев...",
+    "scope": "Область",
+    "scopeOwn": "Мои репозитории",
+    "scopePublic": "Публичные",
+    "hint": "Введите имя репозитория.",
+    "empty": "Ничего не найдено."
+  },
+  "profile": {
+    "title": "Профиль",
+    "lead": "Настройки аккаунта и аватар.",
+    "email": "Email",
+    "save": "Сохранить",
+    "saving": "Сохранение...",
+    "changeAvatar": "Сменить аватар",
+    "removeAvatar": "Удалить аватар",
+    "uploading": "Загрузка..."
   },
   "pulls": {
     "open": "Открытые",
