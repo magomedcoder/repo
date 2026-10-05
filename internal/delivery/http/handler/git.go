@@ -83,7 +83,7 @@ func (h *GitHandler) resolveAndAuth(
 	owner, folderPath, name string,
 	service usecase.GitService,
 ) (*domain.Repository, *domain.User, error) {
-	repo, _, err := h.git.Resolve(owner, folderPath, name)
+	repo, err := h.git.Resolve(owner, folderPath, name)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return nil, nil, err

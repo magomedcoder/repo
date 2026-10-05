@@ -12,6 +12,7 @@ type folderModel struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
+	OwnerKind string         `gorm:"size:8;not null;default:user;uniqueIndex:idx_folder_scope"`
 	OwnerID   uint           `gorm:"not null;uniqueIndex:idx_folder_scope"`
 	ParentID  uint           `gorm:"not null;uniqueIndex:idx_folder_scope"` // 0 = root
 	Name      string         `gorm:"size:64;not null"`
@@ -24,8 +25,14 @@ func (folderModel) TableName() string {
 }
 
 func (m folderModel) toDomain() domain.Folder {
+	kind := m.OwnerKind
+	if kind == "" {
+		kind = domain.OwnerKindUser
+	}
+
 	f := domain.Folder{
 		ID:        m.ID,
+		OwnerKind: kind,
 		OwnerID:   m.OwnerID,
 		Name:      m.Name,
 		Slug:      m.Slug,
@@ -43,8 +50,14 @@ func (m folderModel) toDomain() domain.Folder {
 }
 
 func folderFromDomain(f *domain.Folder) *folderModel {
+	kind := f.OwnerKind
+	if kind == "" {
+		kind = domain.OwnerKindUser
+	}
+
 	m := &folderModel{
 		ID:        f.ID,
+		OwnerKind: kind,
 		OwnerID:   f.OwnerID,
 		Name:      f.Name,
 		Slug:      f.Slug,
@@ -92,9 +105,13 @@ func (s *FolderStore) Delete(id uint) error {
 	return s.db.Delete(&folderModel{}, id).Error
 }
 
-func (s *FolderStore) FindByOwnerAndID(ownerID, id uint) (*domain.Folder, error) {
+func (s *FolderStore) FindByOwnerAndID(ownerKind string, ownerID, id uint) (*domain.Folder, error) {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
 	var model folderModel
-	err := s.db.Where("owner_id = ? AND id = ?", ownerID, id).First(&model).Error
+	err := s.db.Where("owner_kind = ? AND owner_id = ? AND id = ?", ownerKind, ownerID, id).First(&model).Error
 	if err != nil {
 		return nil, err
 	}
@@ -103,9 +120,13 @@ func (s *FolderStore) FindByOwnerAndID(ownerID, id uint) (*domain.Folder, error)
 	return &f, nil
 }
 
-func (s *FolderStore) FindByOwnerAndPath(ownerID uint, path string) (*domain.Folder, error) {
+func (s *FolderStore) FindByOwnerAndPath(ownerKind string, ownerID uint, path string) (*domain.Folder, error) {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
 	var model folderModel
-	err := s.db.Where("owner_id = ? AND path = ?", ownerID, path).First(&model).Error
+	err := s.db.Where("owner_kind = ? AND owner_id = ? AND path = ?", ownerKind, ownerID, path).First(&model).Error
 	if err != nil {
 		return nil, err
 	}
@@ -114,9 +135,13 @@ func (s *FolderStore) FindByOwnerAndPath(ownerID uint, path string) (*domain.Fol
 	return &f, nil
 }
 
-func (s *FolderStore) ListByOwner(ownerID uint) ([]domain.Folder, error) {
+func (s *FolderStore) ListByOwner(ownerKind string, ownerID uint) ([]domain.Folder, error) {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
 	var models []folderModel
-	err := s.db.Where("owner_id = ?", ownerID).Order("path ASC").Find(&models).Error
+	err := s.db.Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID).Order("path ASC").Find(&models).Error
 	if err != nil {
 		return nil, err
 	}
@@ -124,14 +149,18 @@ func (s *FolderStore) ListByOwner(ownerID uint) ([]domain.Folder, error) {
 	return folderModelsToDomain(models), nil
 }
 
-func (s *FolderStore) ListByOwnerAndParent(ownerID uint, parentID *uint) ([]domain.Folder, error) {
+func (s *FolderStore) ListByOwnerAndParent(ownerKind string, ownerID uint, parentID *uint) ([]domain.Folder, error) {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
 	pid := uint(0)
 	if parentID != nil {
 		pid = *parentID
 	}
 
 	var models []folderModel
-	err := s.db.Where("owner_id = ? AND parent_id = ?", ownerID, pid).Order("name ASC").Find(&models).Error
+	err := s.db.Where("owner_kind = ? AND owner_id = ? AND parent_id = ?", ownerKind, ownerID, pid).Order("name ASC").Find(&models).Error
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +168,11 @@ func (s *FolderStore) ListByOwnerAndParent(ownerID uint, parentID *uint) ([]doma
 	return folderModelsToDomain(models), nil
 }
 
-func (s *FolderStore) ExistsByOwnerParentSlug(ownerID uint, parentID *uint, slug string) (bool, error) {
+func (s *FolderStore) ExistsByOwnerParentSlug(ownerKind string, ownerID uint, parentID *uint, slug string) (bool, error) {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
 	pid := uint(0)
 	if parentID != nil {
 		pid = *parentID
@@ -147,7 +180,7 @@ func (s *FolderStore) ExistsByOwnerParentSlug(ownerID uint, parentID *uint, slug
 
 	var count int64
 	err := s.db.Model(&folderModel{}).
-		Where("owner_id = ? AND parent_id = ? AND slug = ?", ownerID, pid, slug).
+		Where("owner_kind = ? AND owner_id = ? AND parent_id = ? AND slug = ?", ownerKind, ownerID, pid, slug).
 		Count(&count).Error
 	return count > 0, err
 }
@@ -158,9 +191,13 @@ func (s *FolderStore) CountChildren(folderID uint) (int64, error) {
 	return count, err
 }
 
-func (s *FolderStore) ListDescendants(ownerID uint, pathPrefix string) ([]domain.Folder, error) {
+func (s *FolderStore) ListDescendants(ownerKind string, ownerID uint, pathPrefix string) ([]domain.Folder, error) {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
 	var models []folderModel
-	err := s.db.Where("owner_id = ? AND (path = ? OR path LIKE ?)", ownerID, pathPrefix, pathPrefix+"/%").
+	err := s.db.Where("owner_kind = ? AND owner_id = ? AND (path = ? OR path LIKE ?)", ownerKind, ownerID, pathPrefix, pathPrefix+"/%").
 		Order("path ASC").
 		Find(&models).Error
 	if err != nil {
@@ -175,6 +212,6 @@ func folderModelsToDomain(models []folderModel) []domain.Folder {
 	for _, m := range models {
 		out = append(out, m.toDomain())
 	}
-
+	
 	return out
 }

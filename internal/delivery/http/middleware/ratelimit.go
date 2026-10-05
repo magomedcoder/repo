@@ -28,10 +28,7 @@ func NewRateLimiter(perMinute int, burst int) *RateLimiter {
 	}
 
 	if burst <= 0 {
-		burst = perMinute / 4
-		if burst < 5 {
-			burst = 5
-		}
+		burst = max(perMinute/4, 5)
 	}
 
 	return &RateLimiter{
@@ -55,8 +52,8 @@ func (l *RateLimiter) Allow(key string) bool {
 	b, ok := l.buckets[key]
 	if !ok {
 		l.buckets[key] = &rateBucket{
-			tokens: l.burst - 1, 
-			last: now,
+			tokens: l.burst - 1,
+			last:   now,
 		}
 		return true
 	}
@@ -116,6 +113,6 @@ func clientIP(r *http.Request) string {
 	if err != nil {
 		return r.RemoteAddr
 	}
-	
+
 	return host
 }

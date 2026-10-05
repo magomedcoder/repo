@@ -18,6 +18,7 @@ func NewRouter(
 	issueHandler *handler.IssueHandler,
 	pullHandler *handler.PullRequestHandler,
 	profileHandler *handler.ProfileHandler,
+	orgHandler *handler.OrganizationHandler,
 	auth middleware.Authenticator,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -35,6 +36,18 @@ func NewRouter(
 	mux.Handle("PATCH /api/users/me", requireAuth(http.HandlerFunc(profileHandler.UpdateMe)))
 	mux.Handle("POST /api/users/me/avatar", requireAuth(http.HandlerFunc(profileHandler.UploadAvatar)))
 	mux.Handle("DELETE /api/users/me/avatar", requireAuth(http.HandlerFunc(profileHandler.DeleteAvatar)))
+
+	mux.Handle("POST /api/orgs", requireAuth(http.HandlerFunc(orgHandler.Create)))
+	mux.Handle("GET /api/orgs", requireAuth(http.HandlerFunc(orgHandler.ListMine)))
+	mux.Handle("GET /api/orgs/{slug}", optionalAuth(http.HandlerFunc(orgHandler.Get)))
+	mux.Handle("PATCH /api/orgs/{slug}", requireAuth(http.HandlerFunc(orgHandler.Update)))
+	mux.Handle("DELETE /api/orgs/{slug}", requireAuth(http.HandlerFunc(orgHandler.Delete)))
+	mux.Handle("GET /api/orgs/{slug}/repos", optionalAuth(http.HandlerFunc(orgHandler.ListRepos)))
+	mux.Handle("GET /api/orgs/{slug}/members", requireAuth(http.HandlerFunc(orgHandler.ListMembers)))
+	mux.Handle("POST /api/orgs/{slug}/members", requireAuth(http.HandlerFunc(orgHandler.AddMember)))
+	mux.Handle("PATCH /api/orgs/{slug}/members/{userID}", requireAuth(http.HandlerFunc(orgHandler.UpdateMember)))
+	mux.Handle("DELETE /api/orgs/{slug}/members/{userID}", requireAuth(http.HandlerFunc(orgHandler.RemoveMember)))
+	mux.Handle("POST /api/orgs/{slug}/leave", requireAuth(http.HandlerFunc(orgHandler.Leave)))
 
 	mux.Handle("POST /api/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
 	mux.Handle("GET /api/repos", optionalAuth(http.HandlerFunc(repoHandler.List)))
@@ -104,7 +117,7 @@ func NewRouter(
 			gitHTTP.ServeHTTP(w, r)
 			return
 		}
-
+		
 		api.ServeHTTP(w, r)
 	})
 }

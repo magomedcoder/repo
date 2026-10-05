@@ -20,6 +20,7 @@ type GitUseCase struct {
 	repos   domain.RepositoryStore
 	folders domain.FolderStore
 	users   domain.UserStore
+	orgs    domain.OrganizationStore
 	tokens  domain.AccessTokenStore
 	hasher  domain.PasswordHasher
 	git     domain.GitRepository
@@ -29,6 +30,7 @@ func NewGitUseCase(
 	repos domain.RepositoryStore,
 	folders domain.FolderStore,
 	users domain.UserStore,
+	orgs domain.OrganizationStore,
 	tokens domain.AccessTokenStore,
 	hasher domain.PasswordHasher,
 	git domain.GitRepository,
@@ -37,24 +39,25 @@ func NewGitUseCase(
 		repos:   repos,
 		folders: folders,
 		users:   users,
+		orgs:    orgs,
 		tokens:  tokens,
 		hasher:  hasher,
 		git:     git,
 	}
 }
 
-func (uc *GitUseCase) Resolve(ownerUsername, folderPath, name string) (*domain.Repository, *domain.User, error) {
-	repo, owner, _, err := (&RepositoryUseCase{
+func (uc *GitUseCase) Resolve(ownerUsername, folderPath, name string) (*domain.Repository, error) {
+	repo, _, _, err := (&RepositoryUseCase{
 		store:   uc.repos,
 		folders: uc.folders,
 		users:   uc.users,
+		orgs:    uc.orgs,
 	}).resolve(ResolveRepositoryInput{
 		OwnerUsername: ownerUsername,
 		FolderPath:    folderPath,
 		Name:          name,
 	})
-
-	return repo, owner, err
+	return repo, err
 }
 
 func (uc *GitUseCase) Authenticate(username, secret string) (*domain.User, error) {
@@ -110,6 +113,7 @@ func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 }
 
 func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, service GitService) error {
+	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users, orgs: uc.orgs}
 	switch service {
 	case GitUploadPack:
 		if !repo.IsPrivate {
@@ -120,7 +124,7 @@ func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, se
 			return ErrUnauthorized
 		}
 
-		if viewer.ID != repo.OwnerID {
+		if !repoUC.canReadPrivate(repo, viewer.ID) {
 			return ErrRepoForbidden
 		}
 
@@ -130,10 +134,10 @@ func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, se
 			return ErrUnauthorized
 		}
 
-		if viewer.ID != repo.OwnerID {
+		if !repoUC.canWriteGit(repo, viewer.ID) {
 			return ErrRepoForbidden
 		}
-
+		
 		return nil
 	default:
 		return fmt.Errorf("unsupported git service: %s", service)

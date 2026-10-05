@@ -55,6 +55,7 @@ type LoginInput struct {
 type AuthUseCase struct {
 	users    domain.UserStore
 	sessions domain.SessionStore
+	orgs     domain.OrganizationStore
 	hasher   domain.PasswordHasher
 	tokens   domain.TokenGenerator
 	now      func() time.Time
@@ -63,12 +64,14 @@ type AuthUseCase struct {
 func NewAuthUseCase(
 	users domain.UserStore,
 	sessions domain.SessionStore,
+	orgs domain.OrganizationStore,
 	hasher domain.PasswordHasher,
 	tokens domain.TokenGenerator,
 ) *AuthUseCase {
 	return &AuthUseCase{
 		users:    users,
 		sessions: sessions,
+		orgs:     orgs,
 		hasher:   hasher,
 		tokens:   tokens,
 		now:      time.Now,
@@ -107,6 +110,21 @@ func (uc *AuthUseCase) Register(in RegisterInput) (*AuthOutput, error) {
 
 	if taken {
 		return nil, ErrUsernameTaken
+	}
+
+	if uc.orgs != nil {
+		taken, err = uc.orgs.ExistsBySlug(username)
+		if err != nil {
+			return nil, fmt.Errorf("check org slug: %w", err)
+		}
+		
+		if taken {
+			return nil, ErrUsernameTaken
+		}
+	}
+
+	if _, ok := reservedSlugs[username]; ok {
+		return nil, ErrReservedSlug
 	}
 
 	taken, err = uc.users.ExistsByEmail(email)

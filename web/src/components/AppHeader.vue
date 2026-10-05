@@ -71,6 +71,12 @@ async function onSearch() {
       </form>
       <LocaleSwitch inverted />
       <RouterLink
+        :to="{ name: 'orgs' }"
+        class="hidden text-sm text-white/80 hover:text-white sm:inline"
+      >
+        {{ $t('nav.orgs') }}
+      </RouterLink>
+      <RouterLink
         :to="{ name: 'profile' }"
         class="hidden text-sm text-white/80 hover:text-white sm:inline"
       >

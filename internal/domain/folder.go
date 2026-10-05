@@ -4,11 +4,12 @@ import "time"
 
 type Folder struct {
 	ID        uint
+	OwnerKind string // user | org
 	OwnerID   uint
-	ParentID  *uint // nil = user root
+	ParentID  *uint // nil = namespace root
 	Name      string
 	Slug      string
-	Path      string // materialized, e.g. "work/backend"
+	Path      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -20,16 +21,16 @@ type FolderStore interface {
 
 	Delete(id uint) error
 
-	FindByOwnerAndID(ownerID, id uint) (*Folder, error)
+	FindByOwnerAndID(ownerKind string, ownerID, id uint) (*Folder, error)
 
-	FindByOwnerAndPath(ownerID uint, path string) (*Folder, error)
+	FindByOwnerAndPath(ownerKind string, ownerID uint, path string) (*Folder, error)
 
-	ListByOwner(ownerID uint) ([]Folder, error)
+	ListByOwner(ownerKind string, ownerID uint) ([]Folder, error)
 
-	ListByOwnerAndParent(ownerID uint, parentID *uint) ([]Folder, error)
+	ListByOwnerAndParent(ownerKind string, ownerID uint, parentID *uint) ([]Folder, error)
 
-	ExistsByOwnerParentSlug(ownerID uint, parentID *uint, slug string) (bool, error)
+	ExistsByOwnerParentSlug(ownerKind string, ownerID uint, parentID *uint, slug string) (bool, error)
 	CountChildren(folderID uint) (int64, error)
 
-	ListDescendants(ownerID uint, pathPrefix string) ([]Folder, error)
+	ListDescendants(ownerKind string, ownerID uint, pathPrefix string) ([]Folder, error)
 }

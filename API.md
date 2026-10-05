@@ -250,6 +250,34 @@ curl -X POST http://127.0.0.1:8080/api/repos/user/hello/pulls/1/comments \
   -d '{"body":"lgtm"}'
 ```
 
+## Organizations
+
+Shared top-level namespace with users (no `/org/` prefix). Slug must be unique vs usernames. Create a repo under an org with `"organization":"acmnamee"`.
+
+```bash
+# create / list mine
+curl -X POST http://127.0.0.1:8080/api/orgs \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"slug":"name","name":"Name","description":"team"}'
+curl http://127.0.0.1:8080/api/orgs -b cookies.txt
+
+# get / update / delete
+curl http://127.0.0.1:8080/api/orgs/name -b cookies.txt
+curl -X PATCH http://127.0.0.1:8080/api/orgs/name \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"name":"Name"}'
+
+# repos + members
+curl http://127.0.0.1:8080/api/orgs/name/repos -b cookies.txt
+curl -X POST http://127.0.0.1:8080/api/repos \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"name":"platform","organization":"name"}'
+curl http://127.0.0.1:8080/api/repos/name/platform
+curl -X POST http://127.0.0.1:8080/api/orgs/name/members \
+  -H "Content-Type: application/json" -b cookies.txt \
+  -d '{"username":"bob","role":"member"}'
+```
+
 ## Personal access tokens
 
 ```bash

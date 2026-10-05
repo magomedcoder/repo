@@ -22,6 +22,7 @@ type createRepoRequest struct {
 	Name          string `json:"name"`
 	Description   string `json:"description"`
 	FolderID      *uint  `json:"folder_id"`
+	Organization  string `json:"organization"`
 	Private       bool   `json:"private"`
 	DefaultBranch string `json:"default_branch"`
 }
@@ -52,7 +53,9 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	out, err := h.repos.Create(usecase.CreateRepositoryInput{
 		Name:          req.Name,
 		Description:   req.Description,
+		ViewerID:      user.ID,
 		OwnerID:       user.ID,
+		Organization:  req.Organization,
 		FolderID:      req.FolderID,
 		Private:       req.Private,
 		DefaultBranch: req.DefaultBranch,
@@ -151,7 +154,7 @@ func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := h.repos.Update(usecase.UpdateRepositoryInput{
-		OwnerID:       user.ID,
+		ViewerID:      user.ID,
 		OwnerUsername: owner,
 		FolderPath:    folderPath,
 		Name:          name,
@@ -214,7 +217,7 @@ func (h *RepositoryHandler) Move(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := h.repos.Move(usecase.MoveRepositoryInput{
-		OwnerID:       user.ID,
+		ViewerID:      user.ID,
 		OwnerUsername: owner,
 		FolderPath:    folderPath,
 		Name:          name,
@@ -289,8 +292,11 @@ func writeRepoError(w http.ResponseWriter, r *http.Request, err error) {
 		errors.Is(err, usecase.ErrPathNotFound),
 		errors.Is(err, usecase.ErrEmptyRepo):
 		writeError(w, r, http.StatusNotFound, err.Error())
-	case errors.Is(err, usecase.ErrRepoForbidden):
+	case errors.Is(err, usecase.ErrRepoForbidden),
+		errors.Is(err, usecase.ErrOrgForbidden):
 		writeError(w, r, http.StatusForbidden, err.Error())
+	case errors.Is(err, usecase.ErrOrgNotFound):
+		writeError(w, r, http.StatusNotFound, err.Error())
 	case errors.Is(err, usecase.ErrUnauthorized):
 		writeError(w, r, http.StatusUnauthorized, err.Error())
 	default:

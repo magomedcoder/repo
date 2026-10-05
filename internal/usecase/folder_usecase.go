@@ -108,14 +108,14 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 	var parent *domain.Folder
 	if parentID == nil && strings.TrimSpace(in.Path) != "" {
 		parentPath := strings.Trim(strings.TrimSpace(in.Path), "/")
-		parent, err = uc.folders.FindByOwnerAndPath(in.OwnerID, parentPath)
+		parent, err = uc.folders.FindByOwnerAndPath(domain.OwnerKindUser, in.OwnerID, parentPath)
 		if err != nil {
 			return nil, ErrParentFolderNotFound
 		}
 
 		parentID = &parent.ID
 	} else if parentID != nil {
-		parent, err = uc.folders.FindByOwnerAndID(in.OwnerID, *parentID)
+		parent, err = uc.folders.FindByOwnerAndID(domain.OwnerKindUser, in.OwnerID, *parentID)
 		if err != nil {
 			return nil, ErrParentFolderNotFound
 		}
@@ -132,7 +132,7 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 		return nil, ErrFolderDepthExceeded
 	}
 
-	exists, err := uc.folders.ExistsByOwnerParentSlug(in.OwnerID, parentID, slug)
+	exists, err := uc.folders.ExistsByOwnerParentSlug(domain.OwnerKindUser, in.OwnerID, parentID, slug)
 	if err != nil {
 		return nil, fmt.Errorf("check folder existence: %w", err)
 	}
@@ -147,6 +147,7 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 	}
 
 	folder := &domain.Folder{
+		OwnerKind: domain.OwnerKindUser,
 		OwnerID:  in.OwnerID,
 		ParentID: parentID,
 		Name:     name,
@@ -167,14 +168,14 @@ func (uc *FolderUseCase) List(ownerID uint, parentID *uint, tree bool) (any, err
 	}
 
 	if tree {
-		all, err := uc.folders.ListByOwner(ownerID)
+		all, err := uc.folders.ListByOwner(domain.OwnerKindUser, ownerID)
 		if err != nil {
 			return nil, fmt.Errorf("list folders: %w", err)
 		}
 		return buildFolderTree(all), nil
 	}
 
-	folders, err := uc.folders.ListByOwnerAndParent(ownerID, parentID)
+	folders, err := uc.folders.ListByOwnerAndParent(domain.OwnerKindUser, ownerID, parentID)
 	if err != nil {
 		return nil, fmt.Errorf("list folders: %w", err)
 	}
@@ -192,17 +193,17 @@ func (uc *FolderUseCase) GetContents(ownerID, folderID uint) (*FolderContents, e
 		return nil, ErrUnauthorized
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(ownerID, folderID)
+	folder, err := uc.folders.FindByOwnerAndID(domain.OwnerKindUser, ownerID, folderID)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
 
-	children, err := uc.folders.ListByOwnerAndParent(ownerID, &folderID)
+	children, err := uc.folders.ListByOwnerAndParent(domain.OwnerKindUser, ownerID, &folderID)
 	if err != nil {
 		return nil, fmt.Errorf("list child folders: %w", err)
 	}
 
-	repos, err := uc.repos.ListByOwnerAndFolderID(ownerID, &folderID)
+	repos, err := uc.repos.ListByOwnerAndFolderID(domain.OwnerKindUser, ownerID, &folderID)
 	if err != nil {
 		return nil, fmt.Errorf("list folder repos: %w", err)
 	}
@@ -230,7 +231,7 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 		return nil, ErrUnauthorized
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(in.OwnerID, in.ID)
+	folder, err := uc.folders.FindByOwnerAndID(domain.OwnerKindUser, in.OwnerID, in.ID)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
@@ -241,7 +242,7 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	}
 
 	if slug != folder.Slug {
-		exists, err := uc.folders.ExistsByOwnerParentSlug(in.OwnerID, folder.ParentID, slug)
+		exists, err := uc.folders.ExistsByOwnerParentSlug(domain.OwnerKindUser, in.OwnerID, folder.ParentID, slug)
 		if err != nil {
 			return nil, fmt.Errorf("check folder existence: %w", err)
 		}
@@ -253,7 +254,7 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	oldPath := folder.Path
 	newPath := slug
 	if folder.ParentID != nil {
-		parent, err := uc.folders.FindByOwnerAndID(in.OwnerID, *folder.ParentID)
+		parent, err := uc.folders.FindByOwnerAndID(domain.OwnerKindUser, in.OwnerID, *folder.ParentID)
 		if err != nil {
 			return nil, ErrParentFolderNotFound
 		}
@@ -282,7 +283,7 @@ func (uc *FolderUseCase) Delete(ownerID, folderID uint) error {
 		return ErrUnauthorized
 	}
 
-	if _, err := uc.folders.FindByOwnerAndID(ownerID, folderID); err != nil {
+	if _, err := uc.folders.FindByOwnerAndID(domain.OwnerKindUser, ownerID, folderID); err != nil {
 		return ErrFolderNotFound
 	}
 
@@ -315,14 +316,14 @@ func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
 		return nil, ErrInvalidFolderMove
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(in.OwnerID, in.ID)
+	folder, err := uc.folders.FindByOwnerAndID(domain.OwnerKindUser, in.OwnerID, in.ID)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
 
 	var newParent *domain.Folder
 	if in.NewParentID != nil {
-		newParent, err = uc.folders.FindByOwnerAndID(in.OwnerID, *in.NewParentID)
+		newParent, err = uc.folders.FindByOwnerAndID(domain.OwnerKindUser, in.OwnerID, *in.NewParentID)
 		if err != nil {
 			return nil, ErrParentFolderNotFound
 		}
@@ -345,7 +346,7 @@ func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
 		parentPath = newParent.Path
 	}
 
-	descendants, err := uc.folders.ListDescendants(in.OwnerID, folder.Path)
+	descendants, err := uc.folders.ListDescendants(domain.OwnerKindUser, in.OwnerID, folder.Path)
 	if err != nil {
 		return nil, fmt.Errorf("list descendants: %w", err)
 	}
@@ -366,7 +367,7 @@ func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
 		return nil, ErrFolderDepthExceeded
 	}
 
-	exists, err := uc.folders.ExistsByOwnerParentSlug(in.OwnerID, in.NewParentID, folder.Slug)
+	exists, err := uc.folders.ExistsByOwnerParentSlug(domain.OwnerKindUser, in.OwnerID, in.NewParentID, folder.Slug)
 	if err != nil {
 		return nil, fmt.Errorf("check folder existence: %w", err)
 	}
@@ -396,7 +397,7 @@ func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
 }
 
 func (uc *FolderUseCase) rewriteDescendantPaths(ownerID uint, oldPath, newPath string) error {
-	descendants, err := uc.folders.ListDescendants(ownerID, oldPath)
+	descendants, err := uc.folders.ListDescendants(domain.OwnerKindUser, ownerID, oldPath)
 	if err != nil {
 		return fmt.Errorf("list descendants: %w", err)
 	}

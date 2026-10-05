@@ -58,6 +58,7 @@ type IssueUseCase struct {
 	repos   domain.RepositoryStore
 	folders domain.FolderStore
 	users   domain.UserStore
+	orgs    domain.OrganizationStore
 }
 
 func NewIssueUseCase(
@@ -65,12 +66,14 @@ func NewIssueUseCase(
 	repos domain.RepositoryStore,
 	folders domain.FolderStore,
 	users domain.UserStore,
+	orgs domain.OrganizationStore,
 ) *IssueUseCase {
 	return &IssueUseCase{
-		issues: issues,
-		repos: repos,
+		issues:  issues,
+		repos:   repos,
 		folders: folders,
-		users: users,
+		users:   users,
+		orgs:    orgs,
 	}
 }
 
@@ -187,7 +190,7 @@ func (uc *IssueUseCase) Update(in ResolveRepositoryInput, number int, title *str
 		return nil, err
 	}
 
-	if issue.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if issue.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
@@ -215,7 +218,7 @@ func (uc *IssueUseCase) Update(in ResolveRepositoryInput, number int, title *str
 	}
 
 	if labelIDs != nil {
-		if repo.OwnerID != in.ViewerID {
+		if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 			return nil, ErrIssueForbidden
 		}
 
@@ -246,7 +249,7 @@ func (uc *IssueUseCase) Delete(in ResolveRepositoryInput, number int) error {
 		return err
 	}
 
-	if issue.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if issue.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return ErrIssueForbidden
 	}
 
@@ -305,7 +308,7 @@ func (uc *IssueUseCase) UpdateComment(in ResolveRepositoryInput, number, comment
 		return nil, err
 	}
 
-	if comment.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if comment.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
@@ -342,7 +345,7 @@ func (uc *IssueUseCase) DeleteComment(in ResolveRepositoryInput, number, comment
 		return err
 	}
 
-	if comment.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if comment.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return ErrIssueForbidden
 	}
 
@@ -462,7 +465,7 @@ func (uc *IssueUseCase) DeleteLabel(in ResolveRepositoryInput, id uint) error {
 }
 
 func (uc *IssueUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users}
+	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users, orgs: uc.orgs}
 	repo, _, _, err := repoUC.resolve(in)
 	if err != nil {
 		return nil, err
@@ -485,7 +488,7 @@ func (uc *IssueUseCase) ownerRepo(in ResolveRepositoryInput) (*domain.Repository
 		return nil, err
 	}
 
-	if repo.OwnerID != in.ViewerID {
+	if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
@@ -666,4 +669,13 @@ func normalizeColor(raw string) string {
 
 func isNotFound(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "record not found")
+}
+
+func (uc *IssueUseCase) repoUC() *RepositoryUseCase {
+	return &RepositoryUseCase{
+		store: uc.repos, 
+		folders: uc.folders, 
+		users: uc.users, 
+		orgs: uc.orgs,
+	}
 }

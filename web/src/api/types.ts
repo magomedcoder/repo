@@ -14,6 +14,40 @@ export interface Profile {
   created_at: string
 }
 
+export interface Organization {
+  id: number
+  slug: string
+  name: string
+  description: string
+  has_avatar: boolean
+  role?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface OrgMember {
+  user_id: number
+  username: string
+  role: string
+}
+
+export interface Organization {
+  id: number
+  slug: string
+  name: string
+  description: string
+  has_avatar: boolean
+  role?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface OrgMember {
+  user_id: number
+  username: string
+  role: string
+}
+
 export interface Folder {
   id: number
   parent_id: number | null

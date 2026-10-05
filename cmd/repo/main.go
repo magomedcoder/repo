@@ -35,19 +35,21 @@ func main() {
 	sshKeyStore := sqlite.NewSSHKeyStore(db)
 	issueStore := sqlite.NewIssueStore(db)
 	pullStore := sqlite.NewPullRequestStore(db)
+	orgStore := sqlite.NewOrganizationStore(db)
 	gitRepo := git.NewRepository()
 	hasher := bcrypt.NewHasher()
 	tokens := token.NewGenerator()
 
-	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
+	authUC := usecase.NewAuthUseCase(userStore, sessionStore, orgStore, hasher, tokens)
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore)
-	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo)
+	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, orgStore, gitRepo)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	sshKeyUC := usecase.NewSSHKeyUseCase(sshKeyStore, userStore)
-	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
-	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
-	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo)
+	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, orgStore, tokenStore, hasher, gitRepo)
+	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, orgStore)
+	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, orgStore, gitRepo)
 	profileUC := usecase.NewProfileUseCase(userStore, "data/avatars")
+	orgUC := usecase.NewOrganizationUseCase(orgStore, userStore, repoStore)
 
 	authHandler := handler.NewAuthHandler(authUC)
 	folderHandler := handler.NewFolderHandler(folderUC)
@@ -58,8 +60,9 @@ func main() {
 	issueHandler := handler.NewIssueHandler(issueUC)
 	pullHandler := handler.NewPullRequestHandler(pullUC)
 	profileHandler := handler.NewProfileHandler(profileUC)
+	orgHandler := handler.NewOrganizationHandler(orgUC)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, sshKeyHandler, gitHandler, issueHandler, pullHandler, profileHandler, authUC)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, sshKeyHandler, gitHandler, issueHandler, pullHandler, profileHandler, orgHandler, authUC)
 
 	sshAddr := envOr("REPO_SSH_ADDR", ":2222")
 	sshServer := deliveryssh.NewServer(sshKeyUC, gitUC, "data/ssh", sshAddr)
@@ -79,6 +82,5 @@ func envOr(key, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
 	}
-
 	return fallback
 }

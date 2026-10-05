@@ -94,7 +94,8 @@ func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
 		errors.Is(err, usecase.ErrPasswordRequired),
 		errors.Is(err, usecase.ErrInvalidUsername),
 		errors.Is(err, usecase.ErrInvalidEmail),
-		errors.Is(err, usecase.ErrPasswordTooShort):
+		errors.Is(err, usecase.ErrPasswordTooShort),
+		errors.Is(err, usecase.ErrReservedSlug):
 		writeError(w, r, http.StatusBadRequest, err.Error())
 	case errors.Is(err, usecase.ErrUsernameTaken),
 		errors.Is(err, usecase.ErrEmailTaken):

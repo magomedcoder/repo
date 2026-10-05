@@ -162,7 +162,7 @@ func (s *Server) runGitCommand(conn *ssh.ServerConn, channel ssh.Channel, comman
 		return 128
 	}
 
-	repo, _, err := s.git.Resolve(owner, folderPath, name)
+	repo, err := s.git.Resolve(owner, folderPath, name)
 	if err != nil {
 		_, _ = io.WriteString(channel.Stderr(), "repo: repository not found\n")
 		return 128

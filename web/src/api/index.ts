@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoStats, Repository, RepoSummary, SSHKey, TreeEntry, User } from './types'
+import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, OrgMember, Organization, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoStats, Repository, RepoSummary, SSHKey, TreeEntry, User } from './types'
 
 export const authApi = {
   register(body: {
@@ -86,6 +86,56 @@ export const usersApi = {
   },
 }
 
+export const orgsApi = {
+  listMine() {
+    return api<{ organizations: Organization[] }>('/api/orgs')
+  },
+  get(slug: string) {
+    return api<Organization>(`/api/orgs/${encodeURIComponent(slug)}`)
+  },
+  create(body: { slug: string; name: string; description?: string }) {
+    return api<Organization>('/api/orgs', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  update(slug: string, body: { name?: string; description?: string }) {
+    return api<Organization>(`/api/orgs/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+  remove(slug: string) {
+    return api<void>(`/api/orgs/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+  },
+  listRepos(slug: string) {
+    return api<{ repos: Repository[] }>(`/api/orgs/${encodeURIComponent(slug)}/repos`)
+  },
+  listMembers(slug: string) {
+    return api<{ members: OrgMember[] }>(`/api/orgs/${encodeURIComponent(slug)}/members`)
+  },
+  addMember(slug: string, body: { username: string; role?: string }) {
+    return api<OrgMember>(`/api/orgs/${encodeURIComponent(slug)}/members`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  updateMember(slug: string, userId: number, role: string) {
+    return api<OrgMember>(`/api/orgs/${encodeURIComponent(slug)}/members/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    })
+  },
+  removeMember(slug: string, userId: number) {
+    return api<void>(`/api/orgs/${encodeURIComponent(slug)}/members/${userId}`, {
+      method: 'DELETE',
+    })
+  },
+  leave(slug: string) {
+    return api<void>(`/api/orgs/${encodeURIComponent(slug)}/leave`, { method: 'POST' })
+  },
+}
+
 export const reposApi = {
   listOwn() {
     return api<{ repos: Repository[] }>('/api/repos')
@@ -102,6 +152,7 @@ export const reposApi = {
     name: string
     description?: string
     folder_id?: number | null
+    organization?: string
     private?: boolean
     default_branch?: string
   }) {

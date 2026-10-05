@@ -68,5 +68,17 @@
   "invalid_avatar": "Avatar must be a JPEG, PNG, WebP, or GIF image",
   "avatar_too_large": "Avatar must be at most 1 MB",
   "avatar_not_found": "Avatar not found",
-  "rate_limited": "Too many requests"
+  "rate_limited": "Too many requests",
+  "organization_not_found": "Organization not found",
+  "organization_forbidden": "Organization access denied",
+  "organization_slug_required": "Organization slug is required",
+  "organization_name_required": "Organization name is required",
+  "organization_slug_taken": "Organization slug is already taken",
+  "invalid_organization_role": "Role must be owner, admin, or member",
+  "organization_member_exists": "User is already a member",
+  "organization_member_not_found": "Organization member not found",
+  "cannot_remove_last_owner": "Cannot remove the last owner",
+  "reserved_slug": "This name is reserved",
+  "organization_not_empty": "Organization still has repositories",
+  "invalid_user_id": "Invalid user id"
 }

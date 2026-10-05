@@ -68,5 +68,17 @@
   "invalid_avatar": "Аватар должен быть JPEG, PNG, WebP или GIF",
   "avatar_too_large": "Аватар не больше 1 МБ",
   "avatar_not_found": "Аватар не найден",
-  "rate_limited": "Слишком много запросов"
+  "rate_limited": "Слишком много запросов",
+  "organization_not_found": "Организация не найдена",
+  "organization_forbidden": "Нет доступа к организации",
+  "organization_slug_required": "Нужно указать slug организации",
+  "organization_name_required": "Нужно указать название организации",
+  "organization_slug_taken": "Такой slug уже занят",
+  "invalid_organization_role": "Роль: owner, admin или member",
+  "organization_member_exists": "Пользователь уже участник",
+  "organization_member_not_found": "Участник не найден",
+  "cannot_remove_last_owner": "Нельзя удалить последнего владельца",
+  "reserved_slug": "Это имя зарезервировано",
+  "organization_not_empty": "В организации ещё есть репозитории",
+  "invalid_user_id": "Некорректный id пользователя"
 }

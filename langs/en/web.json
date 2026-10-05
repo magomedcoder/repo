@@ -41,7 +41,8 @@
     "pulls": "Pull requests",
     "code": "Code",
     "profile": "Profile",
-    "sshKeys": "SSH keys"
+    "sshKeys": "SSH keys",
+    "orgs": "Organizations"
   },
   "home": {
     "title": "Dashboard",
@@ -153,7 +154,34 @@
     "loadProfile": "Failed to load profile",
     "saveProfile": "Failed to save profile",
     "uploadAvatar": "Failed to update avatar",
-    "searchFailed": "Search failed"
+    "searchFailed": "Search failed",
+    "loadOrgs": "Failed to load organizations",
+    "loadOrg": "Failed to load organization",
+    "createOrg": "Failed to create organization",
+    "saveOrg": "Failed to save organization",
+    "deleteOrg": "Failed to delete organization",
+    "orgMember": "Failed to update members"
+  },
+  "orgs": {
+    "title": "Organizations",
+    "lead": "Shared namespaces for teams. URLs are /{slug}/... without an /org/ prefix.",
+    "new": "New organization",
+    "empty": "No organizations yet.",
+    "slug": "Slug",
+    "name": "Name",
+    "description": "Description",
+    "creating": "Creating...",
+    "create": "Create organization",
+    "repos": "Repositories",
+    "members": "Members",
+    "settings": "Settings",
+    "noRepos": "No repositories in this organization.",
+    "username": "Username",
+    "role": "Role",
+    "addMember": "Add member",
+    "save": "Save",
+    "danger": "Delete this organization. It must have no repositories.",
+    "delete": "Delete organization"
   },
   "search": {
     "title": "Search",

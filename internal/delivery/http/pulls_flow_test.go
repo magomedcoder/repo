@@ -56,14 +56,15 @@ func TestPullRequestFlow(t *testing.T) {
 	hasher := bcrypt.NewHasher()
 	tokens := token.NewGenerator()
 
-	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
+	orgStore := sqlite.NewOrganizationStore(db)
+	authUC := usecase.NewAuthUseCase(userStore, sessionStore, orgStore, hasher, tokens)
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore)
-	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo)
+	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, orgStore, gitRepo)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	sshKeyUC := usecase.NewSSHKeyUseCase(sshKeyStore, userStore)
-	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo)
-	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore)
-	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo)
+	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, orgStore, tokenStore, hasher, gitRepo)
+	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, orgStore)
+	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, orgStore, gitRepo)
 	profileUC := usecase.NewProfileUseCase(userStore, filepath.Join(dir, "data", "avatars"))
 
 	router := deliveryhttp.NewRouter(
@@ -76,6 +77,7 @@ func TestPullRequestFlow(t *testing.T) {
 		handler.NewIssueHandler(issueUC),
 		handler.NewPullRequestHandler(pullUC),
 		handler.NewProfileHandler(profileUC),
+		handler.NewOrganizationHandler(usecase.NewOrganizationUseCase(orgStore, userStore, repoStore)),
 		authUC,
 	)
 	srv := httptest.NewServer(router)
@@ -92,7 +94,7 @@ func TestPullRequestFlow(t *testing.T) {
 		t.Fatalf("create repo %d %s", created.StatusCode, created.Body)
 	}
 
-	bares, _ := filepath.Glob(filepath.Join(dir, "data", "repos", "*", "hello.git"))
+	bares, _ := filepath.Glob(filepath.Join(dir, "data", "repos", "user", "*", "hello.git"))
 	if len(bares) == 0 {
 		t.Fatal("bare missing")
 	}

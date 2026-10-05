@@ -8,6 +8,7 @@ import (
 type Repository struct {
 	ID             uint
 	Name           string
+	OwnerKind      string // user | org
 	OwnerID        uint
 	FolderID       *uint
 	Description    string
@@ -26,17 +27,17 @@ type RepositoryStore interface {
 
 	Delete(id uint) error
 
-	FindByOwnerFolderName(ownerID uint, folderID *uint, name string) (*Repository, error)
+	FindByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (*Repository, error)
 
-	ListByOwnerID(ownerID uint) ([]Repository, error)
+	ListByOwnerID(ownerKind string, ownerID uint) ([]Repository, error)
 
-	ListByOwnerAndFolderID(ownerID uint, folderID *uint) ([]Repository, error)
+	ListByOwnerAndFolderID(ownerKind string, ownerID uint, folderID *uint) ([]Repository, error)
 
 	ListPublic(limit int) ([]Repository, error)
 
-	SearchByName(query string, ownerID uint, publicOnly bool, limit int) ([]Repository, error)
+	SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit int) ([]Repository, error)
 
-	ExistsByOwnerFolderName(ownerID uint, folderID *uint, name string) (bool, error)
+	ExistsByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (bool, error)
 
 	CountByFolderID(folderID uint) (int64, error)
 

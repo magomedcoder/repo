@@ -41,6 +41,17 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/ProfileView.vue'),
       },
       {
+        path: 'orgs',
+        name: 'orgs',
+        component: () => import('@/views/OrgsView.vue'),
+      },
+      {
+        path: 'orgs/:slug',
+        name: 'org',
+        component: () => import('@/views/OrgView.vue'),
+        props: true,
+      },
+      {
         path: 'search',
         name: 'search',
         component: () => import('@/views/SearchView.vue'),

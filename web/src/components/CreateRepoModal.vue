@@ -6,6 +6,7 @@ import { localizeError } from '@/i18n'
 
 const props = defineProps<{
   folderId?: number | null
+  organization?: string
 }>()
 
 const emit = defineEmits<{
@@ -28,6 +29,7 @@ async function submit() {
       name: name.value.trim(),
       description: description.value.trim(),
       folder_id: props.folderId ?? null,
+      organization: props.organization || undefined,
       private: isPrivate.value,
       default_branch: defaultBranch.value.trim() || 'main',
     })

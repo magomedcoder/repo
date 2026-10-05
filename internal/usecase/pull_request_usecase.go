@@ -58,6 +58,7 @@ type PullRequestUseCase struct {
 	repos   domain.RepositoryStore
 	folders domain.FolderStore
 	users   domain.UserStore
+	orgs    domain.OrganizationStore
 	git     domain.GitRepository
 }
 
@@ -66,6 +67,7 @@ func NewPullRequestUseCase(
 	repos domain.RepositoryStore,
 	folders domain.FolderStore,
 	users domain.UserStore,
+	orgs domain.OrganizationStore,
 	git domain.GitRepository,
 ) *PullRequestUseCase {
 	return &PullRequestUseCase{
@@ -73,6 +75,7 @@ func NewPullRequestUseCase(
 		repos:   repos,
 		folders: folders,
 		users:   users,
+		orgs:    orgs,
 		git:     git,
 	}
 }
@@ -213,7 +216,7 @@ func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, titl
 		return nil, err
 	}
 
-	if pr.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if pr.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -249,7 +252,7 @@ func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, titl
 	}
 
 	if base != nil || head != nil {
-		if repo.OwnerID != in.ViewerID {
+		if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 			return nil, ErrPullForbidden
 		}
 
@@ -308,7 +311,7 @@ func (uc *PullRequestUseCase) Delete(in ResolveRepositoryInput, number int) erro
 		return err
 	}
 
-	if pr.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if pr.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return ErrPullForbidden
 	}
 
@@ -359,7 +362,7 @@ func (uc *PullRequestUseCase) Merge(in ResolveRepositoryInput, number int, strat
 		return nil, err
 	}
 
-	if repo.OwnerID != in.ViewerID {
+	if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -453,7 +456,7 @@ func (uc *PullRequestUseCase) UpdateComment(in ResolveRepositoryInput, number in
 		return nil, ErrCommentNotFound
 	}
 
-	if c.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if c.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -490,7 +493,7 @@ func (uc *PullRequestUseCase) DeleteComment(in ResolveRepositoryInput, number in
 		return ErrCommentNotFound
 	}
 
-	if c.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if c.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return ErrPullForbidden
 	}
 
@@ -498,7 +501,7 @@ func (uc *PullRequestUseCase) DeleteComment(in ResolveRepositoryInput, number in
 }
 
 func (uc *PullRequestUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users}
+	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users, orgs: uc.orgs}
 	repo, _, _, err := repoUC.resolve(in)
 	if err != nil {
 		return nil, err
@@ -634,5 +637,14 @@ func mapGitMergeErr(err error) error {
 		return ErrBranchNotFound
 	default:
 		return err
+	}
+}
+
+func (uc *PullRequestUseCase) repoUC() *RepositoryUseCase {
+	return &RepositoryUseCase{
+		store: uc.repos, 
+		folders: uc.folders, 
+		users: uc.users, 
+		orgs: uc.orgs,
 	}
 }

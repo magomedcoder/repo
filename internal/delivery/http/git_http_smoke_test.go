@@ -26,7 +26,7 @@ func TestGitHTTPSmoke(t *testing.T) {
 		t.Fatalf("create repo %d %s", created.StatusCode, created.Body)
 	}
 
-	bares, _ := filepath.Glob(filepath.Join(dir, "data", "repos", "*", "hello.git"))
+	bares, _ := filepath.Glob(filepath.Join(dir, "data", "repos", "user", "*", "hello.git"))
 	if len(bares) == 0 {
 		t.Fatal("bare missing")
 	}
