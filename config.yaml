@@ -1,0 +1,7 @@
+http_addr: ":8080"
+ssh_addr: ":2222"
+data_dir: "data"
+db_path: "data/db.sqlite"
+repos_root: "data/repos"
+avatars_dir: "data/avatars"
+ssh_dir: "data/ssh"

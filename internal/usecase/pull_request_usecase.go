@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magomedcoder/repo/internal/domain"
+	"git.magomedcoder.ru/repo/internal/domain"
 )
 
 var (
@@ -54,11 +54,12 @@ type PullCompare struct {
 }
 
 type PullRequestUseCase struct {
-	pulls   domain.PullRequestStore
-	repos   domain.RepositoryStore
-	folders domain.FolderStore
-	users   domain.UserStore
-	git     domain.GitRepository
+	pulls    domain.PullRequestStore
+	repos    domain.RepositoryStore
+	folders  domain.FolderStore
+	users    domain.UserStore
+	git      domain.GitRepository
+	activity domain.ActivityStore
 }
 
 func NewPullRequestUseCase(
@@ -67,13 +68,15 @@ func NewPullRequestUseCase(
 	folders domain.FolderStore,
 	users domain.UserStore,
 	git domain.GitRepository,
+	activity domain.ActivityStore,
 ) *PullRequestUseCase {
 	return &PullRequestUseCase{
-		pulls:   pulls,
-		repos:   repos,
-		folders: folders,
-		users:   users,
-		git:     git,
+		pulls:    pulls,
+		repos:    repos,
+		folders:  folders,
+		users:    users,
+		git:      git,
+		activity: activity,
 	}
 }
 
@@ -195,6 +198,7 @@ func (uc *PullRequestUseCase) Create(in ResolveRepositoryInput, title, body, bas
 		return nil, fmt.Errorf("create pull: %w", err)
 	}
 
+	recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityPROpen, activitySummary("opened pull request #%d: %s", pr.Number, pr.Title))
 	return uc.mapPull(pr)
 }
 
@@ -213,9 +217,11 @@ func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, titl
 		return nil, err
 	}
 
-	if pr.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if pr.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
+
+	prevState := pr.State
 
 	if title != nil {
 		next := strings.TrimSpace(*title)
@@ -249,7 +255,7 @@ func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, titl
 	}
 
 	if base != nil || head != nil {
-		if repo.OwnerID != in.ViewerID {
+		if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 			return nil, ErrPullForbidden
 		}
 
@@ -290,6 +296,9 @@ func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, titl
 		return nil, fmt.Errorf("update pull: %w", err)
 	}
 
+	if state != nil && *state != prevState && *state == "closed" {
+		recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityPRClose, activitySummary("closed pull request #%d", pr.Number))
+	}
 	return uc.mapPull(pr)
 }
 
@@ -308,7 +317,7 @@ func (uc *PullRequestUseCase) Delete(in ResolveRepositoryInput, number int) erro
 		return err
 	}
 
-	if pr.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if pr.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return ErrPullForbidden
 	}
 
@@ -359,7 +368,7 @@ func (uc *PullRequestUseCase) Merge(in ResolveRepositoryInput, number int, strat
 		return nil, err
 	}
 
-	if repo.OwnerID != in.ViewerID {
+	if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -402,6 +411,8 @@ func (uc *PullRequestUseCase) Merge(in ResolveRepositoryInput, number int, strat
 	}
 
 	_ = uc.repos.TouchLastActivity(repo.ID, now)
+	recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityPRMerge, activitySummary("merged pull request #%d", pr.Number))
+
 	return uc.mapPull(pr)
 }
 
@@ -453,7 +464,7 @@ func (uc *PullRequestUseCase) UpdateComment(in ResolveRepositoryInput, number in
 		return nil, ErrCommentNotFound
 	}
 
-	if c.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if c.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -490,7 +501,7 @@ func (uc *PullRequestUseCase) DeleteComment(in ResolveRepositoryInput, number in
 		return ErrCommentNotFound
 	}
 
-	if c.AuthorID != in.ViewerID && repo.OwnerID != in.ViewerID {
+	if c.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
 		return ErrPullForbidden
 	}
 
@@ -634,5 +645,13 @@ func mapGitMergeErr(err error) error {
 		return ErrBranchNotFound
 	default:
 		return err
+	}
+}
+
+func (uc *PullRequestUseCase) repoUC() *RepositoryUseCase {
+	return &RepositoryUseCase{
+		store:   uc.repos,
+		folders: uc.folders,
+		users:   uc.users,
 	}
 }

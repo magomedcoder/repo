@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRepoOwner } from '@/composables/useRepoOwner'
+import { btnPrimary, field } from '@/lib/classes'
 import { ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { pullsApi, reposApi } from '@/api'
@@ -8,8 +10,9 @@ import Icon from '@/components/ui/Icon.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { formatDate, localizeError } from '@/i18n'
 
+const owner = useRepoOwner()
+
 const props = defineProps<{
-  owner: string
   repoPath: string
 }>()
 
@@ -30,9 +33,9 @@ async function load() {
   error.value = ''
   try {
     const [pullRes, branchRes, repo] = await Promise.all([
-      pullsApi.list(props.owner, props.repoPath, state.value),
-      reposApi.branches(props.owner, props.repoPath),
-      reposApi.get(props.owner, props.repoPath),
+      pullsApi.list(owner.value, props.repoPath, state.value),
+      reposApi.branches(owner.value, props.repoPath),
+      reposApi.get(owner.value, props.repoPath),
     ])
     pulls.value = pullRes.pulls ?? []
     branches.value = branchRes.branches ?? []
@@ -52,7 +55,7 @@ async function create() {
   creating.value = true
   error.value = ''
   try {
-    await pullsApi.create(props.owner, props.repoPath, {
+    await pullsApi.create(owner.value, props.repoPath, {
       title: title.value,
       body: body.value,
       base_branch: baseBranch.value,
@@ -86,7 +89,7 @@ function iconClass(s: string) {
   return 'text-ink-muted'
 }
 
-watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true })
+watch(() => [owner.value, props.repoPath, state.value], load, { immediate: true })
 </script>
 
 <template>
@@ -110,7 +113,7 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
       </div>
       <button 
         type="button" 
-        class="btn-primary" 
+        :class="btnPrimary" 
         @click="showForm = !showForm"
       >{{ $t('pulls.new') }}</button>
     </div>
@@ -123,19 +126,19 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
       <h2 class="text-sm font-semibold">{{ $t('pulls.new') }}</h2>
       <input 
         v-model="title" 
-        class="input" 
+        :class="field" 
         required 
         :placeholder="$t('pulls.titleField')"
       />
       <textarea 
         v-model="body" 
-        class="input min-h-24" 
+        :class="[field, 'min-h-24']" 
         :placeholder="$t('pulls.bodyField')" 
       />
       <div class="grid gap-3 sm:grid-cols-2">
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ $t('pulls.base') }}</span>
-          <select v-model="baseBranch" class="input">
+          <select v-model="baseBranch" :class="field">
             <option 
               v-for="b in branches" 
               :key="'base-' + b.name" 
@@ -145,7 +148,7 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
         </label>
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ $t('pulls.head') }}</span>
-          <select v-model="headBranch" class="input" required>
+          <select v-model="headBranch" :class="field" required>
             <option 
               v-for="b in branches" 
               :key="'head-' + b.name" 
@@ -156,7 +159,7 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
       </div>
       <button 
         type="submit" 
-        class="btn-primary" 
+        :class="btnPrimary" 
         :disabled="creating"
       >
         {{ creating ? $t('pulls.creating') : $t('pulls.create') }}
@@ -171,7 +174,7 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
             :to="{ 
               name: 'repo-pull', 
               params: { 
-                owner, repoPath, 
+                repoPath, 
                 number: String(pull.number) 
               } 
             }"

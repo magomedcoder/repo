@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { btnDanger, btnGhost, btnPrimary, field } from '@/lib/classes'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { issuesApi } from '@/api'
@@ -163,14 +164,14 @@ watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true
             <button
               v-if="canEdit"
               type="button"
-              class="btn-ghost"
+              :class="btnGhost"
               :disabled="busy"
               @click="toggleState"
             >{{ issue.state === 'open' ? $t('issues.close') : $t('issues.reopen') }}</button>
             <button
               v-if="canEdit"
               type="button"
-              class="btn-danger"
+              :class="btnDanger"
               :disabled="busy"
               @click="remove"
             >{{ $t('issues.delete') }}</button>
@@ -214,13 +215,13 @@ watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true
             <form class="space-y-2" @submit.prevent="addComment">
               <textarea
                 v-model="comment"
-                class="input min-h-24"
+                :class="[field, 'min-h-24']"
                 required
                 :placeholder="$t('issues.comment')"
               />
               <button
                 type="submit"
-                class="btn-primary"
+                :class="btnPrimary"
                 :disabled="busy"
               >{{ $t('issues.commentAction') }}</button>
             </form>
@@ -251,7 +252,7 @@ watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true
                 />
                 <button
                   type="submit"
-                  class="btn-ghost"
+                  :class="btnGhost"
                   :disabled="busy"
                 >{{ $t('issues.saveLabels') }}</button>
               </form>

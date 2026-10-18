@@ -5,7 +5,7 @@ export function entryRoute(owner: string, repoPath: string, refName: string, ent
   if (entry.type === 'tree') {
     return {
       name: 'repo-tree',
-      params: { owner, repoPath },
+      params: { repoPath },
       query: {
         ref: refName,
         path: entry.path
@@ -15,7 +15,7 @@ export function entryRoute(owner: string, repoPath: string, refName: string, ent
 
   return {
     name: 'repo-blob',
-    params: { owner, repoPath },
+    params: { repoPath },
     query: {
       ref: refName,
       path: entry.path
@@ -26,6 +26,6 @@ export function entryRoute(owner: string, repoPath: string, refName: string, ent
 export function repoHome(owner: string, repoPath: string): RouteLocationRaw {
   return {
     name: 'repo',
-    params: { owner, repoPath }
+    params: { repoPath }
   }
 }

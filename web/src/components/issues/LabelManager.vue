@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { btnGhost, field } from '@/lib/classes'
 import { ref } from 'vue'
 import type { Label } from '@/api/types'
 import LabelPill from '@/components/ui/LabelPill.vue'
@@ -47,7 +48,7 @@ function submit() {
     <form class="flex flex-wrap gap-2" @submit.prevent="submit">
       <input
         v-model="name"
-        class="input max-w-48"
+        :class="[field, 'max-w-48']"
         required
         :placeholder="$t('issues.labelName')"
       />
@@ -58,7 +59,7 @@ function submit() {
       />
       <button
         type="submit"
-        class="btn-ghost"
+        :class="btnGhost"
       >{{ $t('issues.addLabel') }}</button>
     </form>
   </section>

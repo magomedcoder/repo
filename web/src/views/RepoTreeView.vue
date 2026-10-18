@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRepoOwner } from '@/composables/useRepoOwner'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { reposApi } from '@/api'
@@ -6,10 +7,11 @@ import type { TreeEntry } from '@/api/types'
 import FileTable from '@/components/repo/FileTable.vue'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
-import { localizeError } from '@/i18n'
+import { pageError } from '@/i18n'
+
+const owner = useRepoOwner()
 
 const props = defineProps<{
-  owner: string
   repoPath: string
 }>()
 
@@ -26,7 +28,6 @@ const parentTo = computed(() => {
     return {
       name: 'repo' as const,
       params: {
-        owner: props.owner,
         repoPath: props.repoPath
       }
     }
@@ -38,7 +39,6 @@ const parentTo = computed(() => {
   return {
     name: 'repo-tree' as const,
     params: {
-      owner: props.owner,
       repoPath: props.repoPath
     },
     query: {
@@ -52,19 +52,19 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const res = await reposApi.tree(props.owner, props.repoPath, {
+    const res = await reposApi.tree(owner.value, props.repoPath, {
       ref: refName.value,
       path: dirPath.value,
     })
     tree.value = res.tree ?? []
   } catch (err) {
-    error.value = localizeError(err, 'errors.loadTree')
+    error.value = pageError(err, 'errors.loadTree')
   } finally {
     loading.value = false
   }
 }
 
-watch(() => [props.owner, props.repoPath, route.query.ref, route.query.path], load, { immediate: true })
+watch(() => [owner.value, props.repoPath, route.query.ref, route.query.path], load, { immediate: true })
 </script>
 
 <template>

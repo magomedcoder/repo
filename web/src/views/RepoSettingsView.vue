@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRepoOwner } from '@/composables/useRepoOwner'
+import { btnDanger, btnPrimary, field } from '@/lib/classes'
 import { inject, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { foldersApi, reposApi } from '@/api'
@@ -7,8 +9,9 @@ import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { i18n, localizeError } from '@/i18n'
 
+const owner = useRepoOwner()
+
 const props = defineProps<{
-  owner: string
   repoPath: string
 }>()
 
@@ -18,6 +21,7 @@ const reloadSidebar = inject<() => void>('reloadSidebar', () => {})
 const repo = ref<Repository | null>(null)
 const description = ref('')
 const isPrivate = ref(false)
+const protectBranch = ref(true)
 const defaultBranch = ref('main')
 const folderKey = ref('')
 const folderOptions = ref<{
@@ -56,9 +60,10 @@ async function load() {
   loadError.value = ''
   message.value = ''
   try {
-    repo.value = await reposApi.get(props.owner, props.repoPath)
+    repo.value = await reposApi.get(owner.value, props.repoPath)
     description.value = repo.value.description
     isPrivate.value = repo.value.is_private
+    protectBranch.value = repo.value.protect_default_branch !== false
     defaultBranch.value = repo.value.default_branch
     folderKey.value = repo.value.folder_id == null ? '' : String(repo.value.folder_id)
     const tree = await foldersApi.tree()
@@ -87,23 +92,23 @@ async function save() {
   formError.value = ''
   message.value = ''
   try {
-    const updated = await reposApi.update(props.owner, props.repoPath, {
+    const updated = await reposApi.update(owner.value, props.repoPath, {
       description: description.value,
       private: isPrivate.value,
       default_branch: defaultBranch.value,
+      protect_default_branch: protectBranch.value,
     })
     const currentFolder = repo.value.folder_id ?? null
     const nextFolder = parseFolderKey(folderKey.value)
     if (currentFolder !== nextFolder) {
-      const moved = await reposApi.move(props.owner, props.repoPath, nextFolder)
+      const moved = await reposApi.move(owner.value, props.repoPath, nextFolder)
       repo.value = moved
       const newPath = moved.folder_path ? `${moved.folder_path}/${moved.name}` : moved.name
       reloadSidebar()
       await router.replace({
         name: 'repo-settings',
         params: {
-          owner: props.owner,
-          repoPath: newPath
+            repoPath: newPath
         }
       })
       message.value = i18n.global.t('settings.savedMoved')
@@ -125,7 +130,7 @@ async function remove() {
   deleting.value = true
   formError.value = ''
   try {
-    await reposApi.remove(props.owner, props.repoPath)
+    await reposApi.remove(owner.value, props.repoPath)
     reloadSidebar()
     await router.push({ name: 'home' })
   } catch (err) {
@@ -134,7 +139,7 @@ async function remove() {
   }
 }
 
-watch(() => [props.owner, props.repoPath], load, { immediate: true })
+watch(() => [owner.value, props.repoPath], load, { immediate: true })
 </script>
 
 <template>
@@ -151,11 +156,11 @@ watch(() => [props.owner, props.repoPath], load, { immediate: true })
         <h1 class="text-xl font-semibold">{{ $t('settings.title') }}</h1>
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ $t('settings.description') }}</span>
-          <input v-model="description" class="input" />
+          <input v-model="description" :class="field" />
         </label>
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ $t('settings.defaultBranch') }}</span>
-          <input v-model="defaultBranch" class="input font-mono" />
+          <input v-model="defaultBranch" :class="[field, 'font-mono']" />
         </label>
         <label class="flex items-center gap-2 text-sm">
           <input
@@ -165,9 +170,13 @@ watch(() => [props.owner, props.repoPath], load, { immediate: true })
           />
           {{ $t('settings.private') }}
         </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="protectBranch" type="checkbox" />
+          {{ $t('settings.protectBranch') }}
+        </label>
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ $t('settings.folder') }}</span>
-          <select v-model="folderKey" class="input">
+          <select v-model="folderKey" :class="field">
             <option
               v-for="opt in folderOptions"
               :key="opt.id"
@@ -179,7 +188,7 @@ watch(() => [props.owner, props.repoPath], load, { immediate: true })
         </label>
         <p v-if="formError" class="text-sm text-warn">{{ formError }}</p>
         <p v-else-if="message" class="text-sm text-moss">{{ message }}</p>
-        <button type="submit" class="btn-primary" :disabled="saving">
+        <button type="submit" :class="btnPrimary" :disabled="saving">
           {{ saving ? $t('settings.saving') : $t('settings.save') }}
         </button>
       </form>
@@ -193,7 +202,7 @@ watch(() => [props.owner, props.repoPath], load, { immediate: true })
           </div>
           <button
             type="button"
-            class="btn-danger"
+            :class="btnDanger"
             :disabled="deleting"
             @click="remove"
           >

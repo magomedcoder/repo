@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { field } from '@/lib/classes'
 import { ref } from 'vue'
 import { foldersApi } from '@/api'
 import ModalForm from '@/components/ModalForm.vue'
@@ -39,7 +40,7 @@ async function submit() {
   <ModalForm :title="$t('modal.newFolder')" :submit-label="busy ? $t('modal.creating') : $t('modal.createFolder')" @close="emit('close')" @submit="submit">
     <label class="block text-sm">
       <span class="mb-1 block font-medium">{{ $t('modal.name') }}</span>
-      <input v-model="name" class="input" required maxlength="64" placeholder="work" autofocus />
+      <input v-model="name" :class="field" required maxlength="64" placeholder="work" autofocus />
     </label>
     <p v-if="error" class="text-sm text-warn">{{ error }}</p>
   </ModalForm>

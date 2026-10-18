@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { btnGhost, btnPrimary, field } from '@/lib/classes'
 import { ref } from 'vue'
 import Icon from '@/components/ui/Icon.vue'
 
@@ -35,7 +36,7 @@ async function copy() {
 
 <template>
   <div class="relative">
-    <button type="button" class="btn-primary" @click="open = !open">
+    <button type="button" :class="btnPrimary" @click="open = !open">
       <Icon name="code" />
       {{ $t('nav.code') }}
       <Icon name="chevron" />
@@ -61,8 +62,8 @@ async function copy() {
         </button>
       </div>
       <div class="flex gap-2">
-        <input :value="currentUrl()" readonly class="input font-mono text-xs" @focus="selectUrl" />
-        <button type="button" class="btn-ghost shrink-0" @click="copy">
+        <input :value="currentUrl()" readonly :class="[field, 'font-mono text-xs']" @focus="selectUrl" />
+        <button type="button" :class="[btnGhost, 'shrink-0']" @click="copy">
           {{ copied ? $t('common.copied') : $t('common.copy') }}
         </button>
       </div>

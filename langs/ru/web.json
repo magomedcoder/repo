@@ -5,11 +5,15 @@
     "close": "Закрыть",
     "copy": "Копировать",
     "copied": "Скопировано",
+    "ok": "Готово",
     "private": "приватный",
     "public": "публичный",
     "binary": "бинарный",
     "bytes": "{n} байт",
     "sizeB": "{n} Б"
+  },
+  "footer": {
+
   },
   "auth": {
     "loginLead": "Войдите в свою файловую систему репозиториев.",
@@ -41,7 +45,11 @@
     "pulls": "Pull requests",
     "code": "Код",
     "profile": "Профиль",
-    "sshKeys": "SSH-ключи"
+    "accessTokens": "Токены доступа",
+    "index": "индекс",
+    "tagline": "Персональный Git-репозиторий",
+    "refs": "ссылки",
+    "about": "о репозитории"
   },
   "home": {
     "title": "Обзор",
@@ -54,6 +62,23 @@
   },
   "list": {
     "noRepos": "Здесь пока нет репозиториев."
+  },
+  "index": {
+    "name": "Имя",
+    "description": "Описание",
+    "owner": "Владелец",
+    "idle": "Простой",
+    "links": "Ссылки",
+    "summary": "обзор",
+    "log": "журнал",
+    "tree": "дерево",
+    "age": "Возраст",
+    "author": "Автор",
+    "message": "Сообщение",
+    "commit": "Коммит",
+    "mode": "Режим",
+    "size": "Размер",
+    "ref": "Ссылка"
   },
   "repo": {
     "home": "К репозиторию",
@@ -74,7 +99,9 @@
   "blob": {
     "tree": "Дерево",
     "raw": "Raw",
-    "binary": "Бинарный файл - откройте Raw, чтобы скачать."
+    "binary": "Бинарный файл - откройте Raw, чтобы скачать.",
+    "blame": "Blame",
+    "hideBlame": "Скрыть blame"
   },
   "commits": {
     "title": "Коммиты",
@@ -100,6 +127,7 @@
     "description": "Описание",
     "defaultBranch": "Ветка по умолчанию",
     "private": "Приватный репозиторий",
+    "protectBranch": "Защитить ветку по умолчанию от force-push и удаления",
     "folder": "Папка",
     "saving": "Сохранение...",
     "save": "Сохранить",
@@ -116,12 +144,33 @@
     "creating": "Создание...",
     "createFolder": "Создать папку",
     "name": "Название",
+    "path": "Путь",
     "newRepository": "Новый репозиторий",
     "createRepository": "Создать репозиторий",
     "description": "Описание",
     "optional": "Необязательно",
     "defaultBranch": "Ветка по умолчанию",
     "private": "Приватный репозиторий"
+  },
+  "activity": {
+    "title": "Недавняя активность",
+    "empty": "Недавней активности нет."
+  },
+  "tokens": {
+    "title": "Токены доступа",
+    "lead": "Персональные токены для HTTPS Git и API.",
+    "empty": "Токенов пока нет.",
+    "add": "Создать токен",
+    "nameField": "Название",
+    "namePlaceholder": "CI deploy",
+    "creating": "Создание...",
+    "submit": "Создать",
+    "revoke": "Отозвать",
+    "prefix": "Префикс",
+    "lastUsed": "Последнее использование",
+    "confirmRevoke": "Отозвать этот токен?",
+    "createdTitle": "Токен создан",
+    "createdHint": "Скопируйте токен сейчас. Повторно он не будет показан."
   },
   "errors": {
     "loginFailed": "Не удалось войти",
@@ -144,8 +193,6 @@
     "createIssue": "Не удалось создать задачу",
     "createComment": "Не удалось добавить комментарий",
     "createLabel": "Не удалось создать метку",
-    "loadSSHKeys": "Не удалось загрузить SSH-ключи",
-    "createSSHKey": "Не удалось добавить SSH-ключ",
     "loadPulls": "Не удалось загрузить pull requests",
     "loadPull": "Не удалось загрузить pull request",
     "createPull": "Не удалось создать pull request",
@@ -153,13 +200,17 @@
     "loadProfile": "Не удалось загрузить профиль",
     "saveProfile": "Не удалось сохранить профиль",
     "uploadAvatar": "Не удалось обновить аватар",
-    "searchFailed": "Ошибка поиска"
+    "searchFailed": "Ошибка поиска",
+    "loadTokens": "Не удалось загрузить токены",
+    "createToken": "Не удалось создать токен",
+    "loadActivity": "Не удалось загрузить активность",
+    "loadBlame": "Не удалось загрузить blame"
   },
   "search": {
     "title": "Поиск",
     "lead": "Найти репозитории по имени.",
     "query": "Запрос",
-    "placeholder": "Поиск репозиториев...",
+    "placeholder": "Поиск...",
     "scope": "Область",
     "scopeOwn": "Мои репозитории",
     "scopePublic": "Публичные",
@@ -170,6 +221,7 @@
     "title": "Профиль",
     "lead": "Настройки аккаунта и аватар.",
     "email": "Email",
+    "newPassword": "Новый пароль",
     "save": "Сохранить",
     "saving": "Сохранение...",
     "changeAvatar": "Сменить аватар",
@@ -204,21 +256,6 @@
     "noComments": "Комментариев пока нет.",
     "comment": "Написать комментарий",
     "commentAction": "Комментировать"
-  },
-  "sshKeys": {
-    "title": "SSH-ключи",
-    "lead": "Ключи для clone и push по SSH.",
-    "empty": "SSH-ключей пока нет.",
-    "add": "Добавить SSH-ключ",
-    "titleField": "Название",
-    "titlePlaceholder": "Рабочий ноутбук",
-    "keyField": "Ключ",
-    "keyPlaceholder": "ssh-ed25519 AAAA... comment",
-    "adding": "Добавление...",
-    "submit": "Добавить ключ",
-    "delete": "Удалить",
-    "fingerprint": "Отпечаток",
-    "confirmDelete": "Удалить этот SSH-ключ?"
   },
   "issues": {
     "title": "Задачи",

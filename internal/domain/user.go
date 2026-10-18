@@ -33,6 +33,8 @@ type UserStore interface {
 
 	ExistsByEmail(email string) (bool, error)
 
+	Count() (int64, error)
+
 	Update(user *User) error
 }
 

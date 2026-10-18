@@ -1,22 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
-import Icon from '@/components/ui/Icon.vue'
-import LocaleSwitch from '@/components/LocaleSwitch.vue'
+
+const headBar = 'flex items-center border-b border-line bg-white px-3 py-2'
+const headLink = 'inline-block px-2 text-[13px] leading-none text-ink-muted hover:text-ink hover:no-underline'
 
 const auth = useAuth()
-const { crumbs } = useBreadcrumbs()
+const route = useRoute()
 const router = useRouter()
-const searchQ = ref('')
+const searchQ = ref(typeof route.query.q === 'string' ? route.query.q : '')
 
-async function onLogout() {
-  await auth.logout()
-  await router.push({
-    name: 'login'
-  })
-}
+const username = computed(() => auth.user.value?.username || '')
 
 async function onSearch() {
   const q = searchQ.value.trim()
@@ -25,71 +20,39 @@ async function onSearch() {
     query: q ? { q } : {},
   })
 }
+
+async function onLogout() {
+  await auth.logout()
+  await router.push({ name: 'login' })
+}
 </script>
 
 <template>
-  <header class="bg-header text-white">
-    <div class="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4">
-      <RouterLink to="/" class="flex items-center gap-2 font-semibold text-white">
-        <Icon name="mark" />
-        Repo
-      </RouterLink>
-
-      <nav
-        v-if="crumbs.length"
-        class="hidden min-w-0 flex-1 items-center gap-1.5 overflow-x-auto text-sm text-white/70 sm:flex"
-        :aria-label="$t('nav.breadcrumb')"
-      >
-        <template
-          v-for="(crumb, i) in crumbs"
-          :key="`${crumb.labelKey || crumb.label}-${i}`"
-        >
-          <span v-if="i > 0">/</span>
-          <RouterLink
-            v-if="crumb.to"
-            :to="crumb.to"
-            class="truncate text-white hover:underline"
-          >
-            {{ crumb.labelKey ? $t(crumb.labelKey) : crumb.label }}
-          </RouterLink>
-          <span v-else class="truncate text-white">{{ crumb.labelKey ? $t(crumb.labelKey) : crumb.label }}</span>
-        </template>
-      </nav>
-      <div v-else class="flex-1" />
-
-      <form
-        class="hidden min-w-0 max-w-xs flex-1 sm:block"
-        @submit.prevent="onSearch"
-      >
+  <header>
+    <nav :class="headBar" :aria-label="$t('nav.breadcrumb')">
+      <RouterLink
+        to="/"
+        class="mr-2 inline-block text-[15px] font-semibold leading-none text-ink no-underline"
+      >Repo</RouterLink>
+      <span class="flex-1" />
+      <form class="mx-1 flex items-center" @submit.prevent="onSearch">
         <input
           v-model="searchQ"
           type="search"
-          class="w-full rounded-md border-0 bg-white/10 px-3 py-1.5 text-sm text-white placeholder:text-white/50 focus:bg-white/15 focus:outline-none focus:ring-1 focus:ring-white/40"
+          class="h-7 w-[14em] rounded-sm border border-line bg-paper-2 px-2 text-[13px] leading-none text-ink placeholder:text-ink-muted"
           :placeholder="$t('search.placeholder')"
           :aria-label="$t('search.title')"
         >
       </form>
-      <LocaleSwitch inverted />
-      <RouterLink
-        :to="{ name: 'profile' }"
-        class="hidden text-sm text-white/80 hover:text-white sm:inline"
-      >
-        {{ $t('nav.profile') }}
-      </RouterLink>
-      <RouterLink
-        :to="{ name: 'ssh-keys' }"
-        class="hidden text-sm text-white/80 hover:text-white sm:inline"
-      >
-        {{ $t('nav.sshKeys') }}
-      </RouterLink>
-      <span class="hidden text-sm text-white/80 sm:inline">{{ auth.user.value?.username }}</span>
-      <button
-        type="button"
-        class="text-sm text-white/80 hover:text-white"
-        @click="onLogout"
-      >
-        {{ $t('nav.logout') }}
-      </button>
-    </div>
+      <template v-if="username">
+        <RouterLink :class="headLink" :to="{ name: 'profile' }">{{ username }}</RouterLink>
+        <RouterLink :class="headLink" :to="{ name: 'tokens' }">{{ $t('nav.accessTokens') }}</RouterLink>
+        <button type="button" :class="headLink" @click="onLogout">{{ $t('nav.logout') }}</button>
+      </template>
+      <template v-else>
+        <RouterLink :class="headLink" :to="{ name: 'login' }">{{ $t('auth.signIn') }}</RouterLink>
+        <RouterLink :class="headLink" :to="{ name: 'register' }">{{ $t('auth.register') }}</RouterLink>
+      </template>
+    </nav>
   </header>
 </template>

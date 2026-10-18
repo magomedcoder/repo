@@ -17,7 +17,6 @@ defineProps<{
     :to="{
       name: 'repo-issue',
       params: {
-        owner,
         repoPath,
         number: String(issue.number)
       }

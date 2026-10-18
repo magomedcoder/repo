@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magomedcoder/repo/internal/domain"
+	"git.magomedcoder.ru/repo/internal/domain"
 )
 
 type GitService string
@@ -17,12 +17,13 @@ const (
 )
 
 type GitUseCase struct {
-	repos   domain.RepositoryStore
-	folders domain.FolderStore
-	users   domain.UserStore
-	tokens  domain.AccessTokenStore
-	hasher  domain.PasswordHasher
-	git     domain.GitRepository
+	repos    domain.RepositoryStore
+	folders  domain.FolderStore
+	users    domain.UserStore
+	tokens   domain.AccessTokenStore
+	hasher   domain.PasswordHasher
+	git      domain.GitRepository
+	activity domain.ActivityStore
 }
 
 func NewGitUseCase(
@@ -32,19 +33,43 @@ func NewGitUseCase(
 	tokens domain.AccessTokenStore,
 	hasher domain.PasswordHasher,
 	git domain.GitRepository,
+	activity domain.ActivityStore,
 ) *GitUseCase {
 	return &GitUseCase{
-		repos:   repos,
-		folders: folders,
-		users:   users,
-		tokens:  tokens,
-		hasher:  hasher,
-		git:     git,
+		repos:    repos,
+		folders:  folders,
+		users:    users,
+		tokens:   tokens,
+		hasher:   hasher,
+		git:      git,
+		activity: activity,
 	}
 }
 
-func (uc *GitUseCase) Resolve(ownerUsername, folderPath, name string) (*domain.Repository, *domain.User, error) {
-	repo, owner, _, err := (&RepositoryUseCase{
+func (uc *GitUseCase) ResolveClonePath(path string) (*domain.Repository, error) {
+	path = strings.Trim(strings.TrimSpace(path), "/")
+	if path == "" {
+		return nil, ErrRepoNotFound
+	}
+	if !strings.HasSuffix(path, ".git") {
+		path += ".git"
+	}
+
+	repo, err := uc.repos.FindByRepoPath(path)
+	if err == nil {
+		return repo, nil
+	}
+
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 {
+		return nil, ErrRepoNotFound
+	}
+
+	return uc.repos.FindByRepoPath(strings.Join(parts[1:], "/"))
+}
+
+func (uc *GitUseCase) Resolve(ownerUsername, folderPath, name string) (*domain.Repository, error) {
+	repo, _, _, err := (&RepositoryUseCase{
 		store:   uc.repos,
 		folders: uc.folders,
 		users:   uc.users,
@@ -53,8 +78,7 @@ func (uc *GitUseCase) Resolve(ownerUsername, folderPath, name string) (*domain.R
 		FolderPath:    folderPath,
 		Name:          name,
 	})
-
-	return repo, owner, err
+	return repo, err
 }
 
 func (uc *GitUseCase) Authenticate(username, secret string) (*domain.User, error) {
@@ -110,6 +134,7 @@ func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 }
 
 func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, service GitService) error {
+	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users}
 	switch service {
 	case GitUploadPack:
 		if !repo.IsPrivate {
@@ -120,7 +145,7 @@ func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, se
 			return ErrUnauthorized
 		}
 
-		if viewer.ID != repo.OwnerID {
+		if !repoUC.canReadPrivate(repo, viewer.ID) {
 			return ErrRepoForbidden
 		}
 
@@ -130,7 +155,7 @@ func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, se
 			return ErrUnauthorized
 		}
 
-		if viewer.ID != repo.OwnerID {
+		if !repoUC.canWriteGit(repo, viewer.ID) {
 			return ErrRepoForbidden
 		}
 
@@ -148,12 +173,35 @@ func (uc *GitUseCase) ServePack(repoPath string, service GitService, stdin io.Re
 	return uc.git.ServePack(repoPath, string(service), stdin, stdout)
 }
 
-func (uc *GitUseCase) ServeSSHPack(repoPath string, service GitService, stdin io.Reader, stdout, stderr io.Writer) error {
-	return uc.git.ServeSSHPack(repoPath, string(service), stdin, stdout, stderr)
+func (uc *GitUseCase) EnsureDefaultBranch(repoPath, branch string) error {
+	return uc.git.EnsureDefaultBranch(repoPath, branch)
 }
 
-func (uc *GitUseCase) TouchActivity(repoID uint) error {
-	return uc.repos.TouchLastActivity(repoID, time.Now())
+func (uc *GitUseCase) Ancestor(repoPath, oldRev, newRev string) (bool, error) {
+	return uc.git.CanFastForward(repoPath, oldRev, newRev)
+}
+
+func (uc *GitUseCase) TouchActivity(repo *domain.Repository, actorID uint) error {
+	if repo == nil {
+		return nil
+	}
+
+	_ = uc.repos.TouchLastActivity(repo.ID, time.Now())
+	kind := repo.OwnerKind
+	if kind == "" {
+		kind = domain.OwnerKindUser
+	}
+
+	recordActivity(uc.activity, &domain.ActivityEvent{
+		ActorID:   actorID,
+		OwnerKind: kind,
+		OwnerID:   repo.OwnerID,
+		RepoID:    &repo.ID,
+		Type:      domain.ActivityPush,
+		Summary:   "pushed to repository",
+	})
+
+	return nil
 }
 
 func ParseGitService(raw string) (GitService, error) {

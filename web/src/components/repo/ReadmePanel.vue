@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { markdown } from '@/lib/classes'
 import { computed } from 'vue'
 import { marked } from 'marked'
 import type { BlobContent } from '@/api/types'
@@ -19,6 +20,6 @@ const html = computed(() => {
 <template>
   <article class="overflow-hidden rounded-md border border-line bg-white">
     <header class="border-b border-line bg-paper px-4 py-2 font-mono text-sm font-semibold">{{ readme.path }}</header>
-    <div class="markdown-body px-6 py-4 text-sm leading-relaxed" v-html="html" />
+    <div :class="[markdown, 'px-6 py-4 text-sm leading-relaxed']" v-html="html" />
   </article>
 </template>

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { btnGhost, btnPrimary, field } from '@/lib/classes'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { usersApi } from '@/api'
-import type { Profile } from '@/api/types'
+import { activityApi, authApi, usersApi } from '@/api'
+import type { ActivityEvent, Profile } from '@/api/types'
+import ActivityFeed from '@/components/ActivityFeed.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
@@ -16,8 +18,14 @@ const email = ref('')
 const error = ref('')
 const loading = ref(true)
 const saving = ref(false)
+const currentPassword = ref('')
+const nextPassword = ref('')
+const passwordMessage = ref('')
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const activity = ref<ActivityEvent[]>([])
+const activityError = ref('')
+const activityLoading = ref(true)
 
 const avatarSrc = computed(() => {
   const u = auth.user.value
@@ -43,6 +51,17 @@ async function load() {
 
     profile.value = await usersApi.get(username)
     email.value = profile.value.email || ''
+    activityLoading.value = true
+    activityError.value = ''
+    try {
+      const activityRes = await activityApi.listOwner(username)
+      activity.value = activityRes.events ?? []
+    } catch (err) {
+      activityError.value = localizeError(err, 'errors.loadActivity')
+      activity.value = []
+    } finally {
+      activityLoading.value = false
+    }
   } catch (err) {
     error.value = localizeError(err, 'errors.loadProfile')
   } finally {
@@ -111,6 +130,22 @@ async function removeAvatar() {
   }
 }
 
+async function changePassword() {
+  passwordMessage.value = ''
+  error.value = ''
+  try {
+    await authApi.password({
+      current: currentPassword.value,
+      next: nextPassword.value,
+    })
+    currentPassword.value = ''
+    nextPassword.value = ''
+    passwordMessage.value = 'ok'
+  } catch (err) {
+    error.value = localizeError(err, 'errors.saveFailed')
+  }
+}
+
 onMounted(load)
 onUnmounted(clearBreadcrumbs)
 </script>
@@ -137,14 +172,14 @@ onUnmounted(clearBreadcrumbs)
             <div class="flex flex-wrap gap-2">
               <button
                 type="button"
-                class="btn-ghost"
+                :class="btnGhost"
                 :disabled="uploading"
                 @click="fileInput?.click()"
               >{{ uploading ? $t('profile.uploading') : $t('profile.changeAvatar') }}</button>
               <button
                 v-if="profile.has_avatar"
                 type="button"
-                class="btn-ghost"
+                :class="btnGhost"
                 :disabled="uploading"
                 @click="removeAvatar"
               >{{ $t('profile.removeAvatar') }}</button>
@@ -166,20 +201,39 @@ onUnmounted(clearBreadcrumbs)
               v-model="email" 
               type="email" 
               required 
-              class="input w-full"
+              :class="[field, 'w-full']"
             >
           </label>
-          <button type="submit" class="btn-primary" :disabled="saving">
+          <button type="submit" :class="btnPrimary" :disabled="saving">
             {{ saving ? $t('profile.saving') : $t('profile.save') }}
           </button>
         </form>
 
-        <p class="text-sm">
-          <RouterLink 
-            :to="{ name: 'ssh-keys' }" 
+        <form class="space-y-3" @submit.prevent="changePassword">
+          <label class="block text-sm">
+            <span class="mb-1 block font-semibold">{{ $t('auth.password') }}</span>
+            <input v-model="currentPassword" type="password" required :class="field" autocomplete="current-password" />
+          </label>
+          <label class="block text-sm">
+            <span class="mb-1 block font-semibold">{{ $t('profile.newPassword') }}</span>
+            <input v-model="nextPassword" type="password" required minlength="8" :class="field" autocomplete="new-password" />
+          </label>
+          <button type="submit" :class="btnPrimary">{{ $t('profile.save') }}</button>
+          <p v-if="passwordMessage">{{ $t('common.ok') }}</p>
+        </form>
+
+        <p class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <RouterLink
+            :to="{ name: 'tokens' }"
             class="text-accent hover:underline"
-          >{{ $t('nav.sshKeys') }}</RouterLink>
+          >{{ $t('nav.accessTokens') }}</RouterLink>
         </p>
+
+        <ActivityFeed
+          :events="activity"
+          :loading="activityLoading"
+          :error="activityError"
+        />
       </div>
     </PageState>
   </div>

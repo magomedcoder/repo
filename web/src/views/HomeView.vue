@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { textButton } from '@/lib/classes'
 import { inject, onMounted, onUnmounted, ref } from 'vue'
 import { foldersApi, reposApi } from '@/api'
 import type { Folder, Repository } from '@/api/types'
@@ -19,14 +20,18 @@ const error = ref('')
 const loading = ref(true)
 const showFolderModal = ref(false)
 const showRepoModal = ref(false)
+const sort = ref('name')
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [folderRes, repoRes] = await Promise.all([foldersApi.list(), reposApi.listOwn()])
+    const [repoRes, folderRes] = await Promise.all([
+      reposApi.listOwn(sort.value),
+      foldersApi.list(),
+    ])
+    repos.value = repoRes.repos ?? []
     folders.value = folderRes.folders ?? []
-    repos.value = (repoRes.repos ?? []).filter((r) => r.folder_id == null)
     setBreadcrumbs([{
       label: auth.user.value?.username || 'home'
     }])
@@ -35,6 +40,11 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+function onSort(key: string) {
+  sort.value = key
+  load()
 }
 
 function onCreated() {
@@ -48,24 +58,11 @@ onUnmounted(clearBreadcrumbs)
 
 <template>
   <div>
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-semibold">{{ $t('home.title') }}</h1>
-        <p class="mt-1 text-sm text-ink-muted">{{ $t('home.lead') }}</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="btn-ghost"
-          @click="showFolderModal = true"
-        >{{ $t('home.newFolder') }}</button>
-        <button
-          type="button"
-          class="btn-primary"
-          @click="showRepoModal = true"
-        >{{ $t('home.newRepository') }}</button>
-      </div>
-    </div>
+    <p class="mb-2 px-2">
+      <button type="button" :class="textButton" @click="showFolderModal = true">{{ $t('home.newFolder') }}</button>
+      <span class="px-1 text-ink-muted">|</span>
+      <button type="button" :class="textButton" @click="showRepoModal = true">{{ $t('home.newRepository') }}</button>
+    </p>
 
     <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
@@ -73,6 +70,8 @@ onUnmounted(clearBreadcrumbs)
       v-else
       :folders="folders"
       :repos="repos"
+      group-by-path
+      @sort="onSort"
     />
 
     <CreateFolderModal

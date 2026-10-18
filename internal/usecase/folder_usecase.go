@@ -8,11 +8,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/magomedcoder/repo/internal/domain"
+	"git.magomedcoder.ru/repo/internal/domain"
 )
 
 const (
-	maxFolderDepth   = 5
 	maxFolderNameLen = 64
 	minFolderNameLen = 1
 )
@@ -23,7 +22,6 @@ var (
 	ErrFolderExists         = errors.New("folder_already_exists")
 	ErrFolderNotFound       = errors.New("folder_not_found")
 	ErrFolderNotEmpty       = errors.New("folder_not_empty")
-	ErrFolderDepthExceeded  = errors.New("folder_depth_exceeded")
 	ErrInvalidFolderMove    = errors.New("invalid_folder_move")
 	ErrFolderCycle          = errors.New("folder_cycle")
 	ErrParentFolderNotFound = errors.New("parent_folder_not_found")
@@ -64,19 +62,22 @@ type RepositorySummaryItem struct {
 }
 
 type CreateFolderInput struct {
+	ViewerID uint
 	OwnerID  uint
 	Name     string
 	ParentID *uint
-	Path     string // parent path; used when ParentID is nil
+	Path     string
 }
 
 type RenameFolderInput struct {
-	OwnerID uint
-	ID      uint
-	Name    string
+	ViewerID uint
+	OwnerID  uint
+	ID       uint
+	Name     string
 }
 
 type MoveFolderInput struct {
+	ViewerID    uint
 	OwnerID     uint
 	ID          uint
 	NewParentID *uint
@@ -94,10 +95,29 @@ func NewFolderUseCase(folders domain.FolderStore, repos domain.RepositoryStore) 
 	}
 }
 
-func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
-	if in.OwnerID == 0 {
-		return nil, ErrUnauthorized
+func (uc *FolderUseCase) resolveOwner(viewerID, ownerID uint, write bool) (kind string, id uint, err error) {
+	if ownerID == 0 {
+		ownerID = viewerID
 	}
+
+	if ownerID == 0 || (write && ownerID != viewerID) {
+		return "", 0, ErrUnauthorized
+	}
+
+	return domain.OwnerKindUser, ownerID, nil
+}
+
+func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
+	viewerID := in.ViewerID
+	if viewerID == 0 {
+		viewerID = in.OwnerID
+	}
+
+	ownerKind, ownerID, err := uc.resolveOwner(viewerID, in.OwnerID, true)
+	if err != nil {
+		return nil, err
+	}
+	_ = ownerID
 
 	name, slug, err := normalizeFolderName(in.Name)
 	if err != nil {
@@ -108,31 +128,25 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 	var parent *domain.Folder
 	if parentID == nil && strings.TrimSpace(in.Path) != "" {
 		parentPath := strings.Trim(strings.TrimSpace(in.Path), "/")
-		parent, err = uc.folders.FindByOwnerAndPath(in.OwnerID, parentPath)
+		parent, err = uc.folders.FindByOwnerAndPath(ownerKind, ownerID, parentPath)
 		if err != nil {
 			return nil, ErrParentFolderNotFound
 		}
 
 		parentID = &parent.ID
 	} else if parentID != nil {
-		parent, err = uc.folders.FindByOwnerAndID(in.OwnerID, *parentID)
+		parent, err = uc.folders.FindByOwnerAndID(ownerKind, ownerID, *parentID)
 		if err != nil {
 			return nil, ErrParentFolderNotFound
 		}
 	}
 
-	depth := 1
 	parentPath := ""
 	if parent != nil {
-		depth = folderDepth(parent.Path) + 1
 		parentPath = parent.Path
 	}
 
-	if depth > maxFolderDepth {
-		return nil, ErrFolderDepthExceeded
-	}
-
-	exists, err := uc.folders.ExistsByOwnerParentSlug(in.OwnerID, parentID, slug)
+	exists, err := uc.folders.ExistsByOwnerParentSlug(ownerKind, ownerID, parentID, slug)
 	if err != nil {
 		return nil, fmt.Errorf("check folder existence: %w", err)
 	}
@@ -147,11 +161,12 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 	}
 
 	folder := &domain.Folder{
-		OwnerID:  in.OwnerID,
-		ParentID: parentID,
-		Name:     name,
-		Slug:     slug,
-		Path:     path,
+		OwnerKind: ownerKind,
+		OwnerID:   ownerID,
+		ParentID:  parentID,
+		Name:      name,
+		Slug:      slug,
+		Path:      path,
 	}
 	if err := uc.folders.Create(folder); err != nil {
 		return nil, fmt.Errorf("create folder: %w", err)
@@ -161,20 +176,25 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 	return &item, nil
 }
 
-func (uc *FolderUseCase) List(ownerID uint, parentID *uint, tree bool) (any, error) {
+func (uc *FolderUseCase) List(viewerID, ownerID uint, parentID *uint, tree bool) (any, error) {
+	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
+	if err != nil {
+		return nil, err
+	}
+
 	if ownerID == 0 {
 		return nil, ErrUnauthorized
 	}
 
 	if tree {
-		all, err := uc.folders.ListByOwner(ownerID)
+		all, err := uc.folders.ListByOwner(ownerKind, ownerID)
 		if err != nil {
 			return nil, fmt.Errorf("list folders: %w", err)
 		}
 		return buildFolderTree(all), nil
 	}
 
-	folders, err := uc.folders.ListByOwnerAndParent(ownerID, parentID)
+	folders, err := uc.folders.ListByOwnerAndParent(ownerKind, ownerID, parentID)
 	if err != nil {
 		return nil, fmt.Errorf("list folders: %w", err)
 	}
@@ -187,22 +207,27 @@ func (uc *FolderUseCase) List(ownerID uint, parentID *uint, tree bool) (any, err
 	return items, nil
 }
 
-func (uc *FolderUseCase) GetContents(ownerID, folderID uint) (*FolderContents, error) {
+func (uc *FolderUseCase) GetContents(viewerID, ownerID uint, folderID uint) (*FolderContents, error) {
+	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
+	if err != nil {
+		return nil, err
+	}
+
 	if ownerID == 0 {
 		return nil, ErrUnauthorized
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(ownerID, folderID)
+	folder, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, folderID)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
 
-	children, err := uc.folders.ListByOwnerAndParent(ownerID, &folderID)
+	children, err := uc.folders.ListByOwnerAndParent(ownerKind, ownerID, &folderID)
 	if err != nil {
 		return nil, fmt.Errorf("list child folders: %w", err)
 	}
 
-	repos, err := uc.repos.ListByOwnerAndFolderID(ownerID, &folderID)
+	repos, err := uc.repos.ListByOwnerAndFolderID(ownerKind, ownerID, &folderID)
 	if err != nil {
 		return nil, fmt.Errorf("list folder repos: %w", err)
 	}
@@ -226,11 +251,17 @@ func (uc *FolderUseCase) GetContents(ownerID, folderID uint) (*FolderContents, e
 }
 
 func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
-	if in.OwnerID == 0 {
-		return nil, ErrUnauthorized
+	viewerID := in.ViewerID
+	if viewerID == 0 {
+		viewerID = in.OwnerID
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(in.OwnerID, in.ID)
+	ownerKind, ownerID, err := uc.resolveOwner(viewerID, in.OwnerID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	folder, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, in.ID)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
@@ -241,7 +272,7 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	}
 
 	if slug != folder.Slug {
-		exists, err := uc.folders.ExistsByOwnerParentSlug(in.OwnerID, folder.ParentID, slug)
+		exists, err := uc.folders.ExistsByOwnerParentSlug(ownerKind, ownerID, folder.ParentID, slug)
 		if err != nil {
 			return nil, fmt.Errorf("check folder existence: %w", err)
 		}
@@ -253,7 +284,7 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	oldPath := folder.Path
 	newPath := slug
 	if folder.ParentID != nil {
-		parent, err := uc.folders.FindByOwnerAndID(in.OwnerID, *folder.ParentID)
+		parent, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, *folder.ParentID)
 		if err != nil {
 			return nil, ErrParentFolderNotFound
 		}
@@ -268,7 +299,7 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	}
 
 	if oldPath != newPath {
-		if err := uc.rewriteDescendantPaths(in.OwnerID, oldPath, newPath); err != nil {
+		if err := uc.rewriteDescendantPaths(ownerKind, ownerID, oldPath, newPath); err != nil {
 			return nil, err
 		}
 	}
@@ -277,12 +308,17 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	return &item, nil
 }
 
-func (uc *FolderUseCase) Delete(ownerID, folderID uint) error {
+func (uc *FolderUseCase) Delete(viewerID, ownerID uint, folderID uint) error {
+	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, true)
+	if err != nil {
+		return err
+	}
+
 	if ownerID == 0 {
 		return ErrUnauthorized
 	}
 
-	if _, err := uc.folders.FindByOwnerAndID(ownerID, folderID); err != nil {
+	if _, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, folderID); err != nil {
 		return ErrFolderNotFound
 	}
 
@@ -308,21 +344,27 @@ func (uc *FolderUseCase) Delete(ownerID, folderID uint) error {
 }
 
 func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
-	if in.OwnerID == 0 {
-		return nil, ErrUnauthorized
+	viewerID := in.ViewerID
+	if viewerID == 0 {
+		viewerID = in.OwnerID
+	}
+
+	ownerKind, ownerID, err := uc.resolveOwner(viewerID, in.OwnerID, true)
+	if err != nil {
+		return nil, err
 	}
 	if in.NewParentID != nil && *in.NewParentID == in.ID {
 		return nil, ErrInvalidFolderMove
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(in.OwnerID, in.ID)
+	folder, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, in.ID)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
 
 	var newParent *domain.Folder
 	if in.NewParentID != nil {
-		newParent, err = uc.folders.FindByOwnerAndID(in.OwnerID, *in.NewParentID)
+		newParent, err = uc.folders.FindByOwnerAndID(ownerKind, ownerID, *in.NewParentID)
 		if err != nil {
 			return nil, ErrParentFolderNotFound
 		}
@@ -338,35 +380,12 @@ func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
 		return &item, nil
 	}
 
-	depth := 1
 	parentPath := ""
 	if newParent != nil {
-		depth = folderDepth(newParent.Path) + 1
 		parentPath = newParent.Path
 	}
 
-	descendants, err := uc.folders.ListDescendants(in.OwnerID, folder.Path)
-	if err != nil {
-		return nil, fmt.Errorf("list descendants: %w", err)
-	}
-
-	maxRel := 0
-	for _, d := range descendants {
-		if d.ID == folder.ID {
-			continue
-		}
-
-		rel := folderDepth(d.Path) - folderDepth(folder.Path)
-		if rel > maxRel {
-			maxRel = rel
-		}
-	}
-
-	if depth+maxRel > maxFolderDepth {
-		return nil, ErrFolderDepthExceeded
-	}
-
-	exists, err := uc.folders.ExistsByOwnerParentSlug(in.OwnerID, in.NewParentID, folder.Slug)
+	exists, err := uc.folders.ExistsByOwnerParentSlug(ownerKind, ownerID, in.NewParentID, folder.Slug)
 	if err != nil {
 		return nil, fmt.Errorf("check folder existence: %w", err)
 	}
@@ -387,7 +406,7 @@ func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
 		return nil, fmt.Errorf("move folder: %w", err)
 	}
 
-	if err := uc.rewriteDescendantPaths(in.OwnerID, oldPath, newPath); err != nil {
+	if err := uc.rewriteDescendantPaths(ownerKind, ownerID, oldPath, newPath); err != nil {
 		return nil, err
 	}
 
@@ -395,15 +414,20 @@ func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
 	return &item, nil
 }
 
-func (uc *FolderUseCase) rewriteDescendantPaths(ownerID uint, oldPath, newPath string) error {
-	descendants, err := uc.folders.ListDescendants(ownerID, oldPath)
+func (uc *FolderUseCase) rewriteDescendantPaths(ownerKind string, ownerID uint, oldPath, newPath string) error {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
+	descendants, err := uc.folders.ListDescendants(ownerKind, ownerID, oldPath)
 	if err != nil {
 		return fmt.Errorf("list descendants: %w", err)
 	}
+
 	for i := range descendants {
 		d := &descendants[i]
 		if d.Path == oldPath {
-			continue // already updated
+			continue
 		}
 
 		if !strings.HasPrefix(d.Path, oldPath+"/") {
@@ -448,14 +472,6 @@ func normalizeFolderName(raw string) (name, slug string, err error) {
 	}
 
 	return name, slug, nil
-}
-
-func folderDepth(path string) int {
-	if path == "" {
-		return 0
-	}
-
-	return strings.Count(path, "/") + 1
 }
 
 func toFolderItem(f *domain.Folder) FolderItem {

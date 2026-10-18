@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { textButton } from '@/lib/classes'
 import { computed, inject, onUnmounted, ref, watch } from 'vue'
 import { foldersApi } from '@/api'
 import type { Folder, RepoSummary } from '@/api/types'
@@ -34,10 +35,9 @@ async function load() {
     folders.value = res.folders ?? []
     repos.value = res.repos ?? []
 
-    const owner = auth.user.value?.username || ''
     const crumbs: Crumb[] = [{
-      label: owner,
-      to: '/'
+      label: auth.user.value?.username || '',
+      to: '/',
     }]
     if (folder.value?.path) {
       folder.value.path.split('/').forEach((part) => {
@@ -63,24 +63,13 @@ onUnmounted(clearBreadcrumbs)
 
 <template>
   <div>
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-semibold">{{ folder?.name || $t('folder.fallback') }}</h1>
-        <p v-if="folder" class="mt-1 font-mono text-sm text-ink-muted">{{ folder.path }}</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="btn-ghost"
-          @click="showFolderModal = true"
-        >{{ $t('home.newFolder') }}</button>
-        <button
-          type="button"
-          class="btn-primary"
-          @click="showRepoModal = true"
-        >{{ $t('home.newRepository') }}</button>
-      </div>
-    </div>
+    <p class="mb-2 px-2">
+      <span class="font-mono">{{ folder?.path || $t('folder.fallback') }}</span>
+      <span class="px-1 text-ink-muted">|</span>
+      <button type="button" :class="textButton" @click="showFolderModal = true">{{ $t('home.newFolder') }}</button>
+      <span class="px-1 text-ink-muted">|</span>
+      <button type="button" :class="textButton" @click="showRepoModal = true">{{ $t('home.newRepository') }}</button>
+    </p>
 
     <p v-if="loading" class="text-sm text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-sm text-warn">{{ error }}</p>
@@ -89,6 +78,7 @@ onUnmounted(clearBreadcrumbs)
       :folders="folders"
       :repos="repos"
       :folder-path="folder?.path || ''"
+      :repo-owner="auth.user.value?.username"
     />
 
     <CreateFolderModal

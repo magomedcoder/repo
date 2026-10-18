@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magomedcoder/repo/internal/domain"
+	"git.magomedcoder.ru/repo/internal/domain"
 )
 
 var (
@@ -24,7 +24,9 @@ var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 
 type CreateRepositoryInput struct {
 	Name          string
+	Path          string
 	Description   string
+	ViewerID      uint
 	OwnerID       uint
 	FolderID      *uint
 	Private       bool
@@ -33,17 +35,18 @@ type CreateRepositoryInput struct {
 }
 
 type UpdateRepositoryInput struct {
-	OwnerID       uint
-	OwnerUsername string
-	FolderPath    string // logical folder path; empty = root
-	Name          string
-	Description   *string
-	Private       *bool
-	DefaultBranch *string
+	ViewerID             uint
+	OwnerUsername        string
+	FolderPath           string
+	Name                 string
+	Description          *string
+	Private              *bool
+	DefaultBranch        *string
+	ProtectDefaultBranch *bool
 }
 
 type MoveRepositoryInput struct {
-	OwnerID       uint
+	ViewerID      uint
 	OwnerUsername string
 	FolderPath    string
 	Name          string
@@ -53,30 +56,33 @@ type MoveRepositoryInput struct {
 
 type ResolveRepositoryInput struct {
 	OwnerUsername string
-	FolderPath    string // "" = root; "work/backend"
+	FolderPath    string
 	Name          string
-	ViewerID      uint // 0 = anonymous
+	ViewerID      uint
 }
 
 type RepositoryItem struct {
-	ID             uint       `json:"id"`
-	Name           string     `json:"name"`
-	Description    string     `json:"description"`
-	Owner          string     `json:"owner"`
-	FolderID       *uint      `json:"folder_id"`
-	FolderPath     string     `json:"folder_path"`
-	IsPrivate      bool       `json:"is_private"`
-	DefaultBranch  string     `json:"default_branch"`
-	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID                   uint       `json:"id"`
+	Name                 string     `json:"name"`
+	Description          string     `json:"description"`
+	Owner                string     `json:"owner"`
+	FolderID             *uint      `json:"folder_id"`
+	FolderPath           string     `json:"folder_path"`
+	IsPrivate            bool       `json:"is_private"`
+	ProtectDefaultBranch bool       `json:"protect_default_branch"`
+	DefaultBranch        string     `json:"default_branch"`
+	LastActivityAt       *time.Time `json:"last_activity_at,omitempty"`
+	RepoPath             string     `json:"repo_path"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 type RepositoryUseCase struct {
-	store   domain.RepositoryStore
-	folders domain.FolderStore
-	users   domain.UserStore
-	git     domain.GitRepository
+	store    domain.RepositoryStore
+	folders  domain.FolderStore
+	users    domain.UserStore
+	git      domain.GitRepository
+	activity domain.ActivityStore
 }
 
 func NewRepositoryUseCase(
@@ -84,39 +90,88 @@ func NewRepositoryUseCase(
 	folders domain.FolderStore,
 	users domain.UserStore,
 	git domain.GitRepository,
+	activity domain.ActivityStore,
 ) *RepositoryUseCase {
 	return &RepositoryUseCase{
-		store:   store,
-		folders: folders,
-		users:   users,
-		git:     git,
+		store:    store,
+		folders:  folders,
+		users:    users,
+		git:      git,
+		activity: activity,
 	}
 }
 
 func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, error) {
-	if in.OwnerID == 0 {
+	viewerID := in.ViewerID
+	if viewerID == 0 {
+		viewerID = in.OwnerID
+	}
+
+	if viewerID == 0 {
 		return nil, ErrUnauthorized
 	}
 
-	name, err := normalizeRepoName(in.Name)
+	name := ""
+	if strings.TrimSpace(in.Path) == "" {
+		var nerr error
+		name, nerr = normalizeRepoName(in.Name)
+		if nerr != nil {
+			return nil, nerr
+		}
+	} else {
+		name = strings.TrimSpace(in.Name)
+	}
+
+	ownerKind := domain.OwnerKindUser
+	ownerID := in.OwnerID
+	if ownerID == 0 {
+		ownerID = viewerID
+	}
+
+	if ownerID != viewerID {
+		return nil, ErrRepoForbidden
+	}
+
+	owner, err := uc.users.FindByID(ownerID)
+	if err != nil {
+		return nil, ErrUnauthorized
+	}
+	ownerSlug := owner.Username
+
+	folderPath, err := uc.resolveFolderForOwner(ownerKind, ownerID, in.FolderID)
 	if err != nil {
 		return nil, err
 	}
 
-	owner, err := uc.users.FindByID(in.OwnerID)
-	if err != nil {
-		return nil, ErrUnauthorized
+	logical := name + ".git"
+	if folderPath != "" {
+		logical = folderPath + "/" + name + ".git"
 	}
 
-	folderPath, err := uc.resolveFolderForOwner(in.OwnerID, in.FolderID)
-	if err != nil {
-		return nil, err
+	if strings.TrimSpace(in.Path) != "" {
+		parsed, perr := domain.ParseRepoPath(in.Path)
+		if perr != nil {
+			return nil, ErrInvalidName
+		}
+
+		logical = strings.Join(parsed, "/")
+		name = strings.TrimSuffix(parsed[len(parsed)-1], ".git")
+		folderPath = ""
+		in.FolderID = nil
+		if len(parsed) > 1 {
+			folderPath = strings.Join(parsed[:len(parsed)-1], "/")
+		}
 	}
 
-	exists, err := uc.store.ExistsByOwnerFolderName(in.OwnerID, in.FolderID, name)
+	if _, err := domain.ParseRepoPath(logical); err != nil {
+		return nil, ErrInvalidName
+	}
+
+	exists, err := uc.store.ExistsByOwnerFolderName(ownerKind, ownerID, in.FolderID, name)
 	if err != nil {
 		return nil, fmt.Errorf("check repository existence: %w", err)
 	}
+
 	if exists {
 		return nil, ErrAlreadyExists
 	}
@@ -125,6 +180,7 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, 
 	if branch == "" {
 		branch = "main"
 	}
+
 	if err := validateBranchName(branch); err != nil {
 		return nil, err
 	}
@@ -133,7 +189,7 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, 
 	if basePath == "" {
 		basePath = filepath.Join("data", "repos")
 	}
-	repoPath := buildRepoDiskPath(basePath, in.OwnerID, folderPath, name)
+	repoPath := buildRepoDiskPath(basePath, ownerKind, ownerID, folderPath, name)
 
 	if err := uc.git.InitBare(repoPath, domain.BareInitOptions{
 		DefaultBranch:        branch,
@@ -143,20 +199,32 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, 
 	}
 
 	repo := &domain.Repository{
-		Name:          name,
-		OwnerID:       in.OwnerID,
-		FolderID:      in.FolderID,
-		Description:   strings.TrimSpace(in.Description),
-		IsPrivate:     in.Private,
-		DefaultBranch: branch,
-		Path:          repoPath,
+		Name:                 name,
+		OwnerKind:            ownerKind,
+		OwnerID:              ownerID,
+		FolderID:             in.FolderID,
+		RepoPath:             logical,
+		Description:          strings.TrimSpace(in.Description),
+		IsPrivate:            in.Private,
+		ProtectDefaultBranch: true,
+		DefaultBranch:        branch,
+		Path:                 repoPath,
 	}
 	if err := uc.store.Create(repo); err != nil {
 		_ = uc.git.Remove(repoPath)
 		return nil, fmt.Errorf("save repository metadata: %w", err)
 	}
 
-	item := toRepositoryItem(repo, owner.Username, folderPath)
+	item := toRepositoryItem(repo, ownerSlug, folderPath)
+	recordActivity(uc.activity, &domain.ActivityEvent{
+		ActorID:   viewerID,
+		OwnerKind: ownerKind,
+		OwnerID:   ownerID,
+		RepoID:    &repo.ID,
+		Type:      domain.ActivityRepoCreate,
+		Summary:   activitySummary("created repository %s", name),
+	})
+
 	return &item, nil
 }
 
@@ -170,7 +238,7 @@ func (uc *RepositoryUseCase) ListOwn(ownerID uint) ([]RepositoryItem, error) {
 		return nil, ErrUnauthorized
 	}
 
-	repos, err := uc.store.ListByOwnerID(ownerID)
+	repos, err := uc.store.ListByOwnerID(domain.OwnerKindUser, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("list repositories: %w", err)
 	}
@@ -195,11 +263,11 @@ func (uc *RepositoryUseCase) Search(query string, ownerID uint, publicOnly bool)
 		return uc.ListOwn(ownerID)
 	}
 
-	repos, err := uc.store.SearchByName(q, ownerID, publicOnly || ownerID == 0, 100)
+	repos, err := uc.store.SearchByName(q, domain.OwnerKindUser, ownerID, publicOnly || ownerID == 0, 100)
 	if err != nil {
 		return nil, fmt.Errorf("search repositories: %w", err)
 	}
-	
+
 	if publicOnly || ownerID == 0 {
 		return uc.mapReposWithOwners(repos)
 	}
@@ -213,8 +281,11 @@ func (uc *RepositoryUseCase) Search(query string, ownerID uint, publicOnly bool)
 }
 
 func (uc *RepositoryUseCase) Get(in ResolveRepositoryInput) (*RepositoryItem, error) {
-	repo, owner, folderPath, err := uc.resolve(in)
+	repo, ownerSlug, folderPath, err := uc.resolve(in)
 	if err != nil {
+		if in.ViewerID == 0 && errors.Is(err, ErrRepoNotFound) {
+			return nil, ErrUnauthorized
+		}
 		return nil, err
 	}
 
@@ -222,26 +293,26 @@ func (uc *RepositoryUseCase) Get(in ResolveRepositoryInput) (*RepositoryItem, er
 		return nil, err
 	}
 
-	item := toRepositoryItem(repo, owner.Username, folderPath)
+	item := toRepositoryItem(repo, ownerSlug, folderPath)
 	return &item, nil
 }
 
 func (uc *RepositoryUseCase) Update(in UpdateRepositoryInput) (*RepositoryItem, error) {
-	if in.OwnerID == 0 {
+	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
 
-	repo, owner, folderPath, err := uc.resolve(ResolveRepositoryInput{
+	repo, ownerSlug, folderPath, err := uc.resolve(ResolveRepositoryInput{
 		OwnerUsername: in.OwnerUsername,
 		FolderPath:    in.FolderPath,
 		Name:          in.Name,
-		ViewerID:      in.OwnerID,
+		ViewerID:      in.ViewerID,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if repo.OwnerID != in.OwnerID {
+	if !uc.canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrRepoForbidden
 	}
 
@@ -261,11 +332,15 @@ func (uc *RepositoryUseCase) Update(in UpdateRepositoryInput) (*RepositoryItem, 
 		repo.DefaultBranch = branch
 	}
 
+	if in.ProtectDefaultBranch != nil {
+		repo.ProtectDefaultBranch = *in.ProtectDefaultBranch
+	}
+
 	if err := uc.store.Update(repo); err != nil {
 		return nil, fmt.Errorf("update repository: %w", err)
 	}
 
-	item := toRepositoryItem(repo, owner.Username, folderPath)
+	item := toRepositoryItem(repo, ownerSlug, folderPath)
 	return &item, nil
 }
 
@@ -279,7 +354,7 @@ func (uc *RepositoryUseCase) Delete(in ResolveRepositoryInput) error {
 		return err
 	}
 
-	if repo.OwnerID != in.ViewerID {
+	if !uc.canAdminRepo(repo, in.ViewerID) {
 		return ErrRepoForbidden
 	}
 
@@ -296,37 +371,37 @@ func (uc *RepositoryUseCase) Delete(in ResolveRepositoryInput) error {
 }
 
 func (uc *RepositoryUseCase) Move(in MoveRepositoryInput) (*RepositoryItem, error) {
-	if in.OwnerID == 0 {
+	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
 
-	repo, owner, _, err := uc.resolve(ResolveRepositoryInput{
+	repo, ownerSlug, _, err := uc.resolve(ResolveRepositoryInput{
 		OwnerUsername: in.OwnerUsername,
 		FolderPath:    in.FolderPath,
 		Name:          in.Name,
-		ViewerID:      in.OwnerID,
+		ViewerID:      in.ViewerID,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if repo.OwnerID != in.OwnerID {
+	if !uc.canAdminRepo(repo, in.ViewerID) {
 		return nil, ErrRepoForbidden
 	}
 
 	sameFolder := (repo.FolderID == nil && in.NewFolderID == nil) || (repo.FolderID != nil && in.NewFolderID != nil && *repo.FolderID == *in.NewFolderID)
 	if sameFolder {
-		folderPath, _ := uc.resolveFolderForOwner(in.OwnerID, repo.FolderID)
-		item := toRepositoryItem(repo, owner.Username, folderPath)
+		folderPath, _ := uc.resolveFolderForOwner(repo.OwnerKind, repo.OwnerID, repo.FolderID)
+		item := toRepositoryItem(repo, ownerSlug, folderPath)
 		return &item, nil
 	}
 
-	newFolderPath, err := uc.resolveFolderForOwner(in.OwnerID, in.NewFolderID)
+	newFolderPath, err := uc.resolveFolderForOwner(repo.OwnerKind, repo.OwnerID, in.NewFolderID)
 	if err != nil {
 		return nil, err
 	}
 
-	exists, err := uc.store.ExistsByOwnerFolderName(in.OwnerID, in.NewFolderID, repo.Name)
+	exists, err := uc.store.ExistsByOwnerFolderName(repo.OwnerKind, repo.OwnerID, in.NewFolderID, repo.Name)
 	if err != nil {
 		return nil, fmt.Errorf("check repository existence: %w", err)
 	}
@@ -341,7 +416,7 @@ func (uc *RepositoryUseCase) Move(in MoveRepositoryInput) (*RepositoryItem, erro
 	}
 
 	oldPath := repo.Path
-	newPath := buildRepoDiskPath(basePath, in.OwnerID, newFolderPath, repo.Name)
+	newPath := buildRepoDiskPath(basePath, repo.OwnerKind, repo.OwnerID, newFolderPath, repo.Name)
 
 	if err := uc.git.Move(oldPath, newPath); err != nil {
 		return nil, fmt.Errorf("move repository files: %w", err)
@@ -354,39 +429,57 @@ func (uc *RepositoryUseCase) Move(in MoveRepositoryInput) (*RepositoryItem, erro
 		return nil, fmt.Errorf("update repository metadata: %w", err)
 	}
 
-	item := toRepositoryItem(repo, owner.Username, newFolderPath)
+	item := toRepositoryItem(repo, ownerSlug, newFolderPath)
 	return &item, nil
 }
 
-func (uc *RepositoryUseCase) resolve(in ResolveRepositoryInput) (*domain.Repository, *domain.User, string, error) {
-	ownerUsername := strings.ToLower(strings.TrimSpace(in.OwnerUsername))
+func (uc *RepositoryUseCase) resolve(in ResolveRepositoryInput) (*domain.Repository, string, string, error) {
+	ownerSlug := strings.ToLower(strings.TrimSpace(in.OwnerUsername))
 	name, err := normalizeRepoName(in.Name)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, "", "", err
 	}
 
-	owner, err := uc.users.FindByUsername(ownerUsername)
+	ownerKind, ownerID, err := uc.resolveNamespace(ownerSlug)
 	if err != nil {
-		return nil, nil, "", ErrRepoNotFound
+		return nil, "", "", err
 	}
 
 	folderPath := strings.Trim(strings.TrimSpace(in.FolderPath), "/")
+	logical := name + ".git"
+	if folderPath != "" {
+		logical = folderPath + "/" + name + ".git"
+	}
+
+	if _, err := domain.ParseRepoPath(logical); err == nil {
+		if repo, ferr := uc.store.FindByOwnerAndRepoPath(ownerKind, ownerID, logical); ferr == nil {
+			return repo, ownerSlug, folderPath, nil
+		}
+	}
+
 	var folderID *uint
 	if folderPath != "" {
-		folder, err := uc.folders.FindByOwnerAndPath(owner.ID, folderPath)
+		folder, err := uc.folders.FindByOwnerAndPath(ownerKind, ownerID, folderPath)
 		if err != nil {
-			return nil, nil, "", ErrRepoNotFound
+			return nil, "", "", ErrRepoNotFound
 		}
-
 		folderID = &folder.ID
 	}
 
-	repo, err := uc.store.FindByOwnerFolderName(owner.ID, folderID, name)
+	repo, err := uc.store.FindByOwnerFolderName(ownerKind, ownerID, folderID, name)
 	if err != nil {
-		return nil, nil, "", ErrRepoNotFound
+		return nil, "", "", ErrRepoNotFound
 	}
 
-	return repo, owner, folderPath, nil
+	return repo, ownerSlug, folderPath, nil
+}
+
+func (uc *RepositoryUseCase) resolveNamespace(slug string) (kind string, id uint, err error) {
+	if user, uerr := uc.users.FindByUsername(slug); uerr == nil {
+		return domain.OwnerKindUser, user.ID, nil
+	}
+
+	return "", 0, ErrRepoNotFound
 }
 
 func (uc *RepositoryUseCase) authorizeRead(repo *domain.Repository, viewerID uint) error {
@@ -394,19 +487,57 @@ func (uc *RepositoryUseCase) authorizeRead(repo *domain.Repository, viewerID uin
 		return nil
 	}
 
-	if viewerID != 0 && viewerID == repo.OwnerID {
+	if uc.canReadPrivate(repo, viewerID) {
 		return nil
+	}
+
+	if viewerID == 0 {
+		return ErrUnauthorized
 	}
 
 	return ErrRepoForbidden
 }
 
-func (uc *RepositoryUseCase) resolveFolderForOwner(ownerID uint, folderID *uint) (string, error) {
+func (uc *RepositoryUseCase) canReadPrivate(repo *domain.Repository, viewerID uint) bool {
+	if viewerID == 0 {
+		return false
+	}
+
+	kind := repo.OwnerKind
+	if kind == "" {
+		kind = domain.OwnerKindUser
+	}
+
+	return kind == domain.OwnerKindUser && viewerID == repo.OwnerID
+}
+
+func (uc *RepositoryUseCase) canAdminRepo(repo *domain.Repository, viewerID uint) bool {
+	if viewerID == 0 {
+		return false
+	}
+
+	kind := repo.OwnerKind
+	if kind == "" {
+		kind = domain.OwnerKindUser
+	}
+
+	return kind == domain.OwnerKindUser && viewerID == repo.OwnerID
+}
+
+func (uc *RepositoryUseCase) canWriteGit(repo *domain.Repository, viewerID uint) bool {
+	return uc.canAdminRepo(repo, viewerID)
+}
+
+func (uc *RepositoryUseCase) resolveFolderForOwner(ownerKind string, ownerID uint, folderID *uint) (string, error) {
 	if folderID == nil {
 		return "", nil
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(ownerID, *folderID)
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
+	folder, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, *folderID)
 	if err != nil {
 		return "", ErrFolderNotFound
 	}
@@ -418,8 +549,13 @@ func (uc *RepositoryUseCase) mapRepos(repos []domain.Repository, ownerUsername s
 	items := make([]RepositoryItem, 0, len(repos))
 	for _, repo := range repos {
 		folderPath := ""
+		kind := repo.OwnerKind
+		if kind == "" {
+			kind = domain.OwnerKindUser
+		}
+
 		if repo.FolderID != nil {
-			folder, err := uc.folders.FindByOwnerAndID(repo.OwnerID, *repo.FolderID)
+			folder, err := uc.folders.FindByOwnerAndID(kind, repo.OwnerID, *repo.FolderID)
 			if err == nil {
 				folderPath = folder.Path
 			}
@@ -433,34 +569,46 @@ func (uc *RepositoryUseCase) mapRepos(repos []domain.Repository, ownerUsername s
 
 func (uc *RepositoryUseCase) mapReposWithOwners(repos []domain.Repository) ([]RepositoryItem, error) {
 	items := make([]RepositoryItem, 0, len(repos))
-	ownerCache := map[uint]string{}
+	userCache := map[uint]string{}
 	for _, repo := range repos {
-		username, ok := ownerCache[repo.OwnerID]
+		kind := repo.OwnerKind
+		if kind == "" {
+			kind = domain.OwnerKindUser
+		}
+		if kind != domain.OwnerKindUser {
+			continue
+		}
+
+		username, ok := userCache[repo.OwnerID]
 		if !ok {
 			user, err := uc.users.FindByID(repo.OwnerID)
 			if err != nil {
 				continue
 			}
-
 			username = user.Username
-			ownerCache[repo.OwnerID] = username
+			userCache[repo.OwnerID] = username
 		}
+		ownerSlug := username
 
 		folderPath := ""
 		if repo.FolderID != nil {
-			folder, err := uc.folders.FindByOwnerAndID(repo.OwnerID, *repo.FolderID)
+			folder, err := uc.folders.FindByOwnerAndID(kind, repo.OwnerID, *repo.FolderID)
 			if err == nil {
 				folderPath = folder.Path
 			}
 		}
-		items = append(items, toRepositoryItem(&repo, username, folderPath))
+		items = append(items, toRepositoryItem(&repo, ownerSlug, folderPath))
 	}
 
 	return items, nil
 }
 
-func buildRepoDiskPath(basePath string, ownerID uint, folderPath, name string) string {
-	parts := []string{basePath, fmt.Sprintf("%d", ownerID)}
+func buildRepoDiskPath(basePath, ownerKind string, ownerID uint, folderPath, name string) string {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
+	parts := []string{basePath, ownerKind, fmt.Sprintf("%d", ownerID)}
 	if folderPath != "" {
 		parts = append(parts, strings.Split(folderPath, "/")...)
 	}
@@ -508,16 +656,18 @@ func validateBranchName(name string) error {
 
 func toRepositoryItem(repo *domain.Repository, ownerUsername, folderPath string) RepositoryItem {
 	return RepositoryItem{
-		ID:             repo.ID,
-		Name:           repo.Name,
-		Description:    repo.Description,
-		Owner:          ownerUsername,
-		FolderID:       repo.FolderID,
-		FolderPath:     folderPath,
-		IsPrivate:      repo.IsPrivate,
-		DefaultBranch:  repo.DefaultBranch,
-		LastActivityAt: repo.LastActivityAt,
-		CreatedAt:      repo.CreatedAt,
-		UpdatedAt:      repo.UpdatedAt,
+		ID:                   repo.ID,
+		Name:                 repo.Name,
+		Description:          repo.Description,
+		Owner:                ownerUsername,
+		FolderID:             repo.FolderID,
+		FolderPath:           folderPath,
+		IsPrivate:            repo.IsPrivate,
+		ProtectDefaultBranch: repo.ProtectDefaultBranch,
+		DefaultBranch:        repo.DefaultBranch,
+		LastActivityAt:       repo.LastActivityAt,
+		RepoPath:             repo.RepoPath,
+		CreatedAt:            repo.CreatedAt,
+		UpdatedAt:            repo.UpdatedAt,
 	}
 }

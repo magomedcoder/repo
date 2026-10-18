@@ -46,7 +46,9 @@ export interface Repository {
   owner: string
   folder_id: number | null
   folder_path: string
+  repo_path?: string
   is_private: boolean
+  protect_default_branch?: boolean
   default_branch: string
   last_activity_at?: string
   created_at: string
@@ -139,12 +141,41 @@ export interface IssueDetail extends Issue {
   comments: IssueComment[]
 }
 
-export interface SSHKey {
+export interface AccessToken {
   id: number
-  title: string
-  fingerprint: string
+  name: string
+  prefix: string
   created_at: string
   last_used_at?: string
+}
+
+export interface CreateAccessTokenResponse extends AccessToken {
+  token: string
+}
+
+export interface ActivityEvent {
+  id: number
+  type: string
+  summary: string
+  ref?: string
+  actor: string
+  owner: string
+  owner_kind: string
+  created_at: string
+}
+
+export interface BlameLine {
+  line: number
+  content: string
+  commit_sha: string
+  author_name: string
+  authored_at: string
+}
+
+export interface BlameResult {
+  path: string
+  ref: string
+  lines: BlameLine[]
 }
 
 export interface PullRequest {

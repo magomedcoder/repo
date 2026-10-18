@@ -40,6 +40,14 @@ export function localizeError(err: unknown, fallbackKey: Parameters<typeof i18n.
   return i18n.global.t(fallbackKey)
 }
 
+export function pageError(err: unknown, fallbackKey: Parameters<typeof i18n.global.t>[0]): string {
+  if (err instanceof ApiError && err.status === 401) {
+    return '__401__'
+  }
+  
+  return localizeError(err, fallbackKey)
+}
+
 export function formatDate(value: string): string {
   const tag = i18n.global.locale.value === 'ru' ? 'ru-RU' : 'en-GB'
   return new Date(value).toLocaleString(tag)

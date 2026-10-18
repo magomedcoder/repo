@@ -5,6 +5,7 @@
     "close": "Close",
     "copy": "Copy",
     "copied": "Copied",
+    "ok": "OK",
     "private": "private",
     "public": "public",
     "binary": "binary",
@@ -41,7 +42,11 @@
     "pulls": "Pull requests",
     "code": "Code",
     "profile": "Profile",
-    "sshKeys": "SSH keys"
+    "accessTokens": "Access tokens",
+    "index": "index",
+    "tagline": "Personal Git Repository",
+    "refs": "refs",
+    "about": "about"
   },
   "home": {
     "title": "Dashboard",
@@ -54,6 +59,23 @@
   },
   "list": {
     "noRepos": "No repositories here yet."
+  },
+  "index": {
+    "name": "Name",
+    "description": "Description",
+    "owner": "Owner",
+    "idle": "Idle",
+    "links": "Links",
+    "summary": "summary",
+    "log": "log",
+    "tree": "tree",
+    "age": "Age",
+    "author": "Author",
+    "message": "Commit message",
+    "commit": "Commit",
+    "mode": "Mode",
+    "size": "Size",
+    "ref": "ref"
   },
   "repo": {
     "home": "Repo home",
@@ -74,7 +96,9 @@
   "blob": {
     "tree": "Tree",
     "raw": "Raw",
-    "binary": "Binary file - open Raw to download."
+    "binary": "Binary file - open Raw to download.",
+    "blame": "Blame",
+    "hideBlame": "Hide blame"
   },
   "commits": {
     "title": "Commits",
@@ -100,6 +124,7 @@
     "description": "Description",
     "defaultBranch": "Default branch",
     "private": "Private repository",
+    "protectBranch": "Protect the default branch from force-push and deletion",
     "folder": "Folder",
     "saving": "Saving...",
     "save": "Save changes",
@@ -116,6 +141,7 @@
     "creating": "Creating...",
     "createFolder": "Create folder",
     "name": "Name",
+    "path": "Path",
     "newRepository": "New repository",
     "createRepository": "Create repository",
     "description": "Description",
@@ -144,8 +170,6 @@
     "createIssue": "Failed to create issue",
     "createComment": "Failed to add comment",
     "createLabel": "Failed to create label",
-    "loadSSHKeys": "Failed to load SSH keys",
-    "createSSHKey": "Failed to add SSH key",
     "loadPulls": "Failed to load pull requests",
     "loadPull": "Failed to load pull request",
     "createPull": "Failed to create pull request",
@@ -153,13 +177,37 @@
     "loadProfile": "Failed to load profile",
     "saveProfile": "Failed to save profile",
     "uploadAvatar": "Failed to update avatar",
-    "searchFailed": "Search failed"
+    "searchFailed": "Search failed",
+    "loadTokens": "Failed to load tokens",
+    "createToken": "Failed to create token",
+    "loadActivity": "Failed to load activity",
+    "loadBlame": "Failed to load blame"
+  },
+  "activity": {
+    "title": "Recent activity",
+    "empty": "No recent activity."
+  },
+  "tokens": {
+    "title": "Access tokens",
+    "lead": "Personal tokens for HTTPS Git and the API.",
+    "empty": "No tokens yet.",
+    "add": "Create token",
+    "nameField": "Name",
+    "namePlaceholder": "CI deploy",
+    "creating": "Creating...",
+    "submit": "Create",
+    "revoke": "Revoke",
+    "prefix": "Prefix",
+    "lastUsed": "Last used",
+    "confirmRevoke": "Revoke this token?",
+    "createdTitle": "Token created",
+    "createdHint": "Copy the token now. It will not be shown again."
   },
   "search": {
     "title": "Search",
     "lead": "Find repositories by name.",
     "query": "Query",
-    "placeholder": "Search repositories...",
+    "placeholder": "Search...",
     "scope": "Scope",
     "scopeOwn": "My repositories",
     "scopePublic": "Public repositories",
@@ -170,6 +218,7 @@
     "title": "Profile",
     "lead": "Your account settings and avatar.",
     "email": "Email",
+    "newPassword": "New password",
     "save": "Save",
     "saving": "Saving...",
     "changeAvatar": "Change avatar",
@@ -204,21 +253,6 @@
     "noComments": "No comments yet.",
     "comment": "Write a comment",
     "commentAction": "Comment"
-  },
-  "sshKeys": {
-    "title": "SSH keys",
-    "lead": "Keys used to clone and push over SSH.",
-    "empty": "No SSH keys yet.",
-    "add": "Add SSH key",
-    "titleField": "Title",
-    "titlePlaceholder": "Work laptop",
-    "keyField": "Key",
-    "keyPlaceholder": "ssh-ed25519 AAAA... comment",
-    "adding": "Adding...",
-    "submit": "Add key",
-    "delete": "Delete",
-    "fingerprint": "Fingerprint",
-    "confirmDelete": "Delete this SSH key?"
   },
   "issues": {
     "title": "Issues",

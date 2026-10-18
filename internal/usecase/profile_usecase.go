@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magomedcoder/repo/internal/domain"
+	"git.magomedcoder.ru/repo/internal/domain"
 )
 
 var (
-	ErrUserNotFound    = errors.New("user_not_found")
-	ErrInvalidAvatar   = errors.New("invalid_avatar")
-	ErrAvatarTooLarge  = errors.New("avatar_too_large")
-	ErrAvatarNotFound  = errors.New("avatar_not_found")
+	ErrUserNotFound   = errors.New("user_not_found")
+	ErrInvalidAvatar  = errors.New("invalid_avatar")
+	ErrAvatarTooLarge = errors.New("avatar_too_large")
+	ErrAvatarNotFound = errors.New("avatar_not_found")
 )
 
 const maxAvatarBytes = 1 << 20 // 1 MiB
@@ -190,7 +190,7 @@ func toProfileItem(user *domain.User, includeEmail bool) *ProfileItem {
 		HasAvatar: user.AvatarPath != "",
 		CreatedAt: user.CreatedAt,
 	}
-	
+
 	if includeEmail {
 		item.Email = user.Email
 	}

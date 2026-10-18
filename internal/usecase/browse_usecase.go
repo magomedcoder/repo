@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/magomedcoder/repo/internal/domain"
+	"git.magomedcoder.ru/repo/internal/domain"
 )
 
 var (
@@ -152,6 +152,24 @@ func (uc *RepositoryUseCase) GetBlob(in ResolveRepositoryInput, ref, path string
 	return blob, nil
 }
 
+func (uc *RepositoryUseCase) GetBlame(in ResolveRepositoryInput, ref, path string) (*domain.BlameResult, error) {
+	repo, err := uc.resolveReadable(in)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(ref) == "" {
+		ref = repo.DefaultBranch
+	}
+
+	blame, err := uc.git.GetBlame(repo.Path, ref, path)
+	if err != nil {
+		return nil, mapGitBrowseErr(err)
+	}
+
+	return blame, nil
+}
+
 func (uc *RepositoryUseCase) GetReadme(in ResolveRepositoryInput, ref string) (*domain.BlobContent, error) {
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
@@ -184,6 +202,13 @@ func (uc *RepositoryUseCase) GetCommitDiff(in ResolveRepositoryInput, sha string
 	diff, err := uc.git.GetCommitDiff(repo.Path, sha)
 	if err != nil {
 		return nil, mapGitBrowseErr(err)
+	}
+
+	const maxPatch = 64 * 1024
+	for i := range diff.Files {
+		if len(diff.Files[i].Patch) > maxPatch {
+			diff.Files[i].Patch = diff.Files[i].Patch[:maxPatch] + "\n... truncated\n"
+		}
 	}
 
 	return diff, nil

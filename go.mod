@@ -1,10 +1,11 @@
-module github.com/magomedcoder/repo
+module git.magomedcoder.ru/repo
 
 go 1.27.1
 
 require (
 	github.com/go-git/go-git/v6 v6.0.0-alpha.5
 	golang.org/x/crypto v0.57.0
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )

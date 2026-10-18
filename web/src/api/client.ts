@@ -12,6 +12,13 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
+  const method = (init.method || 'GET').toUpperCase()
+  if (method !== 'GET' && method !== 'HEAD' && !headers.has('X-CSRF-Token')) {
+    const match = document.cookie.match(/(?:^|; )repo_csrf=([^;]*)/)
+    if (match) {
+      headers.set('X-CSRF-Token', decodeURIComponent(match[1]))
+    }
+  }
   if (!headers.has('Accept-Language')) {
     const locale = localStorage.getItem('repo.locale') || (navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en')
     headers.set('Accept-Language', locale)

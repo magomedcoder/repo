@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { field } from '@/lib/classes'
 import { ref } from 'vue'
 import { reposApi } from '@/api'
 import ModalForm from '@/components/ModalForm.vue'
@@ -14,18 +15,19 @@ const emit = defineEmits<{
 }>()
 
 const name = ref('')
+const path = ref('')
 const description = ref('')
 const isPrivate = ref(false)
 const defaultBranch = ref('main')
 const error = ref('')
 const busy = ref(false)
-
 async function submit() {
   error.value = ''
   busy.value = true
   try {
     await reposApi.create({
       name: name.value.trim(),
+      path: path.value.trim(),
       description: description.value.trim(),
       folder_id: props.folderId ?? null,
       private: isPrivate.value,
@@ -52,18 +54,26 @@ async function submit() {
       <span class="mb-1 block font-medium">{{ $t('modal.name') }}</span>
       <input
         v-model="name"
-        class="input"
-        required
+        :class="field"
+        :required="!path"
         maxlength="100"
         placeholder="my-repo"
         autofocus
       />
     </label>
     <label class="block text-sm">
+      <span class="mb-1 block font-medium">{{ $t('modal.path') }}</span>
+      <input
+        v-model="path"
+        :class="[field, 'font-mono']"
+        placeholder="notes/diary.git"
+      />
+    </label>
+    <label class="block text-sm">
       <span class="mb-1 block font-medium">{{ $t('modal.description') }}</span>
       <input
         v-model="description"
-        class="input"
+        :class="field"
         :placeholder="$t('modal.optional')"
       />
     </label>
@@ -71,7 +81,7 @@ async function submit() {
       <span class="mb-1 block font-medium">{{ $t('modal.defaultBranch') }}</span>
       <input
         v-model="defaultBranch"
-        class="input font-mono"
+        :class="[field, 'font-mono']"
       />
     </label>
     <label class="flex items-center gap-2 text-sm">

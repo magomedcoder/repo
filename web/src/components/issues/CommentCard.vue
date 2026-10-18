@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { btnGhost, field } from '@/lib/classes'
 import { ref } from 'vue'
 import { formatDate } from '@/i18n'
 
@@ -56,12 +57,12 @@ function save() {
     >
       <textarea
         v-model="draft"
-        class="input min-h-20 font-sans"
+        :class="[field, 'min-h-20 font-sans']"
         required
       />
       <button
         type="submit"
-        class="btn-ghost"
+        :class="btnGhost"
         :disabled="busy"
       >{{ $t('issues.saveComment') }}</button>
     </form>

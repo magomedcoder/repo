@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { dataTable, field } from '@/lib/classes'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { reposApi } from '@/api'
 import type { Repository } from '@/api/types'
 import PageState from '@/components/ui/PageState.vue'
-import VisibilityBadge from '@/components/ui/VisibilityBadge.vue'
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
 import { localizeError } from '@/i18n'
 
@@ -60,7 +60,6 @@ function repoTo(repo: Repository) {
   return { 
     name: 'repo' as const, 
     params: { 
-      owner: repo.owner, 
       repoPath: path 
     } 
   }
@@ -87,48 +86,49 @@ onUnmounted(() => {
 
 <template>
   <div>
-    <h1 class="text-2xl font-semibold">{{ $t('search.title') }}</h1>
-    <p class="mt-1 text-sm text-ink-muted">{{ $t('search.lead') }}</p>
-
-    <div class="mt-6 flex flex-wrap items-end gap-3">
+    <div class="flex flex-wrap items-end gap-3 px-2">
       <label class="block min-w-64 flex-1 text-sm">
         <span class="mb-1 block font-semibold">{{ $t('search.query') }}</span>
         <input
           v-model="q"
           type="search"
-          class="input w-full"
+          :class="[field, 'w-full']"
           :placeholder="$t('search.placeholder')"
           @input="schedule"
         >
       </label>
       <label class="block text-sm">
         <span class="mb-1 block font-semibold">{{ $t('search.scope') }}</span>
-        <select v-model="scope" class="input min-w-40">
+        <select v-model="scope" :class="[field, 'min-w-40']">
           <option value="own">{{ $t('search.scopeOwn') }}</option>
           <option value="public">{{ $t('search.scopePublic') }}</option>
         </select>
       </label>
     </div>
 
-    <PageState class="mt-6" :loading="loading" :error="error">
-      <p v-if="!q.trim()" class="text-sm text-ink-muted">{{ $t('search.hint') }}</p>
-      <p v-else-if="!repos.length" class="text-sm text-ink-muted">{{ $t('search.empty') }}</p>
-      <ul v-else class="divide-y divide-line rounded-md border border-line bg-white">
-        <li v-for="repo in repos" :key="repo.id">
-          <RouterLink
-            :to="repoTo(repo)"
-            class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-paper"
-          >
-            <div class="min-w-0">
-              <p class="truncate font-semibold">
-                {{ repo.owner }}/{{ repo.folder_path ? `${repo.folder_path}/` : '' }}{{ repo.name }}
-              </p>
-              <p v-if="repo.description" class="truncate text-sm text-ink-muted">{{ repo.description }}</p>
-            </div>
-            <VisibilityBadge :is-private="repo.is_private" />
-          </RouterLink>
-        </li>
-      </ul>
+    <PageState class="mt-2" :loading="loading" :error="error">
+      <p v-if="!q.trim()" class="px-2">{{ $t('search.hint') }}</p>
+      <p v-else-if="!repos.length" class="px-2">{{ $t('search.empty') }}</p>
+      <table v-else :class="dataTable">
+        <thead>
+          <tr>
+            <th>{{ $t('index.name') }}</th>
+            <th>{{ $t('index.description') }}</th>
+            <th>{{ $t('index.owner') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="repo in repos" :key="repo.id">
+            <td>
+              <RouterLink :to="repoTo(repo)">
+                {{ repo.folder_path ? `${repo.folder_path}/` : '' }}{{ repo.name }}
+              </RouterLink>
+            </td>
+            <td>{{ repo.description }}</td>
+            <td>{{ repo.owner }}</td>
+          </tr>
+        </tbody>
+      </table>
     </PageState>
   </div>
 </template>

@@ -36,7 +36,7 @@ type IssueStore interface {
 	Create(issue *Issue) error
 
 	Update(issue *Issue) error
-	
+
 	Delete(id uint) error
 
 	FindByRepoNumber(repoID uint, number int) (*Issue, error)
@@ -52,7 +52,7 @@ type IssueStore interface {
 	DeleteComment(id uint) error
 
 	FindComment(id uint) (*IssueComment, error)
-	
+
 	ListComments(issueID uint) ([]IssueComment, error)
 
 	CreateLabel(label *Label) error

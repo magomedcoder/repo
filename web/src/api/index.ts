@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { BlobContent, CommitDiff, CommitInfo, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoStats, Repository, RepoSummary, SSHKey, TreeEntry, User } from './types'
+import type { AccessToken, ActivityEvent, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
 
 export const authApi = {
   register(body: {
@@ -29,14 +29,25 @@ export const authApi = {
       method: 'POST'
     })
   },
+  password(body: { current: string; next: string }) {
+    return api<void>('/api/auth/password', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
 }
 
 export const foldersApi = {
   list(parentId?: number | null) {
-    const q = parentId != null ? `?parent_id=${parentId}` : ''
+    const params = new URLSearchParams()
+    if (parentId != null) {
+      params.set('parent_id', String(parentId))
+    }
+
+    const qs = params.toString()
     return api<{
       folders: Folder[]
-    }>(`/api/folders${q}`)
+    }>(`/api/folders${qs ? `?${qs}` : ''}`)
   },
   tree() {
     return api<{
@@ -47,14 +58,40 @@ export const foldersApi = {
     return api<FolderContents>(`/api/folders/${id}`)
   },
   create(body: {
-    name: string;
-    parent_id?: number | null;
+    name: string
+    parent_id?: number | null
     path?: string
   }) {
     return api<Folder>('/api/folders', {
       method: 'POST',
       body: JSON.stringify(body)
     })
+  },
+}
+
+export const activityApi = {
+  listMine(limit = 30) {
+    const q = new URLSearchParams({ limit: String(limit) })
+    return api<{ events: ActivityEvent[] }>(`/api/activity?${q}`)
+  },
+  listOwner(owner: string, limit = 30) {
+    const q = new URLSearchParams({ limit: String(limit) })
+    return api<{ events: ActivityEvent[] }>(`/api/activity/${encodeURIComponent(owner)}?${q}`)
+  },
+}
+
+export const tokensApi = {
+  list() {
+    return api<{ tokens: AccessToken[] }>('/api/tokens')
+  },
+  create(body: { name: string }) {
+    return api<CreateAccessTokenResponse>('/api/tokens', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  revoke(id: number) {
+    return api<void>(`/api/tokens/${id}`, { method: 'DELETE' })
   },
 }
 
@@ -87,8 +124,13 @@ export const usersApi = {
 }
 
 export const reposApi = {
-  listOwn() {
-    return api<{ repos: Repository[] }>('/api/repos')
+  listOwn(sort?: string) {
+    const params = new URLSearchParams()
+    if (sort) {
+      params.set('sort', sort)
+    }
+    const qs = params.toString()
+    return api<{ repos: Repository[] }>(`/api/repos${qs ? `?${qs}` : ''}`)
   },
   search(q: string, scope?: 'public') {
     const params = new URLSearchParams({ q })
@@ -99,7 +141,8 @@ export const reposApi = {
     return api<Repository>(`/api/repos/${owner}/${path}`)
   },
   create(body: {
-    name: string
+    name?: string
+    path?: string
     description?: string
     folder_id?: number | null
     private?: boolean
@@ -117,6 +160,7 @@ export const reposApi = {
       description?: string
       private?: boolean
       default_branch?: string
+      protect_default_branch?: boolean
     },
   ) {
     return api<Repository>(`/api/repos/${owner}/${path}`, {
@@ -137,6 +181,9 @@ export const reposApi = {
   },
   branches(owner: string, path: string) {
     return api<{ branches: RefInfo[] }>(`/api/repos/${owner}/${path}/branches`)
+  },
+  tags(owner: string, path: string) {
+    return api<{ tags: RefInfo[] }>(`/api/repos/${owner}/${path}/tags`)
   },
   commits(owner: string, path: string, params: {
     ref?: string
@@ -181,6 +228,10 @@ export const reposApi = {
   blob(owner: string, path: string, params: { ref: string; path: string }) {
     const q = new URLSearchParams({ ref: params.ref, path: params.path })
     return api<BlobContent>(`/api/repos/${owner}/${path}/blob?${q}`)
+  },
+  blame(owner: string, path: string, params: { ref: string; path: string }) {
+    const q = new URLSearchParams({ ref: params.ref, path: params.path })
+    return api<BlameResult>(`/api/repos/${owner}/${path}/blame?${q}`)
   },
   readme(owner: string, path: string, ref?: string) {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
@@ -290,35 +341,11 @@ export const pullsApi = {
   },
 }
 
-export const sshKeysApi = {
-  list() {
-    return api<{ keys: SSHKey[] }>('/api/ssh-keys')
-  },
-  create(body: { title?: string; public_key: string }) {
-    return api<SSHKey>('/api/ssh-keys', {
-      method: 'POST',
-      body: JSON.stringify(body)
-    })
-  },
-  remove(id: number) {
-    return api<void>(`/api/ssh-keys/${id}`, { method: 'DELETE' })
-  },
-}
-
-export function cloneUrl(owner: string, fullPath: string) {
+export function cloneUrl(fullPath: string) {
+  const path = fullPath.replace(/\.git$/, '')
   if (import.meta.env.DEV) {
-    return `http://127.0.0.1:8080/${owner}/${fullPath}.git`
+    return `http://127.0.0.1:8080/${path}.git`
   }
 
-  return `${window.location.origin}/${owner}/${fullPath}.git`
-}
-
-export function sshCloneUrl(owner: string, fullPath: string) {
-  const host = window.location.hostname || '127.0.0.1'
-  const port = import.meta.env.VITE_SSH_PORT || '2222'
-  if (port === '22') {
-    return `git@${host}:${owner}/${fullPath}.git`
-  }
-
-  return `ssh://git@${host}:${port}/${owner}/${fullPath}.git`
+  return `${window.location.origin}/${path}.git`
 }

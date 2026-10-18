@@ -6,7 +6,7 @@ import type { CommitDiff, CommitInfo } from '@/api/types'
 import DiffFileList from '@/components/repo/DiffFileList.vue'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
-import { formatDate, localizeError } from '@/i18n'
+import { formatDate, pageError } from '@/i18n'
 
 const props = defineProps<{
   owner: string
@@ -30,7 +30,7 @@ async function load() {
     commit.value = info
     diff.value = patch
   } catch (err) {
-    error.value = localizeError(err, 'errors.loadCommit')
+    error.value = pageError(err, 'errors.loadCommit')
   } finally {
     loading.value = false
   }
@@ -62,7 +62,7 @@ watch(() => [props.owner, props.repoPath, props.sha], load, { immediate: true })
             <RouterLink
               :to="{
                 name: 'repo-commits',
-                params: { owner, repoPath }
+                params: { repoPath }
               }" class="text-accent hover:underline"
             >
               {{ $t('commit.all') }}

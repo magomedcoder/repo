@@ -5,18 +5,23 @@ import (
 	"time"
 )
 
+const OwnerKindUser = "user"
+
 type Repository struct {
-	ID             uint
-	Name           string
-	OwnerID        uint
-	FolderID       *uint
-	Description    string
-	IsPrivate      bool
-	DefaultBranch  string
-	Path           string
-	LastActivityAt *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                   uint
+	Name                 string
+	OwnerKind            string
+	OwnerID              uint
+	FolderID             *uint
+	Description          string
+	IsPrivate            bool
+	ProtectDefaultBranch bool
+	DefaultBranch        string
+	Path                 string
+	RepoPath             string
+	LastActivityAt       *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type RepositoryStore interface {
@@ -26,17 +31,21 @@ type RepositoryStore interface {
 
 	Delete(id uint) error
 
-	FindByOwnerFolderName(ownerID uint, folderID *uint, name string) (*Repository, error)
+	FindByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (*Repository, error)
 
-	ListByOwnerID(ownerID uint) ([]Repository, error)
+	FindByOwnerAndRepoPath(ownerKind string, ownerID uint, repoPath string) (*Repository, error)
 
-	ListByOwnerAndFolderID(ownerID uint, folderID *uint) ([]Repository, error)
+	FindByRepoPath(repoPath string) (*Repository, error)
+
+	ListByOwnerID(ownerKind string, ownerID uint) ([]Repository, error)
+
+	ListByOwnerAndFolderID(ownerKind string, ownerID uint, folderID *uint) ([]Repository, error)
 
 	ListPublic(limit int) ([]Repository, error)
 
-	SearchByName(query string, ownerID uint, publicOnly bool, limit int) ([]Repository, error)
+	SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit int) ([]Repository, error)
 
-	ExistsByOwnerFolderName(ownerID uint, folderID *uint, name string) (bool, error)
+	ExistsByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (bool, error)
 
 	CountByFolderID(folderID uint) (int64, error)
 
@@ -79,6 +88,20 @@ type BlobContent struct {
 	Encoding string `json:"encoding,omitempty"` // utf-8 | base64
 }
 
+type BlameLine struct {
+	Line       int    `json:"line"`
+	Content    string `json:"content"`
+	CommitSHA  string `json:"commit_sha"`
+	AuthorName string `json:"author_name"`
+	AuthoredAt string `json:"authored_at"`
+}
+
+type BlameResult struct {
+	Path  string      `json:"path"`
+	Ref   string      `json:"ref"`
+	Lines []BlameLine `json:"lines"`
+}
+
 type CommitDiff struct {
 	SHA     string     `json:"sha"`
 	Message string     `json:"message"`
@@ -109,7 +132,7 @@ type GitRepository interface {
 
 	ServePack(repoPath, service string, stdin io.Reader, stdout io.Writer) error
 
-	ServeSSHPack(repoPath, service string, stdin io.Reader, stdout, stderr io.Writer) error
+	EnsureDefaultBranch(repoPath, branch string) error
 
 	ListBranches(repoPath string) ([]RefInfo, error)
 
@@ -122,6 +145,8 @@ type GitRepository interface {
 	ListTree(repoPath, ref, path string) ([]TreeEntry, error)
 
 	GetBlob(repoPath, ref, path string) (*BlobContent, error)
+
+	GetBlame(repoPath, ref, path string) (*BlameResult, error)
 
 	GetCommitDiff(repoPath, sha string) (*CommitDiff, error)
 

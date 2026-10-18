@@ -22,20 +22,16 @@ function pick(next: AppLocale) {
   >
     <button
       type="button"
-      class="px-2 py-1"
-      :class="locale === 'en'
-        ? (inverted ? 'bg-white text-header' : 'bg-paper-2 text-ink')
-        : (inverted ? 'text-white/80 hover:bg-white/10' : 'bg-white text-ink-muted hover:bg-paper')"
+      class="cursor-pointer px-2 py-1"
+      :class="locale === 'en' ? (inverted ? 'bg-white text-header' : 'bg-paper-2 text-ink') : (inverted ? 'text-white/80 hover:bg-white/10' : 'bg-white text-ink-muted hover:bg-paper')"
       @click="pick('en')"
     >
       EN
     </button>
     <button
       type="button"
-      class="px-2 py-1"
-      :class="locale === 'ru'
-        ? (inverted ? 'bg-white text-header' : 'bg-paper-2 text-ink')
-        : (inverted ? 'text-white/80 hover:bg-white/10' : 'bg-white text-ink-muted hover:bg-paper')"
+      class="cursor-pointer px-2 py-1"
+      :class="locale === 'ru' ? (inverted ? 'bg-white text-header' : 'bg-paper-2 text-ink') : (inverted ? 'text-white/80 hover:bg-white/10' : 'bg-white text-ink-muted hover:bg-paper')"
       @click="pick('ru')"
     >
       RU

@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { reposApi } from '@/api'
 import { useAuth } from '@/composables/useAuth'
+import { rememberOwner } from '@/composables/useRepoOwner'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -31,9 +33,9 @@ const routes: RouteRecordRaw[] = [
         props: true,
       },
       {
-        path: 'settings/keys',
-        name: 'ssh-keys',
-        component: () => import('@/views/SSHKeysView.vue'),
+        path: 'settings/tokens',
+        name: 'tokens',
+        component: () => import('@/views/TokensView.vue'),
       },
       {
         path: 'settings/profile',
@@ -46,62 +48,86 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/SearchView.vue'),
       },
       {
-        path: ':owner/:repoPath(.*)/pulls/:number',
+        path: ':repoPath(.*)/pulls/:number',
         name: 'repo-pull',
+        meta: { publicRead: true },
         component: () => import('@/views/PullView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/pulls',
+        path: ':repoPath(.*)/pulls',
         name: 'repo-pulls',
+        meta: { publicRead: true },
         component: () => import('@/views/PullsView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/issues/:number',
+        path: ':repoPath(.*)/issues/:number',
         name: 'repo-issue',
+        meta: { publicRead: true },
         component: () => import('@/views/IssueView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/issues',
+        path: ':repoPath(.*)/issues',
         name: 'repo-issues',
+        meta: { publicRead: true },
         component: () => import('@/views/IssuesView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/commits/:sha',
+        path: ':repoPath(.*)/commits/:sha',
         name: 'repo-commit',
+        meta: { publicRead: true },
         component: () => import('@/views/RepoCommitView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/commits',
+        path: ':repoPath(.*)/refs',
+        name: 'repo-refs',
+        meta: { publicRead: true },
+        component: () => import('@/views/RepoRefsView.vue'),
+        props: true,
+      },
+      {
+        path: ':repoPath(.*)/about',
+        name: 'repo-about',
+        meta: { publicRead: true },
+        component: () => import('@/views/RepoAboutView.vue'),
+        props: true,
+      },
+      {
+        path: ':repoPath(.*)/commits',
         name: 'repo-commits',
+        meta: { publicRead: true },
         component: () => import('@/views/RepoCommitsView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/blob',
+        path: ':repoPath(.*)/blob',
         name: 'repo-blob',
+        meta: { publicRead: true },
         component: () => import('@/views/RepoBlobView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/tree',
+        path: ':repoPath(.*)/tree',
         name: 'repo-tree',
+        meta: { publicRead: true },
         component: () => import('@/views/RepoTreeView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)/settings',
+        path: ':repoPath(.*)/settings',
         name: 'repo-settings',
+        meta: { publicRead: true },
         component: () => import('@/views/RepoSettingsView.vue'),
         props: true,
       },
       {
-        path: ':owner/:repoPath(.*)',
+        path: ':repoPath(.*)',
         name: 'repo',
+        meta: { publicRead: true },
         component: () => import('@/views/RepoHomeView.vue'),
         props: true,
       },
@@ -123,7 +149,8 @@ router.beforeEach(async (to) => {
     await auth.fetchMe()
   }
 
-  if (to.meta.requiresAuth && !auth.isAuthenticated.value) {
+  const publicRead = to.matched.some((record) => record.meta.publicRead)
+  if (to.meta.requiresAuth && !auth.isAuthenticated.value && !publicRead) {
     return {
       name: 'login',
       query: {
@@ -134,6 +161,20 @@ router.beforeEach(async (to) => {
 
   if (to.meta.guest && auth.isAuthenticated.value) {
     return { name: 'home' }
+  }
+
+  const repoPath = to.params.repoPath
+  if (repoPath && !auth.user.value?.username) {
+    const path = Array.isArray(repoPath) ? repoPath.join('/') : String(repoPath)
+    const res = await reposApi.search('', 'public').catch(() => ({ repos: [] }))
+    const hit = (res.repos ?? []).find((repo) => {
+      const logical = (repo.repo_path || (repo.folder_path ? `${repo.folder_path}/${repo.name}` : repo.name)).replace(/\.git$/, '')
+      return logical === path
+    })
+    
+    if (hit?.owner) {
+      rememberOwner(hit.owner)
+    }
   }
 
   return true

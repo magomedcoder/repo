@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "Liberation Mono", Consolas, monospace;
 
-  --color-ink: #1f2328;
-  --color-ink-muted: #59636e;
-  --color-paper: #f6f8fa;
-  --color-paper-2: #eaeef2;
-  --color-line: #d1d9e0;
-  --color-moss: #1f883d;
-  --color-moss-dark: #1a7f37;
+  --color-ink: #1c2430;
+  --color-ink-muted: #5c6773;
+  --color-paper: #fff;
+  --color-paper-2: #f3f5f7;
+  --color-line: #d5dbe1;
+  --color-moss: #1a7f37;
+  --color-moss-dark: #146c2e;
   --color-moss-soft: #dafbe1;
-  --color-accent: #0969da;
-  --color-accent-soft: #ddf4ff;
-  --color-warn: #d1242f;
-  --color-warn-soft: #ffebe9;
-  --color-header: #24292f;
-  --color-done: #8250df;
+  --color-accent: #0b5cab;
+  --color-accent-soft: #e7f1fb;
+  --color-warn: #b42318;
+  --color-warn-soft: #fdecea;
+  --color-header: #1c2430;
+  --color-done: #5c6773;
   --color-open: #1a7f37;
 }
 
@@ -27,107 +27,14 @@
   }
 
   body {
-    @apply min-h-screen bg-paper font-sans text-sm text-ink;
+    @apply min-h-screen bg-[#e7ebf0] font-sans text-[13px] text-ink;
   }
 
   #app {
-    @apply min-h-screen;
+    @apply mx-auto min-h-screen w-full max-w-6xl border-x border-line bg-white;
   }
 
   a {
-    @apply text-inherit no-underline;
+    @apply text-accent no-underline hover:underline;
   }
-}
-
-@utility btn {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition;
-}
-
-@utility btn-primary {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-black/15 bg-moss px-3 py-1 text-sm font-medium text-white shadow-[0_1px_0_rgba(31,35,40,0.1)] transition hover:bg-moss-dark disabled:cursor-not-allowed disabled:opacity-60;
-}
-
-@utility btn-ghost {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-paper px-3 py-1 text-sm font-medium text-ink shadow-[0_1px_0_rgba(31,35,40,0.04)] transition hover:bg-paper-2 disabled:cursor-not-allowed disabled:opacity-60;
-}
-
-@utility btn-danger {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-black/15 bg-warn px-3 py-1 text-sm font-medium text-white shadow-[0_1px_0_rgba(31,35,40,0.1)] transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60;
-}
-
-@utility input {
-  @apply w-full rounded-md border border-line bg-white px-3 py-1.5 text-sm text-ink shadow-[inset_0_1px_0_rgba(208,215,222,0.2)] outline-none transition placeholder:text-ink-muted focus:border-accent focus:shadow-[0_0_0_3px_rgba(9,105,218,0.3)];
-}
-
-@utility panel {
-  @apply rounded-md border border-line bg-white;
-}
-
-.markdown-body :where(h1, h2, h3) {
-  margin: 1em 0 0.4em;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.markdown-body :where(h1) {
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--color-line);
-  font-size: 1.5em;
-}
-
-.markdown-body :where(h2) {
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--color-line);
-  font-size: 1.25em;
-}
-
-.markdown-body :where(p, ul, ol) {
-  margin: 0.6em 0;
-}
-
-.markdown-body :where(ul, ol) {
-  padding-left: 1.5em;
-}
-
-.markdown-body :where(ul) {
-  list-style: disc;
-}
-
-.markdown-body :where(ol) {
-  list-style: decimal;
-}
-
-.markdown-body :where(pre) {
-  margin: 0.6em 0;
-  overflow-x: auto;
-  border-radius: 6px;
-  background: var(--color-paper);
-  padding: 0.75rem;
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-}
-
-.markdown-body :where(code) {
-  border-radius: 6px;
-  background: var(--color-paper);
-  padding: 0.1em 0.35em;
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-}
-
-.markdown-body :where(pre code) {
-  background: transparent;
-  padding: 0;
-}
-
-.markdown-body :where(a) {
-  color: var(--color-accent);
-  text-decoration: underline;
-}
-
-.markdown-body :where(blockquote) {
-  margin: 0.6em 0;
-  border-left: 0.25em solid var(--color-line);
-  padding-left: 1em;
-  color: var(--color-ink-muted);
 }

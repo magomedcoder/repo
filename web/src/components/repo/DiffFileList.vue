@@ -16,11 +16,11 @@ function lineClass(line: string) {
   }
 
   if (line.startsWith('+')) {
-    return 'bg-[#dafbe1]'
+    return 'bg-[#cfc]'
   }
 
   if (line.startsWith('-')) {
-    return 'bg-[#ffebe9]'
+    return 'bg-[#fcc]'
   }
 
   return ''
@@ -31,7 +31,7 @@ function lineClass(line: string) {
   <article
     v-for="file in files"
     :key="file.path + file.status"
-    class="overflow-hidden rounded-md border border-line bg-white"
+    class="mb-3 overflow-hidden border border-line bg-white"
   >
     <header class="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-4 py-2 text-sm">
       <span class="rounded-full border border-line bg-white px-2 py-0.5 text-xs font-medium">{{ diffStatus(file.status) }}</span>

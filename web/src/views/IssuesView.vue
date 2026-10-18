@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { btnPrimary, field } from '@/lib/classes'
 import { computed, ref, watch } from 'vue'
 import { issuesApi } from '@/api'
 import type { Issue, Label } from '@/api/types'
@@ -121,7 +122,7 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
       </div>
       <button
         type="button"
-        class="btn-primary"
+        :class="btnPrimary"
         @click="showForm = !showForm"
       >{{ $t('issues.new') }}</button>
     </div>
@@ -134,13 +135,13 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
       <h2 class="text-sm font-semibold">{{ $t('issues.new') }}</h2>
       <input
         v-model="title"
-        class="input"
+        :class="field"
         required
         :placeholder="$t('issues.titleField')"
       />
       <textarea
         v-model="body"
-        class="input min-h-28"
+        :class="[field, 'min-h-28']"
         :placeholder="$t('issues.bodyField')"
       />
       <LabelPicker
@@ -149,7 +150,7 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
       />
       <button
         type="submit"
-        class="btn-primary"
+        :class="btnPrimary"
         :disabled="creating"
       >
         {{ creating ? $t('issues.creating') : $t('issues.create') }}
@@ -158,7 +159,7 @@ watch(() => [props.owner, props.repoPath, state.value], load, { immediate: true 
 
     <p v-if="error" class="mb-3 text-sm text-warn">{{ error }}</p>
     <PageState :loading="loading">
-      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
         <ul class="divide-y divide-line overflow-hidden rounded-md border border-line bg-white">
           <li v-for="issue in issues" :key="issue.number">
             <IssueRow

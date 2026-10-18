@@ -21,7 +21,6 @@
   "folder_already_exists": "Folder already exists",
   "folder_not_found": "Folder not found",
   "folder_not_empty": "Folder is not empty",
-  "folder_depth_exceeded": "Folder depth exceeded",
   "invalid_folder_move": "Invalid folder move",
   "folder_cycle": "Cannot move a folder into its descendant",
   "parent_folder_not_found": "Parent folder not found",
@@ -48,12 +47,6 @@
   "label_not_found": "Label not found",
   "label_already_exists": "Label already exists",
   "invalid_label": "Label does not belong to this repository",
-  "ssh_key_title_required": "SSH key title is required",
-  "ssh_key_required": "Public key is required",
-  "invalid_ssh_key": "Invalid SSH public key",
-  "ssh_key_already_exists": "SSH key already exists",
-  "ssh_key_not_found": "SSH key not found",
-  "invalid_ssh_key_id": "Invalid SSH key id",
   "pull_title_required": "Pull request title is required",
   "pull_not_found": "Pull request not found",
   "pull_forbidden": "You cannot change this pull request",
@@ -68,5 +61,10 @@
   "invalid_avatar": "Avatar must be a JPEG, PNG, WebP, or GIF image",
   "avatar_too_large": "Avatar must be at most 1 MB",
   "avatar_not_found": "Avatar not found",
-  "rate_limited": "Too many requests"
+  "rate_limited": "Too many requests",
+  "registration_closed": "Registration is closed",
+  "too_many_attempts": "Too many attempts",
+  "reserved_slug": "This name is reserved",
+  "invalid_path": "Invalid path",
+  "branch_protected": "Branch is protected"
 }

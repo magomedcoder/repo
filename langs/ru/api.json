@@ -21,7 +21,6 @@
   "folder_already_exists": "Папка уже существует",
   "folder_not_found": "Папка не найдена",
   "folder_not_empty": "Папка не пустая",
-  "folder_depth_exceeded": "Превышена глубина вложенности",
   "invalid_folder_move": "Некорректное перемещение папки",
   "folder_cycle": "Нельзя переместить папку внутрь её потомка",
   "parent_folder_not_found": "Родительская папка не найдена",
@@ -48,12 +47,6 @@
   "label_not_found": "Метка не найдена",
   "label_already_exists": "Такая метка уже есть",
   "invalid_label": "Метка не относится к этому репозиторию",
-  "ssh_key_title_required": "Нужно указать название SSH-ключа",
-  "ssh_key_required": "Нужно указать публичный ключ",
-  "invalid_ssh_key": "Некорректный SSH-ключ",
-  "ssh_key_already_exists": "Такой SSH-ключ уже добавлен",
-  "ssh_key_not_found": "SSH-ключ не найден",
-  "invalid_ssh_key_id": "Некорректный id SSH-ключа",
   "pull_title_required": "Нужно указать заголовок pull request",
   "pull_not_found": "Pull request не найден",
   "pull_forbidden": "Нельзя изменить этот pull request",
@@ -68,5 +61,10 @@
   "invalid_avatar": "Аватар должен быть JPEG, PNG, WebP или GIF",
   "avatar_too_large": "Аватар не больше 1 МБ",
   "avatar_not_found": "Аватар не найден",
-  "rate_limited": "Слишком много запросов"
+  "rate_limited": "Слишком много запросов",
+  "reserved_slug": "Это имя зарезервировано",
+  "registration_closed": "Регистрация закрыта",
+  "too_many_attempts": "Слишком много попыток",
+  "invalid_path": "Некорректный путь",
+  "branch_protected": "Ветка защищена"
 }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRepoOwner } from '@/composables/useRepoOwner'
+import { btnDanger, btnGhost, btnPrimary, field } from '@/lib/classes'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { pullsApi } from '@/api'
@@ -12,8 +14,9 @@ import PageState from '@/components/ui/PageState.vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatDate, localizeError } from '@/i18n'
 
+const owner = useRepoOwner()
+
 const props = defineProps<{
-  owner: string
   repoPath: string
   number: string
 }>()
@@ -28,7 +31,7 @@ const error = ref('')
 const loading = ref(true)
 const busy = ref(false)
 
-const isOwner = computed(() => auth.user.value?.username === props.owner)
+const isOwner = computed(() => auth.user.value?.username === owner.value)
 const canEdit = computed(() => isOwner.value || auth.user.value?.username === pull.value?.author)
 
 function canEditComment(author: string) {
@@ -39,10 +42,10 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const detail = await pullsApi.get(props.owner, props.repoPath, Number(props.number))
+    const detail = await pullsApi.get(owner.value, props.repoPath, Number(props.number))
     pull.value = detail
     if (detail.state === 'open') {
-      compare.value = await pullsApi.diff(props.owner, props.repoPath, detail.number)
+      compare.value = await pullsApi.diff(owner.value, props.repoPath, detail.number)
       strategy.value = compare.value.can_fast_forward ? 'ff-only' : 'merge'
     } else {
       compare.value = null
@@ -63,7 +66,7 @@ async function toggleState() {
   error.value = ''
   try {
     const next = pull.value.state === 'open' ? 'closed' : 'open'
-    await pullsApi.update(props.owner, props.repoPath, pull.value.number, { state: next })
+    await pullsApi.update(owner.value, props.repoPath, pull.value.number, { state: next })
     await load()
   } catch (err) {
     error.value = localizeError(err, 'errors.saveFailed')
@@ -80,7 +83,7 @@ async function merge() {
   busy.value = true
   error.value = ''
   try {
-    await pullsApi.merge(props.owner, props.repoPath, pull.value.number, strategy.value)
+    await pullsApi.merge(owner.value, props.repoPath, pull.value.number, strategy.value)
     await load()
   } catch (err) {
     error.value = localizeError(err, 'errors.mergeFailed')
@@ -97,7 +100,7 @@ async function addComment() {
   busy.value = true
   error.value = ''
   try {
-    await pullsApi.comment(props.owner, props.repoPath, pull.value.number, comment.value)
+    await pullsApi.comment(owner.value, props.repoPath, pull.value.number, comment.value)
     comment.value = ''
     await load()
   } catch (err) {
@@ -115,7 +118,7 @@ async function saveComment(id: number, body: string) {
   busy.value = true
   error.value = ''
   try {
-    await pullsApi.updateComment(props.owner, props.repoPath, pull.value.number, id, body)
+    await pullsApi.updateComment(owner.value, props.repoPath, pull.value.number, id, body)
     await load()
   } catch (err) {
     error.value = localizeError(err, 'errors.saveFailed')
@@ -132,7 +135,7 @@ async function removeComment(id: number) {
   busy.value = true
   error.value = ''
   try {
-    await pullsApi.removeComment(props.owner, props.repoPath, pull.value.number, id)
+    await pullsApi.removeComment(owner.value, props.repoPath, pull.value.number, id)
     await load()
   } catch (err) {
     error.value = localizeError(err, 'errors.deleteFailed')
@@ -148,11 +151,10 @@ async function remove() {
 
   busy.value = true
   try {
-    await pullsApi.remove(props.owner, props.repoPath, pull.value.number)
+    await pullsApi.remove(owner.value, props.repoPath, pull.value.number)
     await router.push({ 
       name: 'repo-pulls', 
       params: { 
-        owner: props.owner, 
         repoPath: props.repoPath 
       } 
     })
@@ -162,7 +164,7 @@ async function remove() {
   }
 }
 
-watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true })
+watch(() => [owner.value, props.repoPath, props.number], load, { immediate: true })
 </script>
 
 <template>
@@ -185,7 +187,7 @@ watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true
             <button 
               v-if="canEdit && pull.state !== 'merged'" 
               type="button" 
-              class="btn-ghost" 
+              :class="btnGhost" 
               :disabled="busy" 
               @click="toggleState"
             >
@@ -194,7 +196,7 @@ watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true
             <button 
               v-if="canEdit" 
               type="button" 
-              class="btn-danger" 
+              :class="btnDanger" 
               :disabled="busy" 
               @click="remove"
             >{{ $t('pulls.delete') }}</button>
@@ -228,14 +230,14 @@ watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true
         >
           <label class="block text-sm">
             <span class="mb-1 block font-semibold">{{ $t('pulls.strategy') }}</span>
-            <select v-model="strategy" class="input min-w-40">
+            <select v-model="strategy" :class="[field, 'min-w-40']">
               <option value="merge">{{ $t('pulls.strategyMerge') }}</option>
               <option value="ff-only" :disabled="!!compare && !compare.can_fast_forward">{{ $t('pulls.strategyFf') }}</option>
             </select>
           </label>
           <button 
             type="submit" 
-            class="btn-primary" 
+            :class="btnPrimary" 
             :disabled="busy"
           >{{ $t('pulls.merge') }}</button>
           <p v-if="compare?.can_fast_forward" class="text-xs text-open">{{ $t('pulls.canFf') }}</p>
@@ -274,13 +276,13 @@ watch(() => [props.owner, props.repoPath, props.number], load, { immediate: true
         <form class="space-y-2" @submit.prevent="addComment">
           <textarea 
             v-model="comment" 
-            class="input min-h-24" 
+            :class="[field, 'min-h-24']" 
             required 
             :placeholder="$t('pulls.comment')" 
           />
           <button 
             type="submit" 
-            class="btn-primary" 
+            :class="btnPrimary" 
             :disabled="busy"
           >{{ $t('pulls.commentAction') }}</button>
         </form>
