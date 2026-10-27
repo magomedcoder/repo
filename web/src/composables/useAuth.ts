@@ -6,11 +6,9 @@ import type { User } from '@/api/types'
 const state = reactive<{
   user: User | null
   ready: boolean
-  loading: boolean
 }>({
   user: null,
   ready: false,
-  loading: false,
 })
 
 export function useAuth() {
@@ -19,17 +17,14 @@ export function useAuth() {
   const ready = computed(() => state.ready)
 
   async function fetchMe() {
-    state.loading = true
     try {
       state.user = await authApi.me()
     } catch (err) {
       if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
         state.user = null
-      } else {
-        state.user = null
       }
+
     } finally {
-      state.loading = false
       state.ready = true
     }
   }
@@ -39,9 +34,10 @@ export function useAuth() {
     state.ready = true
   }
 
-  async function register(username: string, email: string, password: string) {
-    state.user = await authApi.register({ username, email, password })
+  async function register(body: { username: string; email: string; password: string }) {
+    state.user = await authApi.register(body)
     state.ready = true
+    return state.user
   }
 
   async function logout() {
@@ -60,7 +56,6 @@ export function useAuth() {
     user,
     isAuthenticated,
     ready,
-    loading: computed(() => state.loading),
     fetchMe,
     login,
     register,

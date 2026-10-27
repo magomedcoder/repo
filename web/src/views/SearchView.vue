@@ -1,40 +1,75 @@
 <script setup lang="ts">
-import { dataTable, field } from '@/lib/classes'
+import { btnGhost, dataTable, field } from '@/lib/classes'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { reposApi } from '@/api'
 import type { Repository } from '@/api/types'
 import PageState from '@/components/ui/PageState.vue'
-import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
 import { localizeError } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
-const { setBreadcrumbs, clearBreadcrumbs } = useBreadcrumbs()
-
 const q = ref(String(route.query.q || ''))
 const scope = ref<'own' | 'public'>(route.query.scope === 'public' ? 'public' : 'own')
+const PAGE_SIZE = 50
+
 const repos = ref<Repository[]>([])
 const loading = ref(false)
+const loadingMore = ref(false)
+const hasMore = ref(false)
 const error = ref('')
 let timer: ReturnType<typeof setTimeout> | null = null
+let abort: AbortController | null = null
 
-async function search() {
+async function search(append = false) {
   const query = q.value.trim()
   if (!query) {
     repos.value = []
+    hasMore.value = false
     return
   }
 
-  loading.value = true
+  if (!append) {
+    abort?.abort()
+    abort = new AbortController()
+  }
+  const signal = abort?.signal
+
+  if (append) {
+    loadingMore.value = true
+  } else {
+    loading.value = true
+  }
   error.value = ''
   try {
-    const res = await reposApi.search(query, scope.value === 'public' ? 'public' : undefined)
-    repos.value = res.repos ?? []
+    const offset = append ? repos.value.length : 0
+    const res = await reposApi.search(
+      query,
+      scope.value === 'public' ? 'public' : undefined,
+      { offset, limit: PAGE_SIZE },
+    )
+    if (signal?.aborted) {
+      return
+    }
+    const batch = res.repos ?? []
+    repos.value = append ? [...repos.value, ...batch] : batch
+    hasMore.value = batch.length >= PAGE_SIZE
   } catch (err) {
+    if (signal?.aborted) {
+      return
+    }
     error.value = localizeError(err, 'errors.searchFailed')
   } finally {
-    loading.value = false
+    if (!signal?.aborted) {
+      loading.value = false
+      loadingMore.value = false
+    }
+  }
+}
+
+function loadMore() {
+  if (!loadingMore.value && hasMore.value && q.value.trim()) {
+    search(true)
   }
 }
 
@@ -56,60 +91,55 @@ function schedule() {
 }
 
 function repoTo(repo: Repository) {
-  const path = repo.folder_path ? `${repo.folder_path}/${repo.name}` : repo.name
-  return { 
-    name: 'repo' as const, 
-    params: { 
-      repoPath: path 
-    } 
+  const path = (repo.repo_path || (repo.folder_path ? `${repo.folder_path}/${repo.name}` : repo.name)).replace(/\.git$/, '')
+  return {
+    name: 'repo' as const,
+    params: { repoPath: path },
   }
 }
 
 watch(scope, schedule)
+watch(() => route.query.q, (v) => {
+  const next = typeof v === 'string' ? v : ''
+  if (next !== q.value) {
+    q.value = next
+  }
+})
 
 onMounted(() => {
-  setBreadcrumbs([{ 
-    label: 'search', 
-    labelKey: 'search.title' 
-  }])
   if (q.value.trim()) {
     search()
   }
 })
 onUnmounted(() => {
-  clearBreadcrumbs()
-  if (timer) {
-    clearTimeout(timer)
-  }
+  if (timer) clearTimeout(timer)
+  abort?.abort()
 })
 </script>
 
 <template>
   <div>
-    <div class="flex flex-wrap items-end gap-3 px-2">
+    <div class="flex flex-wrap items-end gap-3">
       <label class="block min-w-64 flex-1 text-sm">
-        <span class="mb-1 block font-semibold">{{ $t('search.query') }}</span>
+        <span class="mb-1 block text-[11px] text-ink-muted">{{ $t('search.query') }}</span>
         <input
           v-model="q"
-          type="search"
           :class="[field, 'w-full']"
           :placeholder="$t('search.placeholder')"
           @input="schedule"
-        >
+        />
       </label>
       <label class="block text-sm">
-        <span class="mb-1 block font-semibold">{{ $t('search.scope') }}</span>
+        <span class="mb-1 block text-[11px] text-ink-muted">{{ $t('search.scope') }}</span>
         <select v-model="scope" :class="[field, 'min-w-40']">
           <option value="own">{{ $t('search.scopeOwn') }}</option>
           <option value="public">{{ $t('search.scopePublic') }}</option>
         </select>
       </label>
     </div>
-
+    <p v-if="!q.trim()" class="mt-3 text-sm text-ink-muted">{{ $t('search.hint') }}</p>
     <PageState class="mt-2" :loading="loading" :error="error">
-      <p v-if="!q.trim()" class="px-2">{{ $t('search.hint') }}</p>
-      <p v-else-if="!repos.length" class="px-2">{{ $t('search.empty') }}</p>
-      <table v-else :class="dataTable">
+      <table v-if="repos.length" :class="dataTable">
         <thead>
           <tr>
             <th>{{ $t('index.name') }}</th>
@@ -119,16 +149,18 @@ onUnmounted(() => {
         </thead>
         <tbody>
           <tr v-for="repo in repos" :key="repo.id">
-            <td>
-              <RouterLink :to="repoTo(repo)">
-                {{ repo.folder_path ? `${repo.folder_path}/` : '' }}{{ repo.name }}
-              </RouterLink>
-            </td>
+            <td><RouterLink :to="repoTo(repo)">{{ repo.name }}</RouterLink></td>
             <td>{{ repo.description }}</td>
             <td>{{ repo.owner }}</td>
           </tr>
         </tbody>
       </table>
+      <p v-else-if="q.trim()" class="text-sm text-ink-muted">{{ $t('search.empty') }}</p>
+      <p v-if="hasMore && repos.length" class="mt-3">
+        <button type="button" :class="btnGhost" :disabled="loadingMore" @click="loadMore">
+          {{ loadingMore ? $t('common.loading') : $t('common.loadMore') }}
+        </button>
+      </p>
     </PageState>
   </div>
 </template>

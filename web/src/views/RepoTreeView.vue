@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useRepoOwner } from '@/composables/useRepoOwner'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { reposApi } from '@/api'
@@ -7,9 +6,9 @@ import type { TreeEntry } from '@/api/types'
 import FileTable from '@/components/repo/FileTable.vue'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
+import type { PageError } from '@/i18n'
 import { pageError } from '@/i18n'
 
-const owner = useRepoOwner()
 
 const props = defineProps<{
   repoPath: string
@@ -17,7 +16,7 @@ const props = defineProps<{
 
 const route = useRoute()
 const tree = ref<TreeEntry[]>([])
-const error = ref('')
+const error = ref<PageError | string>('')
 const loading = ref(true)
 
 const refName = computed(() => (route.query.ref as string) || 'main')
@@ -52,7 +51,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const res = await reposApi.tree(owner.value, props.repoPath, {
+    const res = await reposApi.tree(props.repoPath, {
       ref: refName.value,
       path: dirPath.value,
     })
@@ -64,16 +63,16 @@ async function load() {
   }
 }
 
-watch(() => [owner.value, props.repoPath, route.query.ref, route.query.path], load, { immediate: true })
+watch(() => [props.repoPath, route.query.ref, route.query.path], load, { immediate: true })
 </script>
 
 <template>
-  <RepoShell :owner="owner" :repo-path="repoPath" tab="code">
-    <p v-if="dirPath" class="mb-3 font-mono text-sm text-ink-muted">{{ refName }} / {{ dirPath }}</p>
+  <RepoShell
+    :repo-path="repoPath" tab="code">
+    <p v-if="dirPath" class="mb-3 text-sm text-ink-muted">{{ refName }} / {{ dirPath }}</p>
     <PageState :loading="loading" :error="error">
       <FileTable
         :entries="tree"
-        :owner="owner"
         :repo-path="repoPath"
         :ref-name="refName"
         :parent-to="parentTo"

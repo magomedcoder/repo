@@ -14,5 +14,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": i18n.T(r.Context(), message)})
+	writeJSON(w, status, map[string]string{
+		"error": i18n.T(r.Context(), message),
+		"code":  message,
+	})
 }

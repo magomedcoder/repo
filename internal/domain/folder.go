@@ -4,9 +4,9 @@ import "time"
 
 type Folder struct {
 	ID        uint
-	OwnerKind string // user | org
+	OwnerKind string
 	OwnerID   uint
-	ParentID  *uint // nil = namespace root
+	ParentID  *uint
 	Name      string
 	Slug      string
 	Path      string
@@ -27,10 +27,5 @@ type FolderStore interface {
 
 	ListByOwner(ownerKind string, ownerID uint) ([]Folder, error)
 
-	ListByOwnerAndParent(ownerKind string, ownerID uint, parentID *uint) ([]Folder, error)
-
-	ExistsByOwnerParentSlug(ownerKind string, ownerID uint, parentID *uint, slug string) (bool, error)
-	CountChildren(folderID uint) (int64, error)
-
-	ListDescendants(ownerKind string, ownerID uint, pathPrefix string) ([]Folder, error)
+	ExistsByOwnerSlug(ownerKind string, ownerID uint, slug string) (bool, error)
 }

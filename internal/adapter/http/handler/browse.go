@@ -7,43 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"git.magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"git.magomedcoder.ru/repo/internal/usecase"
 )
 
-func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) {
-	owner := strings.TrimSpace(r.PathValue("owner"))
-	rest := strings.Trim(r.PathValue("path"), "/")
-	if owner == "" || rest == "" {
-		writeError(w, r, http.StatusBadRequest, "invalid_repository_path")
-		return
-	}
-
-	parts := strings.Split(rest, "/")
-	action, repoParts, extra, ok := splitBrowsePath(parts)
-	if !ok {
-		h.Get(w, r)
-		return
-	}
-
-	folderPath, name, err := folderAndName(repoParts)
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	var viewerID uint
-	if user, loggedIn := middleware.UserFromContext(r.Context()); loggedIn {
-		viewerID = user.ID
-	}
-
-	in := usecase.ResolveRepositoryInput{
-		OwnerUsername: owner,
-		FolderPath:    folderPath,
-		Name:          name,
-		ViewerID:      viewerID,
-	}
-
+func (h *RepositoryHandler) serveBrowseGet(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
 	ref := r.URL.Query().Get("ref")
 	path := r.URL.Query().Get("path")
 
@@ -67,6 +34,12 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 	case "commits":
 		if len(extra) == 0 {
 			offset, limit := usecase.ParseOffsetLimit(r.URL.Query().Get("offset"), r.URL.Query().Get("limit"))
+			if limit <= 0 {
+				limit = 30
+			}
+			if limit > 100 {
+				limit = 100
+			}
 			items, err := h.repos.ListCommits(in, ref, offset, limit)
 			if err != nil {
 				writeRepoError(w, r, err)
@@ -170,6 +143,15 @@ func (h *RepositoryHandler) DispatchGet(w http.ResponseWriter, r *http.Request) 
 
 		writeJSON(w, http.StatusOK, item)
 
+	case "summary":
+		item, err := h.repos.GetSummary(in, ref)
+		if err != nil {
+			writeRepoError(w, r, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, item)
+
 	default:
 		writeError(w, r, http.StatusNotFound, "not_found")
 	}
@@ -192,7 +174,7 @@ func splitBrowsePath(parts []string) (action string, repoParts, extra []string, 
 
 	last := parts[len(parts)-1]
 	switch last {
-	case "branches", "tags", "commits", "tree", "blob", "raw", "blame", "readme", "stats":
+	case "branches", "tags", "commits", "tree", "blob", "raw", "blame", "readme", "stats", "summary":
 		return last, parts[:len(parts)-1], nil, true
 	default:
 		return "", nil, nil, false

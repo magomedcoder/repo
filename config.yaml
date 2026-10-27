@@ -1,7 +1,13 @@
 http_addr: ":8080"
-ssh_addr: ":2222"
 data_dir: "data"
 db_path: "data/db.sqlite"
 repos_root: "data/repos"
 avatars_dir: "data/avatars"
-ssh_dir: "data/ssh"
+# openssl rand -hex 32
+session_secret: "test"
+cookie_secure: false
+allow_registration: false
+receive_max_bytes: 536870912
+# trusted_proxies:
+#   - "10.0.0.0/8"
+#   - "192.168.0.0/16"

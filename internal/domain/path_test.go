@@ -8,10 +8,6 @@ func TestParseRepoPath(t *testing.T) {
 		t.Fatalf("got %v %v", parts, err)
 	}
 
-	if SectionPrefix("notes/diary.git") != "notes" {
-		t.Fatal("section")
-	}
-
 	for _, bad := range []string{"", "../x.git", "/abs.git", "a/../../b.git", "no-suffix", "a.git/b.git", "a/./b.git"} {
 		if _, err := ParseRepoPath(bad); err != ErrInvalidPath {
 			t.Fatalf("%q: %v", bad, err)

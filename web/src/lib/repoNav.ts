@@ -1,7 +1,7 @@
 import type { RouteLocationRaw } from 'vue-router'
 import type { TreeEntry } from '@/api/types'
 
-export function entryRoute(owner: string, repoPath: string, refName: string, entry: TreeEntry): RouteLocationRaw {
+export function entryRoute(repoPath: string, refName: string, entry: TreeEntry): RouteLocationRaw {
   if (entry.type === 'tree') {
     return {
       name: 'repo-tree',
@@ -20,12 +20,5 @@ export function entryRoute(owner: string, repoPath: string, refName: string, ent
       ref: refName,
       path: entry.path
     },
-  }
-}
-
-export function repoHome(owner: string, repoPath: string): RouteLocationRaw {
-  return {
-    name: 'repo',
-    params: { repoPath }
   }
 }

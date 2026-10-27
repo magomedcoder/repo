@@ -13,13 +13,9 @@ func TestGitHTTPSmoke(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git required")
 	}
-	srv, dir := newTestServer(t)
-
-	reg := doJSON(t, srv, http.MethodPost, "/api/auth/register", `{"username":"utest2","email":"utest2@example.com","password":"password1"}`, nil)
-	if reg.StatusCode != http.StatusCreated {
-		t.Fatalf("register %d %s", reg.StatusCode, reg.Body)
-	}
-	cookies := reg.Cookies
+	env := newTestServer(t)
+	srv, dir := env.Server, env.Dir
+	cookies := loginUser(t, env, "utest2", "utest2@example.com", "password1")
 
 	created := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"hello","private":false}`, cookies)
 	if created.StatusCode != http.StatusCreated {

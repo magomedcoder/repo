@@ -1,9 +1,11 @@
 export class ApiError extends Error {
   status: number
+  code?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
@@ -15,12 +17,16 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method || 'GET').toUpperCase()
   if (method !== 'GET' && method !== 'HEAD' && !headers.has('X-CSRF-Token')) {
     const match = document.cookie.match(/(?:^|; )repo_csrf=([^;]*)/)
-    if (match) {
-      headers.set('X-CSRF-Token', decodeURIComponent(match[1]))
+    const token = match?.[1]
+    if (token) {
+      headers.set('X-CSRF-Token', decodeURIComponent(token))
     }
   }
   if (!headers.has('Accept-Language')) {
-    const locale = localStorage.getItem('repo.locale') || (navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en')
+    const saved = localStorage.getItem('repo.locale')
+    const locale = saved === 'en' || saved === 'ru'
+      ? saved
+      : navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en'
     headers.set('Accept-Language', locale)
   }
 
@@ -45,10 +51,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
-    const message = data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string'
-      ? (data as { error: string }).error
-      : res.statusText || 'request failed'
-    throw new ApiError(res.status, message)
+    let message = res.statusText || 'request failed'
+    let code: string | undefined
+    if (data && typeof data === 'object') {
+      const body = data as Record<string, unknown>
+      if (typeof body.error === 'string') {
+        message = body.error
+      }
+      if (typeof body.code === 'string') {
+        code = body.code
+      }
+    }
+    throw new ApiError(res.status, message, code)
   }
 
   return data as T

@@ -6,17 +6,17 @@ import type { CommitDiff, CommitInfo } from '@/api/types'
 import DiffFileList from '@/components/repo/DiffFileList.vue'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
+import type { PageError } from '@/i18n'
 import { formatDate, pageError } from '@/i18n'
 
 const props = defineProps<{
-  owner: string
   repoPath: string
   sha: string
 }>()
 
 const commit = ref<CommitInfo | null>(null)
 const diff = ref<CommitDiff | null>(null)
-const error = ref('')
+const error = ref<PageError | string>('')
 const loading = ref(true)
 
 async function load() {
@@ -24,8 +24,8 @@ async function load() {
   error.value = ''
   try {
     const [info, patch] = await Promise.all([
-      reposApi.commit(props.owner, props.repoPath, props.sha),
-      reposApi.diff(props.owner, props.repoPath, props.sha),
+      reposApi.commit(props.repoPath, props.sha),
+      reposApi.diff(props.repoPath, props.sha),
     ])
     commit.value = info
     diff.value = patch
@@ -36,26 +36,26 @@ async function load() {
   }
 }
 
-watch(() => [props.owner, props.repoPath, props.sha], load, { immediate: true })
+watch(() => [props.repoPath, props.sha], load, { immediate: true })
 </script>
 
 <template>
   <RepoShell
-    :owner="owner"
     :repo-path="repoPath"
     tab="code"
   >
     <PageState :loading="loading" :error="error">
       <template v-if="commit">
-        <article class="mb-4 overflow-hidden rounded-md border border-line bg-white">
-          <header class="border-b border-line bg-paper px-4 py-3">
-            <h1 class="text-xl font-semibold">{{ commit.message.split('\n')[0] }}</h1>
+        <article class="term-block mb-4">
+          <header class="term-block-hd">{{ $t('commit.title') }}</header>
+          <div class="border-b border-line px-4 py-3">
+            <h1 class="text-base font-semibold text-ink">{{ commit.message.split('\n')[0] }}</h1>
             <p class="mt-1 text-xs text-ink-muted">
               {{ commit.author_name }}
               &lt;{{ commit.author_email }}&gt;
               {{ formatDate(commit.authored_at) }}
             </p>
-          </header>
+          </div>
           <pre v-if="commit.message.includes('\n')" class="whitespace-pre-wrap px-4 py-3 text-sm">{{ commit.message }}</pre>
           <div class="flex items-center justify-between border-t border-line px-4 py-2 text-xs">
             <span class="font-mono text-ink-muted">{{ commit.sha }}</span>
@@ -63,7 +63,7 @@ watch(() => [props.owner, props.repoPath, props.sha], load, { immediate: true })
               :to="{
                 name: 'repo-commits',
                 params: { repoPath }
-              }" class="text-accent hover:underline"
+              }" class="text-ink hover:underline"
             >
               {{ $t('commit.all') }}
             </RouterLink>

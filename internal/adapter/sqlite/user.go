@@ -11,11 +11,11 @@ type userModel struct {
 	ID           uint `gorm:"primaryKey"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
-	DeletedAt    gorm.DeletedAt `gorm:"index"`
-	Username     string         `gorm:"uniqueIndex;size:39;not null"`
-	Email        string         `gorm:"uniqueIndex;not null"`
-	PasswordHash string         `gorm:"not null"`
-	AvatarPath   string         `gorm:"size:255"`
+	DeletedAt    gorm.DeletedAt
+	Username     string `gorm:"size:39;not null"`
+	Email        string `gorm:"not null"`
+	PasswordHash string `gorm:"not null"`
+	AvatarPath   string `gorm:"size:255"`
 }
 
 func (userModel) TableName() string {
@@ -35,11 +35,13 @@ func (m userModel) toDomain() *domain.User {
 }
 
 type sessionModel struct {
-	ID        uint `gorm:"primaryKey"`
-	CreatedAt time.Time
-	Token     string `gorm:"uniqueIndex;size:64;not null"`
-	UserID    uint   `gorm:"index;not null"`
-	ExpiresAt time.Time
+	ID         uint `gorm:"primaryKey"`
+	CreatedAt  time.Time
+	Token      string `gorm:"uniqueIndex;size:128;not null"`
+	UserID     uint   `gorm:"index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	User       userModel `gorm:"foreignKey:UserID;references:ID"`
+	ExpiresAt  time.Time
+	LastSeenAt time.Time
 }
 
 func (sessionModel) TableName() string {
@@ -47,12 +49,18 @@ func (sessionModel) TableName() string {
 }
 
 func (m sessionModel) toDomain() *domain.Session {
+	lastSeen := m.LastSeenAt
+	if lastSeen.IsZero() {
+		lastSeen = m.CreatedAt
+	}
+
 	return &domain.Session{
-		ID:        m.ID,
-		Token:     m.Token,
-		UserID:    m.UserID,
-		ExpiresAt: m.ExpiresAt,
-		CreatedAt: m.CreatedAt,
+		ID:         m.ID,
+		Token:      m.Token,
+		UserID:     m.UserID,
+		ExpiresAt:  m.ExpiresAt,
+		LastSeenAt: lastSeen,
+		CreatedAt:  m.CreatedAt,
 	}
 }
 
@@ -89,6 +97,25 @@ func (s *UserStore) FindByID(id uint) (*domain.User, error) {
 	return model.toDomain(), nil
 }
 
+func (s *UserStore) FindByIDs(ids []uint) (map[uint]*domain.User, error) {
+	out := make(map[uint]*domain.User)
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	var models []userModel
+	if err := s.db.Where("id IN ?", ids).Find(&models).Error; err != nil {
+		return nil, err
+	}
+
+	for i := range models {
+		u := models[i].toDomain()
+		out[u.ID] = u
+	}
+
+	return out, nil
+}
+
 func (s *UserStore) FindByUsername(username string) (*domain.User, error) {
 	var model userModel
 	if err := s.db.Where("username = ?", username).First(&model).Error; err != nil {
@@ -119,12 +146,6 @@ func (s *UserStore) ExistsByEmail(email string) (bool, error) {
 	return count > 0, err
 }
 
-func (s *UserStore) Count() (int64, error) {
-	var count int64
-	err := s.db.Model(&userModel{}).Count(&count).Error
-	return count, err
-}
-
 func (s *UserStore) Update(user *domain.User) error {
 	return s.db.Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]any{
 		"email":         user.Email,
@@ -142,10 +163,16 @@ func NewSessionStore(db *gorm.DB) *SessionStore {
 }
 
 func (s *SessionStore) Create(session *domain.Session) error {
+	lastSeen := session.LastSeenAt
+	if lastSeen.IsZero() {
+		lastSeen = time.Now().UTC()
+	}
+
 	model := &sessionModel{
-		Token:     session.Token,
-		UserID:    session.UserID,
-		ExpiresAt: session.ExpiresAt,
+		Token:      session.Token,
+		UserID:     session.UserID,
+		ExpiresAt:  session.ExpiresAt,
+		LastSeenAt: lastSeen,
 	}
 	if err := s.db.Create(model).Error; err != nil {
 		return err
@@ -153,6 +180,7 @@ func (s *SessionStore) Create(session *domain.Session) error {
 
 	session.ID = model.ID
 	session.CreatedAt = model.CreatedAt
+	session.LastSeenAt = model.LastSeenAt
 	return nil
 }
 
@@ -164,6 +192,20 @@ func (s *SessionStore) FindByToken(token string) (*domain.Session, error) {
 	return model.toDomain(), nil
 }
 
+func (s *SessionStore) Touch(session *domain.Session) error {
+	return s.db.Model(&sessionModel{}).Where("id = ?", session.ID).Updates(map[string]any{
+		"last_seen_at": session.LastSeenAt,
+		"expires_at":   session.ExpiresAt,
+	}).Error
+}
+
 func (s *SessionStore) DeleteByToken(token string) error {
 	return s.db.Where("token = ?", token).Delete(&sessionModel{}).Error
+}
+
+func (s *SessionStore) DeleteByUserIDExcept(userID uint, keepToken string) error {
+	if keepToken == "" {
+		return s.db.Where("user_id = ?", userID).Delete(&sessionModel{}).Error
+	}
+	return s.db.Where("user_id = ? AND token <> ?", userID, keepToken).Delete(&sessionModel{}).Error
 }

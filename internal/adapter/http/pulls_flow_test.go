@@ -15,7 +15,7 @@ import (
 	"git.magomedcoder.ru/repo/internal/adapter/http/handler"
 	"git.magomedcoder.ru/repo/internal/adapter/sqlite"
 	"git.magomedcoder.ru/repo/internal/usecase"
-	"git.magomedcoder.ru/repo/pkg/bcrypt"
+	"git.magomedcoder.ru/repo/pkg/argon2id"
 	"git.magomedcoder.ru/repo/pkg/token"
 )
 
@@ -52,12 +52,13 @@ func TestPullRequestFlow(t *testing.T) {
 	issueStore := sqlite.NewIssueStore(db)
 	pullStore := sqlite.NewPullRequestStore(db)
 	gitRepo := git.NewRepository()
-	hasher := bcrypt.NewHasher()
+	hasher := argon2id.NewHasher()
 	tokens := token.NewGenerator()
 
 	activityStore := sqlite.NewActivityStore(db)
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
-	folderUC := usecase.NewFolderUseCase(folderStore, repoStore)
+	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
+	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo, t.TempDir())
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo, activityStore)
@@ -77,15 +78,23 @@ func TestPullRequestFlow(t *testing.T) {
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
 		authUC,
+		false,
 	)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
-	reg := doJSON(t, srv, http.MethodPost, "/api/auth/register", `{"username":"ada","email":"ada@example.com","password":"password1"}`, nil)
-	if reg.StatusCode != http.StatusCreated {
-		t.Fatalf("register %d %s", reg.StatusCode, reg.Body)
+	if _, err := authUC.CreateUser(usecase.RegisterInput{
+		Username: "ada",
+		Email:    "ada@example.com",
+		Password: "password1",
+	}); err != nil {
+		t.Fatal(err)
 	}
-	cookies := reg.Cookies
+	login := doJSON(t, srv, http.MethodPost, "/api/auth/login", `{"login":"ada","password":"password1"}`, nil)
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("login %d %s", login.StatusCode, login.Body)
+	}
+	cookies := login.Cookies
 
 	created := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"hello","private":false}`, cookies)
 	if created.StatusCode != http.StatusCreated && created.StatusCode != http.StatusOK {
@@ -116,22 +125,22 @@ func TestPullRequestFlow(t *testing.T) {
 	runGit(t, seed, "git", "-c", "user.email=a@b.c", "-c", "user.name=A", "commit", "-m", "feat")
 	runGit(t, seed, "git", "push", "-u", "origin", "feature")
 
-	pr := doJSON(t, srv, http.MethodPost, "/api/repos/ada/hello/pulls", `{"title":"Feature","body":"adds b","base_branch":"main","head_branch":"feature"}`, cookies)
+	pr := doJSON(t, srv, http.MethodPost, "/api/repos/hello/pulls", `{"title":"Feature","body":"adds b","base_branch":"main","head_branch":"feature"}`, cookies)
 	if pr.StatusCode != http.StatusCreated {
 		t.Fatalf("create pull %d %s", pr.StatusCode, pr.Body)
 	}
 
-	diff := doJSON(t, srv, http.MethodGet, "/api/repos/ada/hello/pulls/1/diff", "", nil)
+	diff := doJSON(t, srv, http.MethodGet, "/api/repos/hello/pulls/1/diff", "", nil)
 	if diff.StatusCode != http.StatusOK || !strings.Contains(diff.Body, `"can_fast_forward":true`) {
 		t.Fatalf("diff %d %s", diff.StatusCode, diff.Body)
 	}
 
-	comment := doJSON(t, srv, http.MethodPost, "/api/repos/ada/hello/pulls/1/comments", `{"body":"lgtm"}`, cookies)
+	comment := doJSON(t, srv, http.MethodPost, "/api/repos/hello/pulls/1/comments", `{"body":"lgtm"}`, cookies)
 	if comment.StatusCode != http.StatusCreated {
 		t.Fatalf("comment %d %s", comment.StatusCode, comment.Body)
 	}
 
-	merged := doJSON(t, srv, http.MethodPost, "/api/repos/ada/hello/pulls/1/merge", `{"strategy":"ff-only"}`, cookies)
+	merged := doJSON(t, srv, http.MethodPost, "/api/repos/hello/pulls/1/merge", `{"strategy":"ff-only"}`, cookies)
 	if merged.StatusCode != http.StatusOK {
 		t.Fatalf("merge %d %s", merged.StatusCode, merged.Body)
 	}

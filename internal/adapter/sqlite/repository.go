@@ -41,7 +41,7 @@ func NewDB(dsn string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	if err := applyMigrations(db, file); err != nil {
+	if err := migrate(db); err != nil {
 		if sqlDB, dbErr := db.DB(); dbErr == nil {
 			_ = sqlDB.Close()
 		}
@@ -83,41 +83,6 @@ func (s *RepositoryStore) Delete(id uint) error {
 	return s.db.Delete(&repositoryModel{}, id).Error
 }
 
-func (s *RepositoryStore) FindByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (*domain.Repository, error) {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
-	}
-
-	fid := uint(0)
-	if folderID != nil {
-		fid = *folderID
-	}
-
-	var model repositoryModel
-	err := s.db.Where("owner_kind = ? AND owner_id = ? AND folder_id = ? AND name = ?", ownerKind, ownerID, fid, name).First(&model).Error
-	if err != nil {
-		return nil, err
-	}
-
-	repo := model.toDomain()
-	return &repo, nil
-}
-
-func (s *RepositoryStore) FindByOwnerAndRepoPath(ownerKind string, ownerID uint, repoPath string) (*domain.Repository, error) {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
-	}
-
-	var model repositoryModel
-	err := s.db.Where("owner_kind = ? AND owner_id = ? AND repo_path = ?", ownerKind, ownerID, repoPath).First(&model).Error
-	if err != nil {
-		return nil, err
-	}
-
-	repo := model.toDomain()
-	return &repo, nil
-}
-
 func (s *RepositoryStore) FindByRepoPath(repoPath string) (*domain.Repository, error) {
 	var model repositoryModel
 	err := s.db.Where("repo_path = ?", repoPath).First(&model).Error
@@ -129,13 +94,22 @@ func (s *RepositoryStore) FindByRepoPath(repoPath string) (*domain.Repository, e
 	return &repo, nil
 }
 
-func (s *RepositoryStore) ListByOwnerID(ownerKind string, ownerID uint) ([]domain.Repository, error) {
+func (s *RepositoryStore) ListByOwnerID(ownerKind string, ownerID uint, limit, offset int) ([]domain.Repository, error) {
 	if ownerKind == "" {
 		ownerKind = domain.OwnerKindUser
 	}
 
 	var models []repositoryModel
-	err := s.db.Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID).Order("updated_at DESC").Find(&models).Error
+	q := s.db.Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID).Order("updated_at DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+
+	if offset > 0 {
+		q = q.Offset(offset)
+	}
+
+	err := q.Find(&models).Error
 	if err != nil {
 		return nil, err
 	}
@@ -147,13 +121,15 @@ func (s *RepositoryStore) ListByOwnerAndFolderID(ownerKind string, ownerID uint,
 	if ownerKind == "" {
 		ownerKind = domain.OwnerKindUser
 	}
-	fid := uint(0)
-	if folderID != nil {
-		fid = *folderID
+	var models []repositoryModel
+	q := s.db.Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID)
+	if folderID == nil {
+		q = q.Where("folder_id IS NULL")
+	} else {
+		q = q.Where("folder_id = ?", *folderID)
 	}
 
-	var models []repositoryModel
-	err := s.db.Where("owner_kind = ? AND owner_id = ? AND folder_id = ?", ownerKind, ownerID, fid).Order("name ASC").Find(&models).Error
+	err := q.Order("name ASC").Find(&models).Error
 	if err != nil {
 		return nil, err
 	}
@@ -161,13 +137,18 @@ func (s *RepositoryStore) ListByOwnerAndFolderID(ownerKind string, ownerID uint,
 	return repoModelsToDomain(models), nil
 }
 
-func (s *RepositoryStore) ListPublic(limit int) ([]domain.Repository, error) {
-	if limit <= 0 {
-		limit = 100
+func (s *RepositoryStore) ListPublic(limit, offset int) ([]domain.Repository, error) {
+	var models []repositoryModel
+	q := s.db.Where("is_private = ?", false).Order("updated_at DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
 	}
 
-	var models []repositoryModel
-	err := s.db.Where("is_private = ?", false).Order("updated_at DESC").Limit(limit).Find(&models).Error
+	if offset > 0 {
+		q = q.Offset(offset)
+	}
+
+	err := q.Find(&models).Error
 	if err != nil {
 		return nil, err
 	}
@@ -175,13 +156,10 @@ func (s *RepositoryStore) ListPublic(limit int) ([]domain.Repository, error) {
 	return repoModelsToDomain(models), nil
 }
 
-func (s *RepositoryStore) SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit int) ([]domain.Repository, error) {
-	if limit <= 0 {
-		limit = 100
-	}
-
-	q := "%" + query + "%"
-	db := s.db.Model(&repositoryModel{}).Where("name LIKE ?", q)
+func (s *RepositoryStore) SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int) ([]domain.Repository, error) {
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
+	q := "%" + escaped + "%"
+	db := s.db.Model(&repositoryModel{}).Where(`name LIKE ? ESCAPE '\'`, q)
 	if publicOnly {
 		db = db.Where("is_private = ?", false)
 	} else if ownerID > 0 {
@@ -194,7 +172,16 @@ func (s *RepositoryStore) SearchByName(query string, ownerKind string, ownerID u
 	}
 
 	var models []repositoryModel
-	if err := db.Order("updated_at DESC").Limit(limit).Find(&models).Error; err != nil {
+	stmt := db.Order("updated_at DESC")
+	if limit > 0 {
+		stmt = stmt.Limit(limit)
+	}
+	
+	if offset > 0 {
+		stmt = stmt.Offset(offset)
+	}
+
+	if err := stmt.Find(&models).Error; err != nil {
 		return nil, err
 	}
 
@@ -206,15 +193,15 @@ func (s *RepositoryStore) ExistsByOwnerFolderName(ownerKind string, ownerID uint
 		ownerKind = domain.OwnerKindUser
 	}
 
-	fid := uint(0)
-	if folderID != nil {
-		fid = *folderID
+	q := s.db.Model(&repositoryModel{}).
+		Where("owner_kind = ? AND owner_id = ? AND name = ?", ownerKind, ownerID, name)
+	if folderID == nil {
+		q = q.Where("folder_id IS NULL")
+	} else {
+		q = q.Where("folder_id = ?", *folderID)
 	}
-
 	var count int64
-	err := s.db.Model(&repositoryModel{}).
-		Where("owner_kind = ? AND owner_id = ? AND folder_id = ? AND name = ?", ownerKind, ownerID, fid, name).
-		Count(&count).Error
+	err := q.Count(&count).Error
 
 	return count > 0, err
 }

@@ -15,11 +15,16 @@ import (
 )
 
 type Repository struct {
-	Root string
+	Root  string
+	opens *openCache
+	stats *statsCache
 }
 
 func NewRepository() *Repository {
-	return &Repository{}
+	return &Repository{
+		opens: newOpenCache(32),
+		stats: newStatsCache(),
+	}
 }
 
 func (r *Repository) InitBare(path string, opts domain.BareInitOptions) error {
@@ -27,12 +32,17 @@ func (r *Repository) InitBare(path string, opts domain.BareInitOptions) error {
 		return fmt.Errorf("repository already exists: %s", path)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create parent directory: %w", err)
 	}
 
 	if _, err := gogit.PlainInit(path, true); err != nil {
 		return fmt.Errorf("init bare repository: %w", err)
+	}
+
+	if err := os.Chmod(path, 0o700); err != nil {
+		_ = os.RemoveAll(path)
+		return err
 	}
 
 	branch := opts.DefaultBranch
@@ -42,6 +52,43 @@ func (r *Repository) InitBare(path string, opts domain.BareInitOptions) error {
 	if err := os.WriteFile(filepath.Join(path, "HEAD"), []byte("ref: refs/heads/"+branch+"\n"), 0o644); err != nil {
 		_ = os.RemoveAll(path)
 		return err
+	}
+
+	if opts.DenyForcePushDefault {
+		if err := r.SetReceiveDenyNonFastForwards(path, true); err != nil {
+			_ = os.RemoveAll(path)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *Repository) SetReceiveDenyNonFastForwards(path string, deny bool) error {
+	repo, err := gogit.PlainOpen(path)
+	if err != nil {
+		return fmt.Errorf("open repository: %w", err)
+	}
+
+	cfg, err := repo.Config()
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	val := "false"
+	if deny {
+		val = "true"
+	}
+
+	if cfg.Raw == nil {
+		if _, err := cfg.Marshal(); err != nil {
+			return fmt.Errorf("marshal config: %w", err)
+		}
+	}
+
+	cfg.Raw.Section("receive").SetOption("denyNonFastForwards", val)
+	if err := repo.SetConfig(cfg); err != nil {
+		return fmt.Errorf("write config: %w", err)
 	}
 
 	return nil
@@ -54,6 +101,15 @@ func (r *Repository) Remove(path string) error {
 
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("remove repository: %w", err)
+	}
+
+	if safe, serr := SafePath(r.Root, path); serr == nil {
+		if r.opens != nil {
+			r.opens.evict(safe)
+		}
+		if r.stats != nil {
+			r.stats.evictPrefix(safe)
+		}
 	}
 
 	return nil
@@ -72,7 +128,7 @@ func (r *Repository) Move(oldPath, newPath string) error {
 		return fmt.Errorf("destination already exists: %s", newPath)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(newPath), 0o700); err != nil {
 		return fmt.Errorf("create destination directory: %w", err)
 	}
 
@@ -80,11 +136,16 @@ func (r *Repository) Move(oldPath, newPath string) error {
 		return fmt.Errorf("move repository: %w", err)
 	}
 
-	return nil
-}
+	if safe, serr := SafePath(r.Root, oldPath); serr == nil {
+		if r.opens != nil {
+			r.opens.evict(safe)
+		}
+		if r.stats != nil {
+			r.stats.evictPrefix(safe)
+		}
+	}
 
-func (r *Repository) checked(repoPath string) (string, error) {
-	return SafePath(r.Root, repoPath)
+	return nil
 }
 
 func (r *Repository) AdvertiseRefs(repoPath, service string, w io.Writer) error {

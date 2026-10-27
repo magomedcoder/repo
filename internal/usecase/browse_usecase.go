@@ -238,7 +238,7 @@ func (uc *RepositoryUseCase) resolveReadable(in ResolveRepositoryInput) (*domain
 		return nil, err
 	}
 
-	if err := uc.authorizeRead(repo, in.ViewerID); err != nil {
+	if err := CanReadRepo(repo, in.ViewerID); err != nil {
 		return nil, err
 	}
 
@@ -276,5 +276,75 @@ func isEmptyOrMissingRef(err error) bool {
 func ParseOffsetLimit(offsetStr, limitStr string) (offset, limit int) {
 	offset, _ = strconv.Atoi(offsetStr)
 	limit, _ = strconv.Atoi(limitStr)
+	if offset < 0 {
+		offset = 0
+	}
 	return offset, limit
+}
+
+func NormalizePagination(offset, limit int) (int, int) {
+	if limit < 0 {
+		limit = 0
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return offset, limit
+}
+
+type RepositorySummary struct {
+	Repo          RepositoryItem        `json:"repo"`
+	Branches      []domain.RefInfo      `json:"branches"`
+	RecentCommits []domain.CommitInfo   `json:"recent_commits"`
+	Tree          []domain.TreeEntry    `json:"tree"`
+	Stats         *domain.RepoStats     `json:"stats,omitempty"`
+	Readme        *domain.BlobContent   `json:"readme,omitempty"`
+}
+
+func (uc *RepositoryUseCase) GetSummary(in ResolveRepositoryInput, ref string) (*RepositorySummary, error) {
+	repo, err := uc.resolveReadable(in)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(ref) == "" {
+		ref = repo.DefaultBranch
+	}
+
+	ownerSlug := ""
+	if user, uerr := uc.users.FindByID(repo.OwnerID); uerr == nil {
+		ownerSlug = user.Username
+	}
+	folderPath, _ := uc.resolveFolderForOwner(repo.OwnerKind, repo.OwnerID, repo.FolderID)
+	repoItem := toRepositoryItem(repo, ownerSlug, folderPath)
+
+	branches, err := uc.git.ListBranches(repo.Path)
+	if err != nil {
+		branches = []domain.RefInfo{}
+	}
+
+	commits, err := uc.git.ListCommits(repo.Path, ref, 0, 8)
+	if err != nil {
+		commits = []domain.CommitInfo{}
+	}
+
+	tree, err := uc.git.ListTree(repo.Path, ref, "")
+	if err != nil {
+		tree = []domain.TreeEntry{}
+	}
+
+	stats, _ := uc.git.GetStats(repo.Path, ref)
+	readme, _ := uc.git.FindReadme(repo.Path, ref)
+
+	return &RepositorySummary{
+		Repo:          repoItem,
+		Branches:      branches,
+		RecentCommits: commits,
+		Tree:          tree,
+		Stats:         stats,
+		Readme:        readme,
+	}, nil
 }

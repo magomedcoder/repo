@@ -1,12 +1,16 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router'
 import LocaleSwitch from '@/components/LocaleSwitch.vue'
 </script>
 
 <template>
-  <footer class="border-t border-line bg-white px-3 py-2 text-[13px] text-ink-muted">
-    <div class="flex items-center justify-between gap-3">
-      <a href="https://git.magomedcoder.ru/repo">Repo</a>
-      <LocaleSwitch />
-    </div>
+  <footer class="mt-auto flex items-center justify-between gap-3 border-t border-line py-2 text-[90%] text-ink-muted">
+    <RouterLink
+      to="/"
+      class="text-ink-muted no-underline hover:text-ink hover:no-underline"
+    >
+      {{ $t('brand.name') }}
+    </RouterLink>
+    <LocaleSwitch />
   </footer>
 </template>

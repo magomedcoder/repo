@@ -7,7 +7,7 @@ type AccessToken struct {
 	UserID     uint
 	Name       string
 	TokenHash  string
-	Prefix     string // first chars for display, e.g. "repo_ab12"
+	Prefix     string
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
 }

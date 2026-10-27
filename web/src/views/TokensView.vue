@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { btnDanger, btnGhost, btnPrimary, field } from '@/lib/classes'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { tokensApi } from '@/api'
 import type { AccessToken } from '@/api/types'
 import PageState from '@/components/ui/PageState.vue'
-import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
 import { formatDate, i18n, localizeError } from '@/i18n'
-
-const { setBreadcrumbs, clearBreadcrumbs } = useBreadcrumbs()
 
 const tokens = ref<AccessToken[]>([])
 const name = ref('')
@@ -21,16 +18,6 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    setBreadcrumbs([
-      { 
-        label: 'profile', 
-        labelKey: 'nav.profile'
-      },
-      { 
-        label: 'tokens', 
-        labelKey: 'nav.accessTokens' 
-      },
-    ])
     const res = await tokensApi.list()
     tokens.value = res.tokens ?? []
   } catch (err) {
@@ -83,15 +70,13 @@ async function copyToken() {
 }
 
 onMounted(load)
-onUnmounted(clearBreadcrumbs)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl px-4 py-6">
-    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+  <div class="mx-auto max-w-3xl">
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-line pb-3">
       <div>
-        <h1 class="text-2xl font-semibold">{{ $t('tokens.title') }}</h1>
-        <p class="mt-1 text-sm text-ink-muted">{{ $t('tokens.lead') }}</p>
+        <h1 class="text-[140%] font-bold text-ink">{{ $t('tokens.title') }}</h1>
       </div>
       <button type="button" :class="btnPrimary" @click="showForm = !showForm">
         {{ $t('tokens.add') }}
@@ -100,40 +85,45 @@ onUnmounted(clearBreadcrumbs)
 
     <div
       v-if="createdToken"
-      class="mb-4 rounded-md border border-moss/40 bg-paper p-4"
+      class="term-block mb-4"
     >
-      <p class="text-sm font-semibold">{{ $t('tokens.createdTitle') }}</p>
-      <p class="mt-1 text-xs text-ink-muted">{{ $t('tokens.createdHint') }}</p>
-      <pre class="mt-2 overflow-x-auto rounded bg-white p-3 font-mono text-xs">{{ createdToken }}</pre>
-      <div class="mt-3 flex flex-wrap gap-2">
-        <button type="button" :class="btnPrimary" @click="copyToken">{{ $t('common.copy') }}</button>
-        <button type="button" :class="btnGhost" @click="createdToken = ''">{{ $t('common.close') }}</button>
+      <div class="term-block-hd">{{ $t('tokens.createdTitle') }}</div>
+      <div class="term-block-bd">
+        <p class="text-xs text-ink-muted">{{ $t('tokens.createdHint') }}</p>
+        <pre class="mt-2 overflow-x-auto border border-line bg-paper-2 p-3 font-mono text-xs">{{ createdToken }}</pre>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button type="button" :class="btnPrimary" @click="copyToken">{{ $t('common.copy') }}</button>
+          <button type="button" :class="btnGhost" @click="createdToken = ''">{{ $t('common.close') }}</button>
+        </div>
       </div>
     </div>
 
     <form
       v-if="showForm"
-      class="mb-4 space-y-3 rounded-md border border-line bg-white p-4"
+      class="term-block mb-4"
       @submit.prevent="create"
     >
-      <label class="block text-sm">
-        <span class="mb-1 block font-semibold">{{ $t('tokens.nameField') }}</span>
-        <input
-          v-model="name"
-          :class="field"
-          required
-          maxlength="64"
-          :placeholder="$t('tokens.namePlaceholder')"
-        />
-      </label>
-      <button type="submit" :class="btnPrimary" :disabled="creating">
-        {{ creating ? $t('tokens.creating') : $t('tokens.submit') }}
-      </button>
+      <div class="term-block-hd">{{ $t('tokens.add') }}</div>
+      <div class="term-block-bd space-y-3">
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{{ $t('tokens.nameField') }}</span>
+          <input
+            v-model="name"
+            :class="field"
+            required
+            maxlength="64"
+            :placeholder="$t('tokens.namePlaceholder')"
+          />
+        </label>
+        <button type="submit" :class="btnPrimary" :disabled="creating">
+          {{ creating ? $t('tokens.creating') : $t('tokens.submit') }}
+        </button>
+      </div>
     </form>
 
     <p v-if="error" class="mb-3 text-sm text-warn">{{ error }}</p>
     <PageState :loading="loading">
-      <ul class="divide-y divide-line overflow-hidden rounded-md border border-line bg-white">
+      <ul class="term-block divide-y divide-line">
         <li
           v-for="token in tokens"
           :key="token.id"

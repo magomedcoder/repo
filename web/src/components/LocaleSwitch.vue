@@ -2,10 +2,6 @@
 import { useI18n } from 'vue-i18n'
 import { setLocale, type AppLocale } from '@/i18n'
 
-defineProps<{
-  inverted?: boolean
-}>()
-
 const { locale, t } = useI18n()
 
 function pick(next: AppLocale) {
@@ -14,27 +10,23 @@ function pick(next: AppLocale) {
 </script>
 
 <template>
-  <div
-    class="inline-flex overflow-hidden rounded-md border border-line text-xs font-medium"
-    :class="inverted ? 'border-white/30' : ''"
-    role="group"
-    :aria-label="t('nav.language')"
-  >
+  <span role="group" class="inline-flex items-center gap-1" :aria-label="t('nav.language')">
     <button
       type="button"
-      class="cursor-pointer px-2 py-1"
-      :class="locale === 'en' ? (inverted ? 'bg-white text-header' : 'bg-paper-2 text-ink') : (inverted ? 'text-white/80 hover:bg-white/10' : 'bg-white text-ink-muted hover:bg-paper')"
-      @click="pick('en')"
-    >
-      EN
-    </button>
-    <button
-      type="button"
-      class="cursor-pointer px-2 py-1"
-      :class="locale === 'ru' ? (inverted ? 'bg-white text-header' : 'bg-paper-2 text-ink') : (inverted ? 'text-white/80 hover:bg-white/10' : 'bg-white text-ink-muted hover:bg-paper')"
+      class="cursor-pointer border-0 bg-transparent p-0 uppercase"
+      :class="locale === 'ru' ? 'font-medium text-ink' : 'text-ink-muted hover:text-ink'"
       @click="pick('ru')"
     >
-      RU
+      {{ t('nav.langRu') }}
     </button>
-  </div>
+
+    <button
+      type="button"
+      class="cursor-pointer border-0 bg-transparent p-0 uppercase"
+      :class="locale === 'en' ? 'font-medium text-ink' : 'text-ink-muted hover:text-ink'"
+      @click="pick('en')"
+    >
+      {{ t('nav.langEn') }}
+    </button>
+  </span>
 </template>

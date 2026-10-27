@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,12 @@ import (
 )
 
 func (r *Repository) Compare(repoPath, base, head string) (*domain.CompareResult, error) {
+	return withGitTimeout(func() (*domain.CompareResult, error) {
+		return r.compare(repoPath, base, head)
+	})
+}
+
+func (r *Repository) compare(repoPath, base, head string) (*domain.CompareResult, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return nil, err
@@ -135,6 +142,12 @@ func (r *Repository) CanFastForward(repoPath, base, head string) (bool, error) {
 }
 
 func (r *Repository) Merge(repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
+	return withGitTimeout(func() (string, error) {
+		return r.merge(repoPath, base, head, strategy, authorName, authorEmail, message)
+	})
+}
+
+func (r *Repository) merge(repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
 	base = strings.TrimSpace(base)
 	head = strings.TrimSpace(head)
 	if base == "" || head == "" {
@@ -242,9 +255,7 @@ func (r *Repository) mergeTrees(repoPath, base, head, authorName, authorEmail, m
 	}
 
 	merged := map[string]object.TreeEntry{}
-	for path, entry := range baseFiles {
-		merged[path] = entry
-	}
+	maps.Copy(merged, baseFiles)
 
 	paths := map[string]struct{}{}
 	for path := range baseFiles {

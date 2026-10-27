@@ -16,16 +16,11 @@ export interface Profile {
 
 export interface Folder {
   id: number
-  parent_id: number | null
   name: string
   slug: string
   path: string
   created_at: string
   updated_at: string
-}
-
-export interface FolderTreeNode extends Folder {
-  children: FolderTreeNode[]
 }
 
 export interface RepoSummary {
@@ -57,7 +52,6 @@ export interface Repository {
 
 export interface FolderContents {
   folder?: Folder
-  folders: Folder[]
   repos: RepoSummary[]
 }
 
@@ -109,6 +103,15 @@ export interface RepoStats {
   commit_count: number
   size_bytes: number
   languages: Record<string, number>
+}
+
+export interface RepoBrowseSummary {
+  repo?: Repository
+  branches: RefInfo[]
+  tree: TreeEntry[]
+  stats?: RepoStats | null
+  recent_commits: CommitInfo[]
+  readme?: BlobContent | null
 }
 
 export interface Label {

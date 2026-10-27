@@ -31,19 +31,15 @@ type RepositoryStore interface {
 
 	Delete(id uint) error
 
-	FindByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (*Repository, error)
-
-	FindByOwnerAndRepoPath(ownerKind string, ownerID uint, repoPath string) (*Repository, error)
-
 	FindByRepoPath(repoPath string) (*Repository, error)
 
-	ListByOwnerID(ownerKind string, ownerID uint) ([]Repository, error)
+	ListByOwnerID(ownerKind string, ownerID uint, limit, offset int) ([]Repository, error)
 
 	ListByOwnerAndFolderID(ownerKind string, ownerID uint, folderID *uint) ([]Repository, error)
 
-	ListPublic(limit int) ([]Repository, error)
+	ListPublic(limit, offset int) ([]Repository, error)
 
-	SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit int) ([]Repository, error)
+	SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int) ([]Repository, error)
 
 	ExistsByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (bool, error)
 
@@ -123,6 +119,8 @@ type RepoStats struct {
 
 type GitRepository interface {
 	InitBare(path string, opts BareInitOptions) error
+
+	SetReceiveDenyNonFastForwards(path string, deny bool) error
 
 	Remove(path string) error
 

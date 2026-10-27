@@ -1,15 +1,15 @@
 # Repo
 
-Лёгкий self-hosted Git-хостинг.
+Git. Просто и легко.
 
-## Запуск
+## Команды
 
 ```bash
-go run ./cmd/repo
+make build
 
-cd web
-yarn install
-yarn dev
+./build/repo
+
+./build/repo serve
+
+./build/repo user create -username NAME -email EMAIL -password PASS
 ```
-
-HTTP API слушает `:8080`.

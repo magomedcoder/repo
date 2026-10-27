@@ -3,7 +3,7 @@ defineProps<{
   languages: Record<string, number>
 }>()
 
-const palette = ['#1f883d', '#0969da', '#8250df', '#bf8700', '#cf222e', '#54aeff']
+const palette = ['#222222', '#555555', '#888888', '#bbbbbb']
 
 function rows(languages: Record<string, number>) {
   const entries = Object.entries(languages)
@@ -19,7 +19,7 @@ function rows(languages: Record<string, number>) {
 
 <template>
   <div>
-    <div class="mb-2 flex h-2 overflow-hidden rounded-full">
+    <div class="mb-2 flex h-2 overflow-hidden border border-line">
       <span
         v-for="row in rows(languages)"
         :key="row.name"
@@ -34,7 +34,7 @@ function rows(languages: Record<string, number>) {
         class="flex items-center justify-between gap-2"
       >
         <span class="inline-flex items-center gap-1.5">
-          <span class="h-2 w-2 rounded-full" :style="{ background: row.color }" />
+          <span class="h-2 w-2 border border-ink" :style="{ background: row.color }" />
           {{ row.name }}
         </span>
         <span class="text-ink-muted">{{ row.pct.toFixed(1) }}%</span>

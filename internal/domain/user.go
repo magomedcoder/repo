@@ -13,17 +13,20 @@ type User struct {
 }
 
 type Session struct {
-	ID        uint
-	Token     string
-	UserID    uint
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	ID         uint
+	Token      string
+	UserID     uint
+	ExpiresAt  time.Time
+	LastSeenAt time.Time
+	CreatedAt  time.Time
 }
 
 type UserStore interface {
 	Create(user *User) error
 
 	FindByID(id uint) (*User, error)
+
+	FindByIDs(ids []uint) (map[uint]*User, error)
 
 	FindByUsername(username string) (*User, error)
 
@@ -33,8 +36,6 @@ type UserStore interface {
 
 	ExistsByEmail(email string) (bool, error)
 
-	Count() (int64, error)
-
 	Update(user *User) error
 }
 
@@ -43,7 +44,11 @@ type SessionStore interface {
 
 	FindByToken(token string) (*Session, error)
 
+	Touch(session *Session) error
+
 	DeleteByToken(token string) error
+
+	DeleteByUserIDExcept(userID uint, keepToken string) error
 }
 
 type PasswordHasher interface {

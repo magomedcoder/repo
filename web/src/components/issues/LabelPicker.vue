@@ -23,7 +23,7 @@ const selected = defineModel<number[]>({ required: true })
         v-model="selected"
         type="checkbox"
         :value="label.id"
-        class="accent-[#1f883d]"
+        class="accent-ink"
       />
       <LabelPill :label="label" />
     </label>

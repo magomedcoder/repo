@@ -6,7 +6,6 @@ import { idleAge } from '@/lib/idle'
 
 defineProps<{
   commits: CommitInfo[]
-  owner: string
   repoPath: string
 }>()
 

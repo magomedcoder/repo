@@ -1,40 +1,123 @@
+@import "./fonts/fonts.css";
 @import "tailwindcss";
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, "Liberation Mono", Consolas, monospace;
+  --font-sans: "Roboto", ui-sans-serif, Helvetica, Arial, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, "Liberation Mono", Consolas, monospace;
 
-  --color-ink: #1c2430;
-  --color-ink-muted: #5c6773;
-  --color-paper: #fff;
-  --color-paper-2: #f3f5f7;
-  --color-line: #d5dbe1;
-  --color-moss: #1a7f37;
-  --color-moss-dark: #146c2e;
-  --color-moss-soft: #dafbe1;
-  --color-accent: #0b5cab;
-  --color-accent-soft: #e7f1fb;
-  --color-warn: #b42318;
-  --color-warn-soft: #fdecea;
-  --color-header: #1c2430;
-  --color-done: #5c6773;
-  --color-open: #1a7f37;
+  --color-ink: #222222;
+  --color-ink-muted: #6a6a6a;
+  --color-paper: #ffffff;
+  --color-paper-2: #f5f5f5;
+  --color-line: #d8d8d8;
+  --color-accent: #1a4d8c;
+  --color-warn: #8b1a1a;
+  --color-warn-soft: #faf5f5;
+  --color-open: #222222;
+  --color-link: #1a4d8c;
+  --color-row-alt: #fafafa;
+  --color-row-hover: #f0f0f0;
+  --color-path: #f3f3f3;
+  --color-diff-add: #eef6ee;
+  --color-diff-del: #f7eeee;
 }
 
 @layer base {
   html {
-    @apply antialiased;
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    @apply m-0 h-full;
   }
 
   body {
-    @apply min-h-screen bg-[#e7ebf0] font-sans text-[13px] text-ink;
+    @apply bg-paper font-sans text-[10pt] leading-relaxed text-ink antialiased;
   }
 
   #app {
-    @apply mx-auto min-h-screen w-full max-w-6xl border-x border-line bg-white;
+    @apply relative z-0 mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-3 py-2 sm:px-5;
   }
 
   a {
-    @apply text-accent no-underline hover:underline;
+    color: var(--color-link);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  ::selection {
+    @apply bg-ink text-paper;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    @apply font-sans text-[90%];
+  }
+
+  input[type="text"],
+  input[type="search"],
+  input[type="password"],
+  input[type="email"],
+  textarea,
+  select {
+    @apply rounded-none;
+  }
+
+  input[type="text"]:focus,
+  input[type="search"]:focus,
+  input[type="password"]:focus,
+  input[type="email"]:focus,
+  textarea:focus,
+  select:focus {
+    border-color: var(--color-ink-muted);
+    outline: none;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    @apply accent-ink;
+  }
+
+  code,
+  pre,
+  kbd,
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
+
+@layer utilities {
+  .term-block {
+    @apply overflow-hidden border border-line bg-paper;
+  }
+
+  .term-block-hd {
+    @apply flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink;
+  }
+
+  .term-block-bd {
+    @apply p-3 sm:p-4;
+  }
+
+  .cgit-path {
+    @apply border border-line bg-path px-3 py-1.5 text-ink sm:px-4;
   }
 }

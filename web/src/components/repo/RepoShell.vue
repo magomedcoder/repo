@@ -1,70 +1,79 @@
 <script setup lang="ts">
 import { tabBar, tabLink, tabLinkOn } from '@/lib/classes'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, provide, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { reposApi } from '@/api'
 import type { Repository } from '@/api/types'
+import { useAuth } from '@/composables/useAuth'
 
 const props = defineProps<{
-  owner: string
   repoPath: string
   tab: 'summary' | 'log' | 'tree' | 'commit' | 'refs' | 'about' | 'issues' | 'pulls' | 'settings' | 'code'
 }>()
 
+const auth = useAuth()
 const repo = ref<Repository | null>(null)
+provide('repo', repo)
 
-const parts = () => props.repoPath.split('/').filter(Boolean)
+const parts = computed(() => props.repoPath.split('/').filter(Boolean))
+const folderSlug = computed(() => (parts.value.length > 1 ? parts.value.slice(0, -1).join('/') : ''))
+const repoName = computed(() => parts.value[parts.value.length - 1] || props.repoPath)
+const isOwner = computed(() => !!auth.user.value?.username && !!repo.value?.owner && auth.user.value.username === repo.value.owner)
 
 function active(name: string) {
   if (name === 'summary') {
     return props.tab === 'summary' || props.tab === 'code'
   }
+
   if (name === 'tree') {
     return props.tab === 'tree'
   }
+
   if (name === 'log') {
     return props.tab === 'log' || props.tab === 'commit'
   }
+
   return props.tab === name
 }
 
 async function load() {
   try {
-    repo.value = await reposApi.get(props.owner, props.repoPath)
+    repo.value = await reposApi.get(props.repoPath)
   } catch {
     repo.value = null
   }
 }
 
 onMounted(load)
-watch(() => [props.owner, props.repoPath], load)
+watch(() => props.repoPath, load)
 </script>
 
 <template>
   <div>
-    <div class="mb-1 px-2 font-mono text-[10pt]">
-      <template v-for="(part, i) in parts()" :key="`${part}-${i}`">
-        <span v-if="i > 0" class="text-ink"> / </span>
+    <div class="cgit-path mb-0 font-mono text-[90%]">
+      <RouterLink to="/" class="text-ink-muted no-underline hover:underline">{{ $t('nav.root') }}</RouterLink>
+      <template v-if="folderSlug">
+        <span> / </span>
         <RouterLink
-          v-if="i === parts().length - 1"
-          :to="{ name: 'repo', params: { repoPath } }"
+          v-if="repo?.folder_id != null"
+          :to="{ name: 'folder', params: { id: String(repo.folder_id) } }"
+          class="text-ink-muted no-underline hover:underline"
         >
-          {{ part }}
+          {{ folderSlug }}
         </RouterLink>
-            <RouterLink
-              v-else
-              :to="{
-                name: 'repo-tree',
-                params: { repoPath },
-                query: { path: parts().slice(0, i + 1).join('/') },
-              }"
-            >
-              {{ part }}
-            </RouterLink>
+        <span v-else class="text-ink-muted">{{ folderSlug }}</span>
       </template>
-      <span v-if="repo?.description" class="ml-2 text-ink-muted">{{ repo.description }}</span>
+      <span> / </span>
+      <RouterLink
+        class="font-bold no-underline hover:underline"
+        :to="{ name: 'repo', params: { repoPath } }"
+      >
+        {{ repoName }}
+      </RouterLink>
+      <span v-if="repo?.description" class="ml-3 font-sans text-ink-muted">{{ repo.description }}</span>
     </div>
-    <nav :class="tabBar" :aria-label="$t('nav.breadcrumb')">
+
+    <nav :class="tabBar" :aria-label="$t('nav.issues')">
       <RouterLink
         :to="{ name: 'repo', params: { repoPath } }"
         :class="[tabLink, active('summary') && tabLinkOn]"
@@ -108,13 +117,15 @@ watch(() => [props.owner, props.repoPath], load)
         {{ $t('nav.pulls') }}
       </RouterLink>
       <RouterLink
+        v-if="isOwner"
         :to="{ name: 'repo-settings', params: { repoPath } }"
         :class="[tabLink, active('settings') && tabLinkOn]"
       >
         {{ $t('nav.settings') }}
       </RouterLink>
     </nav>
-    <div class="px-1 py-2">
+
+    <div class="pt-4">
       <slot />
     </div>
   </div>

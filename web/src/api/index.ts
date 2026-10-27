@@ -1,7 +1,10 @@
-import { api } from './client'
-import type { AccessToken, ActivityEvent, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, FolderTreeNode, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
+import { api, ApiError } from './client'
+import type { AccessToken, ActivityEvent, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
 
 export const authApi = {
+  registration() {
+    return api<{ allow_registration: boolean }>('/api/auth/registration')
+  },
   register(body: {
     username: string
     email: string
@@ -38,29 +41,16 @@ export const authApi = {
 }
 
 export const foldersApi = {
-  list(parentId?: number | null) {
-    const params = new URLSearchParams()
-    if (parentId != null) {
-      params.set('parent_id', String(parentId))
-    }
-
-    const qs = params.toString()
+  list() {
     return api<{
       folders: Folder[]
-    }>(`/api/folders${qs ? `?${qs}` : ''}`)
-  },
-  tree() {
-    return api<{
-      tree: FolderTreeNode[]
-    }>('/api/folders?tree=1')
+    }>('/api/folders')
   },
   get(id: number) {
     return api<FolderContents>(`/api/folders/${id}`)
   },
   create(body: {
     name: string
-    parent_id?: number | null
-    path?: string
   }) {
     return api<Folder>('/api/folders', {
       method: 'POST',
@@ -70,10 +60,6 @@ export const foldersApi = {
 }
 
 export const activityApi = {
-  listMine(limit = 30) {
-    const q = new URLSearchParams({ limit: String(limit) })
-    return api<{ events: ActivityEvent[] }>(`/api/activity?${q}`)
-  },
   listOwner(owner: string, limit = 30) {
     const q = new URLSearchParams({ limit: String(limit) })
     return api<{ events: ActivityEvent[] }>(`/api/activity/${encodeURIComponent(owner)}?${q}`)
@@ -123,22 +109,50 @@ export const usersApi = {
   },
 }
 
+
+function encodeRepoPath(path: string) {
+  return path
+    .replace(/^\/+|\/+$/g, '')
+    .split('/')
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join('/')
+}
+
+type ListParams = {
+  sort?: string
+  offset?: number
+  limit?: number
+}
+
 export const reposApi = {
-  listOwn(sort?: string) {
+  listOwn(sort?: string, paging?: Pick<ListParams, 'offset' | 'limit'>) {
     const params = new URLSearchParams()
     if (sort) {
       params.set('sort', sort)
     }
+    if (paging?.offset != null) {
+      params.set('offset', String(paging.offset))
+    }
+    if (paging?.limit != null) {
+      params.set('limit', String(paging.limit))
+    }
     const qs = params.toString()
     return api<{ repos: Repository[] }>(`/api/repos${qs ? `?${qs}` : ''}`)
   },
-  search(q: string, scope?: 'public') {
+  search(q: string, scope?: 'public', paging?: Pick<ListParams, 'offset' | 'limit'>) {
     const params = new URLSearchParams({ q })
     if (scope) params.set('scope', scope)
+    if (paging?.offset != null) {
+      params.set('offset', String(paging.offset))
+    }
+    if (paging?.limit != null) {
+      params.set('limit', String(paging.limit))
+    }
     return api<{ repos: Repository[] }>(`/api/repos?${params}`)
   },
-  get(owner: string, path: string) {
-    return api<Repository>(`/api/repos/${owner}/${path}`)
+  get(path: string) {
+    return api<Repository>(`/api/repos/${encodeRepoPath(path)}`)
   },
   create(body: {
     name?: string
@@ -154,7 +168,6 @@ export const reposApi = {
     })
   },
   update(
-    owner: string,
     path: string,
     body: {
       description?: string
@@ -163,29 +176,29 @@ export const reposApi = {
       protect_default_branch?: boolean
     },
   ) {
-    return api<Repository>(`/api/repos/${owner}/${path}`, {
+    return api<Repository>(`/api/repos/${encodeRepoPath(path)}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     })
   },
-  move(owner: string, path: string, folder_id: number | null) {
-    return api<Repository>(`/api/repos/${owner}/${path}/move`, {
+  move(path: string, folder_id: number | null) {
+    return api<Repository>(`/api/repos/${encodeRepoPath(path)}/move`, {
       method: 'POST',
       body: JSON.stringify({ folder_id }),
     })
   },
-  remove(owner: string, path: string) {
-    return api<void>(`/api/repos/${owner}/${path}`, {
+  remove(path: string) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}`, {
       method: 'DELETE'
     })
   },
-  branches(owner: string, path: string) {
-    return api<{ branches: RefInfo[] }>(`/api/repos/${owner}/${path}/branches`)
+  branches(path: string) {
+    return api<{ branches: RefInfo[] }>(`/api/repos/${encodeRepoPath(path)}/branches`)
   },
-  tags(owner: string, path: string) {
-    return api<{ tags: RefInfo[] }>(`/api/repos/${owner}/${path}/tags`)
+  tags(path: string) {
+    return api<{ tags: RefInfo[] }>(`/api/repos/${encodeRepoPath(path)}/tags`)
   },
-  commits(owner: string, path: string, params: {
+  commits(path: string, params: {
     ref?: string
     offset?: number
     limit?: number
@@ -204,15 +217,15 @@ export const reposApi = {
     }
     
     const qs = q.toString()
-    return api<{ commits: CommitInfo[] }>(`/api/repos/${owner}/${path}/commits${qs ? `?${qs}` : ''}`)
+    return api<{ commits: CommitInfo[] }>(`/api/repos/${encodeRepoPath(path)}/commits${qs ? `?${qs}` : ''}`)
   },
-  commit(owner: string, path: string, sha: string) {
-    return api<CommitInfo>(`/api/repos/${owner}/${path}/commits/${sha}`)
+  commit(path: string, sha: string) {
+    return api<CommitInfo>(`/api/repos/${encodeRepoPath(path)}/commits/${sha}`)
   },
-  diff(owner: string, path: string, sha: string) {
-    return api<CommitDiff>(`/api/repos/${owner}/${path}/commits/${sha}/diff`)
+  diff(path: string, sha: string) {
+    return api<CommitDiff>(`/api/repos/${encodeRepoPath(path)}/commits/${sha}/diff`)
   },
-  tree(owner: string, path: string, params: { ref?: string; path?: string } = {}) {
+  tree(path: string, params: { ref?: string; path?: string } = {}) {
     const q = new URLSearchParams()
     if (params.ref) {
       q.set('ref', params.ref)
@@ -223,129 +236,131 @@ export const reposApi = {
     }
 
     const qs = q.toString()
-    return api<{ ref: string; path: string; tree: TreeEntry[] }>(`/api/repos/${owner}/${path}/tree${qs ? `?${qs}` : ''}`)
+    return api<{ ref: string; path: string; tree: TreeEntry[] }>(`/api/repos/${encodeRepoPath(path)}/tree${qs ? `?${qs}` : ''}`)
   },
-  blob(owner: string, path: string, params: { ref: string; path: string }) {
+  blob(path: string, params: { ref: string; path: string }) {
     const q = new URLSearchParams({ ref: params.ref, path: params.path })
-    return api<BlobContent>(`/api/repos/${owner}/${path}/blob?${q}`)
+    return api<BlobContent>(`/api/repos/${encodeRepoPath(path)}/blob?${q}`)
   },
-  blame(owner: string, path: string, params: { ref: string; path: string }) {
+  blame(path: string, params: { ref: string; path: string }) {
     const q = new URLSearchParams({ ref: params.ref, path: params.path })
-    return api<BlameResult>(`/api/repos/${owner}/${path}/blame?${q}`)
+    return api<BlameResult>(`/api/repos/${encodeRepoPath(path)}/blame?${q}`)
   },
-  readme(owner: string, path: string, ref?: string) {
+  readme(path: string, ref?: string) {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
-    return api<BlobContent>(`/api/repos/${owner}/${path}/readme${q}`)
+    return api<BlobContent>(`/api/repos/${encodeRepoPath(path)}/readme${q}`)
   },
-  stats(owner: string, path: string, ref?: string) {
+  stats(path: string, ref?: string) {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
-    return api<RepoStats>(`/api/repos/${owner}/${path}/stats${q}`)
+    return api<RepoStats>(`/api/repos/${encodeRepoPath(path)}/stats${q}`)
+  },
+  async summary(path: string, ref?: string) {
+    const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
+    try {
+      return await api<RepoBrowseSummary>(`/api/repos/${encodeRepoPath(path)}/summary${q}`)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        return null
+      }
+      throw err
+    }
   },
 }
 
 export const issuesApi = {
-  list(owner: string, path: string, state = 'open', offset = 0, limit = 30) {
+  list(path: string, state = 'open', offset = 0, limit = 30) {
     const q = new URLSearchParams({
       state,
       offset: String(offset),
       limit: String(limit)
     })
-    return api<{ issues: Issue[] }>(`/api/repos/${owner}/${path}/issues?${q}`)
+    return api<{ issues: Issue[] }>(`/api/repos/${encodeRepoPath(path)}/issues?${q}`)
   },
-  get(owner: string, path: string, number: number) {
-    return api<IssueDetail>(`/api/repos/${owner}/${path}/issues/${number}`)
+  get(path: string, number: number) {
+    return api<IssueDetail>(`/api/repos/${encodeRepoPath(path)}/issues/${number}`)
   },
-  create(owner: string, path: string, body: { title: string; body?: string; label_ids?: number[] }) {
-    return api<Issue>(`/api/repos/${owner}/${path}/issues`, { method: 'POST', body: JSON.stringify(body) })
+  create(path: string, body: { title: string; body?: string; label_ids?: number[] }) {
+    return api<Issue>(`/api/repos/${encodeRepoPath(path)}/issues`, { method: 'POST', body: JSON.stringify(body) })
   },
-  update(owner: string, path: string, number: number, body: { title?: string; body?: string; state?: string; label_ids?: number[] }) {
-    return api<Issue>(`/api/repos/${owner}/${path}/issues/${number}`, { method: 'PATCH', body: JSON.stringify(body) })
+  update(path: string, number: number, body: { title?: string; body?: string; state?: string; label_ids?: number[] }) {
+    return api<Issue>(`/api/repos/${encodeRepoPath(path)}/issues/${number}`, { method: 'PATCH', body: JSON.stringify(body) })
   },
-  remove(owner: string, path: string, number: number) {
-    return api<void>(`/api/repos/${owner}/${path}/issues/${number}`, { method: 'DELETE' })
+  remove(path: string, number: number) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}/issues/${number}`, { method: 'DELETE' })
   },
-  comment(owner: string, path: string, number: number, body: string) {
-    return api<IssueComment>(`/api/repos/${owner}/${path}/issues/${number}/comments`, {
+  comment(path: string, number: number, body: string) {
+    return api<IssueComment>(`/api/repos/${encodeRepoPath(path)}/issues/${number}/comments`, {
       method: 'POST',
       body: JSON.stringify({ body }),
     })
   },
-  updateComment(owner: string, path: string, number: number, id: number, body: string) {
-    return api<IssueComment>(`/api/repos/${owner}/${path}/issues/${number}/comments/${id}`, {
+  updateComment(path: string, number: number, id: number, body: string) {
+    return api<IssueComment>(`/api/repos/${encodeRepoPath(path)}/issues/${number}/comments/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ body }),
     })
   },
-  removeComment(owner: string, path: string, number: number, id: number) {
-    return api<void>(`/api/repos/${owner}/${path}/issues/${number}/comments/${id}`, { method: 'DELETE' })
+  removeComment(path: string, number: number, id: number) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}/issues/${number}/comments/${id}`, { method: 'DELETE' })
   },
-  labels(owner: string, path: string) {
-    return api<{ labels: Label[] }>(`/api/repos/${owner}/${path}/labels`)
+  labels(path: string) {
+    return api<{ labels: Label[] }>(`/api/repos/${encodeRepoPath(path)}/labels`)
   },
-  createLabel(owner: string, path: string, body: { name: string; color?: string }) {
-    return api<Label>(`/api/repos/${owner}/${path}/labels`, { method: 'POST', body: JSON.stringify(body) })
+  createLabel(path: string, body: { name: string; color?: string }) {
+    return api<Label>(`/api/repos/${encodeRepoPath(path)}/labels`, { method: 'POST', body: JSON.stringify(body) })
   },
-  removeLabel(owner: string, path: string, id: number) {
-    return api<void>(`/api/repos/${owner}/${path}/labels/${id}`, { method: 'DELETE' })
+  removeLabel(path: string, id: number) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}/labels/${id}`, { method: 'DELETE' })
   },
 }
 
-export function repoFullPath(repo: Pick<Repository, 'folder_path' | 'name'> | Pick<RepoSummary, 'name'> & { folder_path?: string }) {
-  const folderPath = 'folder_path' in repo ? repo.folder_path || '' : ''
-  return folderPath ? `${folderPath}/${repo.name}` : repo.name
-}
 
 export const pullsApi = {
-  list(owner: string, path: string, state = 'open', offset = 0, limit = 30) {
+  list(path: string, state = 'open', offset = 0, limit = 30) {
     const q = new URLSearchParams({ state, offset: String(offset), limit: String(limit) })
-    return api<{ pulls: PullRequest[] }>(`/api/repos/${owner}/${path}/pulls?${q}`)
+    return api<{ pulls: PullRequest[] }>(`/api/repos/${encodeRepoPath(path)}/pulls?${q}`)
   },
-  get(owner: string, path: string, number: number) {
-    return api<PullDetail>(`/api/repos/${owner}/${path}/pulls/${number}`)
+  get(path: string, number: number) {
+    return api<PullDetail>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}`)
   },
-  create(owner: string, path: string, body: { title: string; body?: string; base_branch?: string; head_branch: string }) {
-    return api<PullRequest>(`/api/repos/${owner}/${path}/pulls`, { method: 'POST', body: JSON.stringify(body) })
+  create(path: string, body: { title: string; body?: string; base_branch?: string; head_branch: string }) {
+    return api<PullRequest>(`/api/repos/${encodeRepoPath(path)}/pulls`, { method: 'POST', body: JSON.stringify(body) })
   },
-  update(owner: string, path: string, number: number, body: { title?: string; body?: string; state?: string; base_branch?: string; head_branch?: string }) {
-    return api<PullRequest>(`/api/repos/${owner}/${path}/pulls/${number}`, { method: 'PATCH', body: JSON.stringify(body) })
+  update(path: string, number: number, body: { title?: string; body?: string; state?: string; base_branch?: string; head_branch?: string }) {
+    return api<PullRequest>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}`, { method: 'PATCH', body: JSON.stringify(body) })
   },
-  remove(owner: string, path: string, number: number) {
-    return api<void>(`/api/repos/${owner}/${path}/pulls/${number}`, { method: 'DELETE' })
+  remove(path: string, number: number) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}`, { method: 'DELETE' })
   },
-  diff(owner: string, path: string, number: number) {
-    return api<PullCompare>(`/api/repos/${owner}/${path}/pulls/${number}/diff`)
+  diff(path: string, number: number) {
+    return api<PullCompare>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}/diff`)
   },
-  commits(owner: string, path: string, number: number) {
-    return api<{ commits: CommitInfo[] }>(`/api/repos/${owner}/${path}/pulls/${number}/commits`)
-  },
-  merge(owner: string, path: string, number: number, strategy = 'merge') {
-    return api<PullRequest>(`/api/repos/${owner}/${path}/pulls/${number}/merge`, {
+  merge(path: string, number: number, strategy = 'merge') {
+    return api<PullRequest>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}/merge`, {
       method: 'POST',
       body: JSON.stringify({ strategy }),
     })
   },
-  comment(owner: string, path: string, number: number, body: string) {
-    return api<IssueComment>(`/api/repos/${owner}/${path}/pulls/${number}/comments`, {
+  comment(path: string, number: number, body: string) {
+    return api<IssueComment>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}/comments`, {
       method: 'POST',
       body: JSON.stringify({ body }),
     })
   },
-  updateComment(owner: string, path: string, number: number, id: number, body: string) {
-    return api<IssueComment>(`/api/repos/${owner}/${path}/pulls/${number}/comments/${id}`, {
+  updateComment(path: string, number: number, id: number, body: string) {
+    return api<IssueComment>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}/comments/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ body }),
     })
   },
-  removeComment(owner: string, path: string, number: number, id: number) {
-    return api<void>(`/api/repos/${owner}/${path}/pulls/${number}/comments/${id}`, { method: 'DELETE' })
+  removeComment(path: string, number: number, id: number) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}/comments/${id}`, { method: 'DELETE' })
   },
 }
 
 export function cloneUrl(fullPath: string) {
   const path = fullPath.replace(/\.git$/, '')
-  if (import.meta.env.DEV) {
-    return `http://127.0.0.1:8080/${path}.git`
-  }
-
-  return `${window.location.origin}/${path}.git`
+  const base = (import.meta.env.VITE_GIT_BASE as string | undefined)?.replace(/\/$/, '')
+    || window.location.origin
+  return `${base}/${path}.git`
 }

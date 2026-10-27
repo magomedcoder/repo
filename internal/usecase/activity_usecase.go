@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"git.magomedcoder.ru/repo/internal/domain"
@@ -36,19 +37,6 @@ func NewActivityUseCase(
 	}
 }
 
-func (uc *ActivityUseCase) ListMine(userID uint, limit int) ([]ActivityItem, error) {
-	if userID == 0 {
-		return nil, ErrUnauthorized
-	}
-
-	events, err := uc.events.ListForUser(userID, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	return uc.mapEvents(events)
-}
-
 func (uc *ActivityUseCase) ListOwner(ownerSlug string, viewerID uint, limit int) ([]ActivityItem, error) {
 	slug := strings.ToLower(strings.TrimSpace(ownerSlug))
 	kind, id, err := uc.resolveOwner(slug)
@@ -61,7 +49,44 @@ func (uc *ActivityUseCase) ListOwner(ownerSlug string, viewerID uint, limit int)
 		return nil, err
 	}
 
+	events, err = uc.filterVisible(events, kind, id, viewerID)
+	if err != nil {
+		return nil, err
+	}
+
 	return uc.mapEvents(events)
+}
+
+func (uc *ActivityUseCase) filterVisible(events []domain.ActivityEvent, ownerKind string, ownerID, viewerID uint) ([]domain.ActivityEvent, error) {
+	isOwner := viewerID != 0 && ownerKind == domain.OwnerKindUser && viewerID == ownerID
+	if isOwner {
+		return events, nil
+	}
+
+	repos, err := uc.repos.ListByOwnerID(ownerKind, ownerID, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	public := make(map[uint]struct{}, len(repos))
+	for _, repo := range repos {
+		if !repo.IsPrivate {
+			public[repo.ID] = struct{}{}
+		}
+	}
+
+	out := make([]domain.ActivityEvent, 0, len(events))
+	for _, ev := range events {
+		if ev.RepoID == nil {
+			continue
+		}
+
+		if _, ok := public[*ev.RepoID]; ok {
+			out = append(out, ev)
+		}
+	}
+
+	return out, nil
 }
 
 func (uc *ActivityUseCase) resolveOwner(slug string) (string, uint, error) {
@@ -73,23 +98,36 @@ func (uc *ActivityUseCase) resolveOwner(slug string) (string, uint, error) {
 }
 
 func (uc *ActivityUseCase) mapEvents(events []domain.ActivityEvent) ([]ActivityItem, error) {
-	out := make([]ActivityItem, 0, len(events))
-	userCache := map[uint]string{}
+	idSet := make(map[uint]struct{})
 	for _, ev := range events {
-		actor := userCache[ev.ActorID]
-		if actor == "" {
-			if u, err := uc.users.FindByID(ev.ActorID); err == nil {
-				actor = u.Username
-				userCache[ev.ActorID] = actor
-			}
+		if ev.ActorID != 0 {
+			idSet[ev.ActorID] = struct{}{}
+		}
+		if ev.OwnerID != 0 {
+			idSet[ev.OwnerID] = struct{}{}
+		}
+	}
+
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+
+	usersByID, err := uc.users.FindByIDs(ids)
+	if err != nil {
+		return nil, fmt.Errorf("load activity users: %w", err)
+	}
+
+	out := make([]ActivityItem, 0, len(events))
+	for _, ev := range events {
+		actor := ""
+		if u := usersByID[ev.ActorID]; u != nil {
+			actor = u.Username
 		}
 
-		owner := userCache[ev.OwnerID]
-		if owner == "" {
-			if u, err := uc.users.FindByID(ev.OwnerID); err == nil {
-				owner = u.Username
-				userCache[ev.OwnerID] = owner
-			}
+		owner := ""
+		if u := usersByID[ev.OwnerID]; u != nil {
+			owner = u.Username
 		}
 
 		out = append(out, ActivityItem{
@@ -112,7 +150,9 @@ func recordActivity(store domain.ActivityStore, ev *domain.ActivityEvent) {
 		return
 	}
 
-	_ = store.Create(ev)
+	if err := store.Create(ev); err != nil {
+		log.Printf("activity: create event: %v", err)
+	}
 }
 
 func activitySummary(format string, args ...any) string {

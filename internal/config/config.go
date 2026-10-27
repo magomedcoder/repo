@@ -2,116 +2,127 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	MinSessionSecretLen = 32
+	DefaultReceiveMax   = 512 << 20
+	DefaultPath         = "config.yaml"
+)
+
 type Config struct {
-	HTTPAddr      string `yaml:"http_addr"`
-	DataDir       string `yaml:"data_dir"`
-	DBPath        string `yaml:"db_path"`
-	ReposRoot     string `yaml:"repos_root"`
-	AvatarsDir    string `yaml:"avatars_dir"`
-	CookieSecure  bool   `yaml:"cookie_secure"`
-	SessionSecret string `yaml:"-"`
-	StaticDir     string `yaml:"static_dir"`
-	OwnerUsername string `yaml:"owner_username"`
-	OwnerEmail    string `yaml:"owner_email"`
-	OwnerPassword string `yaml:"-"`
+	HTTPAddr          string   `yaml:"http_addr"`
+	DataDir           string   `yaml:"data_dir"`
+	DBPath            string   `yaml:"db_path"`
+	ReposRoot         string   `yaml:"repos_root"`
+	AvatarsDir        string   `yaml:"avatars_dir"`
+	CookieSecure      bool     `yaml:"cookie_secure"`
+	SessionSecret     string   `yaml:"session_secret"`
+	AllowRegistration bool     `yaml:"allow_registration"`
+	TrustedProxies    []string `yaml:"trusted_proxies"`
+	ReceiveMaxBytes   int64    `yaml:"receive_max_bytes"`
+	TrustedProxyNets  []*net.IPNet
 }
 
 func Default() Config {
 	return Config{
-		HTTPAddr:   ":8080",
-		DataDir:    "data",
-		DBPath:     "data/db.sqlite",
-		ReposRoot:  "data/repos",
-		AvatarsDir: "data/avatars",
-		StaticDir:  "web/dist",
+		HTTPAddr:        ":8080",
+		DataDir:         "data",
+		DBPath:          "data/db.sqlite",
+		ReposRoot:       "data/repos",
+		AvatarsDir:      "data/avatars",
+		ReceiveMaxBytes: DefaultReceiveMax,
 	}
 }
 
 func Load(path string) (Config, error) {
-	cfg := Default()
 	if path == "" {
-		path = envOr("REPO_CONFIG", "config.yaml")
+		path = DefaultPath
 	}
 
-	if _, err := os.Stat(path); err == nil {
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return cfg, fmt.Errorf("read config: %w", err)
-		}
-
-		if err := yaml.Unmarshal(raw, &cfg); err != nil {
-			return cfg, fmt.Errorf("parse config: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return cfg, err
-	}
-
-	cfg.HTTPAddr = envOr("REPO_HTTP_ADDR", cfg.HTTPAddr)
-	cfg.DataDir = envOr("REPO_DATA_DIR", cfg.DataDir)
-	cfg.DBPath = envOr("REPO_DB_PATH", cfg.DBPath)
-	cfg.ReposRoot = envOr("REPO_REPOS_ROOT", cfg.ReposRoot)
-	cfg.AvatarsDir = envOr("REPO_AVATARS_DIR", cfg.AvatarsDir)
-	cfg.StaticDir = envOr("REPO_STATIC_DIR", cfg.StaticDir)
-	cfg.OwnerUsername = envOr("REPO_OWNER_USERNAME", cfg.OwnerUsername)
-	cfg.OwnerEmail = envOr("REPO_OWNER_EMAIL", cfg.OwnerEmail)
-	secret, err := secretFromEnvOrFile("REPO_SESSION_SECRET", "REPO_SESSION_SECRET_FILE")
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return cfg, err
+		return Config{}, fmt.Errorf("read config %s: %w", path, err)
 	}
-	cfg.SessionSecret = secret
-	password, err := secretFromEnvOrFile("REPO_OWNER_PASSWORD", "REPO_OWNER_PASSWORD_FILE")
-	if err != nil {
-		return cfg, err
-	}
-	cfg.OwnerPassword = password
-	if v := strings.TrimSpace(os.Getenv("REPO_COOKIE_SECURE")); v == "1" || strings.EqualFold(v, "true") {
-		cfg.CookieSecure = true
+
+	cfg := Default()
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
 
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = ":8080"
 	}
+	
+	if cfg.DataDir == "" {
+		cfg.DataDir = "data"
+	}
+
+	if cfg.DBPath == "" {
+		cfg.DBPath = "data/db.sqlite"
+	}
+	
+	if cfg.ReposRoot == "" {
+		cfg.ReposRoot = "data/repos"
+	}
+
+	if cfg.AvatarsDir == "" {
+		cfg.AvatarsDir = "data/avatars"
+	}
+
+	if cfg.ReceiveMaxBytes <= 0 {
+		cfg.ReceiveMaxBytes = DefaultReceiveMax
+	}
+
+	nets, err := parseCIDRs(cfg.TrustedProxies)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.TrustedProxyNets = nets
 
 	return cfg, nil
 }
 
-func secretFromEnvOrFile(envKey, fileKey string) (string, error) {
-	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
-		return v, nil
+func (c Config) ValidateSecrets() error {
+	if len(c.SessionSecret) < MinSessionSecretLen {
+		return fmt.Errorf("session_secret required in config (min %d characters)", MinSessionSecretLen)
 	}
 
-	path := strings.TrimSpace(os.Getenv(fileKey))
-	if path == "" {
-		return "", nil
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", fileKey, err)
-	}
-
-	if info.Mode().Perm()&0o077 != 0 {
-		return "", fmt.Errorf("%s: mode must be 0600", fileKey)
-	}
-
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", fileKey, err)
-	}
-
-	return strings.TrimSpace(string(raw)), nil
+	return nil
 }
 
-func envOr(key, fallback string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-		return v
+func parseCIDRs(cidrs []string) ([]*net.IPNet, error) {
+	if len(cidrs) == 0 {
+		return nil, nil
 	}
 
-	return fallback
+	out := make([]*net.IPNet, 0, len(cidrs))
+	for _, raw := range cidrs {
+		if !strings.Contains(raw, "/") {
+			ip := net.ParseIP(raw)
+			if ip == nil {
+				return nil, fmt.Errorf("trusted_proxies: invalid IP %q", raw)
+			}
+
+			if ip.To4() != nil {
+				raw = ip.String() + "/32"
+			} else {
+				raw = ip.String() + "/128"
+			}
+		}
+
+		_, network, err := net.ParseCIDR(raw)
+		if err != nil {
+			return nil, fmt.Errorf("trusted_proxies: %w", err)
+		}
+
+		out = append(out, network)
+	}
+
+	return out, nil
 }

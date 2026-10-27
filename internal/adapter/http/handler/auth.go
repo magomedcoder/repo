@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"git.magomedcoder.ru/repo/internal/adapter/http/middleware"
@@ -12,9 +13,10 @@ import (
 )
 
 type AuthHandler struct {
-	auth     *usecase.AuthUseCase
-	secure   bool
-	sameSite http.SameSite
+	auth              *usecase.AuthUseCase
+	secure            bool
+	sameSite          http.SameSite
+	allowRegistration bool
 }
 
 func NewAuthHandler(auth *usecase.AuthUseCase) *AuthHandler {
@@ -26,6 +28,16 @@ func (h *AuthHandler) SetCookiePolicy(secure bool, sameSite http.SameSite) {
 	if sameSite != 0 {
 		h.sameSite = sameSite
 	}
+}
+
+func (h *AuthHandler) SetAllowRegistration(allow bool) {
+	h.allowRegistration = allow
+}
+
+func (h *AuthHandler) Registration(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"allow_registration": h.allowRegistration,
+	})
 }
 
 type registerRequest struct {
@@ -70,7 +82,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	out, err := h.auth.Login(usecase.LoginInput{
 		Login:    req.Login,
 		Password: req.Password,
-		Key:      r.RemoteAddr + "\n" + req.Login,
+		Key:      middleware.ClientIP(r) + "\n" + strings.ToLower(strings.TrimSpace(req.Login)),
 	})
 	if err != nil {
 		writeAuthError(w, r, err)
@@ -99,9 +111,10 @@ func (h *AuthHandler) Password(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.auth.ChangePassword(usecase.ChangePasswordInput{
-		UserID:  user.ID,
-		Current: req.Current,
-		Next:    req.Next,
+		UserID:    user.ID,
+		Current:   req.Current,
+		Next:      req.Next,
+		KeepToken: middleware.SessionToken(r),
 	}); err != nil {
 		writeAuthError(w, r, err)
 		return
@@ -161,7 +174,7 @@ func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, token string) {
 		HttpOnly: true,
 		Secure:   h.secure,
 		SameSite: h.sameSite,
-		Expires:  time.Now().Add(30 * 24 * time.Hour),
+		Expires:  time.Now().Add(14 * 24 * time.Hour),
 	})
 }
 

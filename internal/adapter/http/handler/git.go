@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"bytes"
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -13,11 +13,18 @@ import (
 )
 
 type GitHandler struct {
-	git *usecase.GitUseCase
+	git             *usecase.GitUseCase
+	receiveMaxBytes int64
 }
 
 func NewGitHandler(git *usecase.GitUseCase) *GitHandler {
-	return &GitHandler{git: git}
+	return &GitHandler{git: git, receiveMaxBytes: 512 << 20}
+}
+
+func (h *GitHandler) SetReceiveMaxBytes(n int64) {
+	if n > 0 {
+		h.receiveMaxBytes = n
+	}
 }
 
 func IsGitHTTPPath(path string) bool {
@@ -69,29 +76,57 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 	}
 
 	var body io.Reader = r.Body
-	if service == usecase.GitReceivePack && repo.ProtectDefaultBranch {
-		raw, err := io.ReadAll(io.LimitReader(r.Body, 512<<20))
-		if err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
+	if service == usecase.GitReceivePack {
+		limit := h.receiveMaxBytes
+		if limit <= 0 {
+			limit = 512 << 20
 		}
 
-		for _, cmd := range parseReceiveCommands(raw) {
-			ancestor := true
-			if !domain.IsZeroHash(cmd[0]) && !domain.IsZeroHash(cmd[1]) {
-				ok, err := h.git.Ancestor(repo.Path, cmd[0], cmd[1])
-				if err != nil || !ok {
-					ancestor = false
-				}
-			}
-
-			if err := domain.CheckRefUpdate(true, repo.DefaultBranch, cmd[2], cmd[0], cmd[1], ancestor); err != nil {
-				http.Error(w, "branch protected", http.StatusForbidden)
+		if repo.ProtectDefaultBranch {
+			tmp, err := os.CreateTemp("", "receive-pack-")
+			if err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
 			}
-		}
+			defer os.Remove(tmp.Name())
+			defer tmp.Close()
 
-		body = bytes.NewReader(raw)
+			limited := io.LimitReader(r.Body, limit+1)
+			n, err := io.Copy(tmp, limited)
+			if err != nil {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			if n > limit {
+				http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			cmds, err := readReceiveCommands(tmp)
+			if err != nil {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			for _, cmd := range cmds {
+				ancestor := true
+				if !domain.IsZeroHash(cmd[0]) && !domain.IsZeroHash(cmd[1]) {
+					ok, err := h.git.Ancestor(repo.Path, cmd[0], cmd[1])
+					if err != nil || !ok {
+						ancestor = false
+					}
+				}
+				if err := domain.CheckRefUpdate(true, repo.DefaultBranch, cmd[2], cmd[0], cmd[1], ancestor); err != nil {
+					http.Error(w, "branch protected", http.StatusForbidden)
+					return
+				}
+			}
+			body = tmp
+		} else {
+			body = http.MaxBytesReader(w, r.Body, limit)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/x-"+string(service)+"-result")
@@ -114,11 +149,6 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repoPath string, service usecase.GitService) (*domain.Repository, *domain.User, error) {
 	repo, err := h.git.ResolveClonePath(repoPath)
 	if err != nil {
-		if _, authErr := h.authenticateRequest(r); authErr != nil {
-			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return nil, nil, authErr
-		}
 		http.Error(w, "not found", http.StatusNotFound)
 		return nil, nil, err
 	}
@@ -203,33 +233,31 @@ func parseGitHTTPPath(urlPath string) (repoPath, action string, err error) {
 	return repoPath, action, nil
 }
 
-func parseReceiveCommands(body []byte) [][3]string {
-	var out [][3]string
-	for len(body) >= 4 {
-		n, err := strconv.ParseInt(string(body[:4]), 16, 32)
-		if err != nil || n < 4 {
-			break
+func readReceiveCommands(r io.Reader) (cmds [][3]string, err error) {
+	for {
+		var lenBuf [4]byte
+		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
+			return cmds, err
 		}
-
+		n, perr := strconv.ParseInt(string(lenBuf[:]), 16, 32)
+		if perr != nil || n < 4 {
+			return cmds, errors.New("invalid pkt-line")
+		}
 		if n == 4 {
 			break
 		}
-
-		if int(n) > len(body) {
-			break
+		payload := make([]byte, n-4)
+		if _, err := io.ReadFull(r, payload); err != nil {
+			return cmds, err
 		}
-
-		line := strings.TrimRight(string(body[4:n]), "\n")
-		body = body[n:]
+		line := strings.TrimRight(string(payload), "\n")
 		if i := strings.IndexByte(line, 0); i >= 0 {
 			line = line[:i]
 		}
-
 		fields := strings.Fields(line)
 		if len(fields) >= 3 {
-			out = append(out, [3]string{fields[0], fields[1], fields[2]})
+			cmds = append(cmds, [3]string{fields[0], fields[1], fields[2]})
 		}
 	}
-
-	return out
+	return cmds, nil
 }

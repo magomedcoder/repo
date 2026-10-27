@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -17,21 +18,17 @@ const (
 )
 
 var (
-	ErrFolderNameRequired   = errors.New("folder_name_required")
-	ErrInvalidFolderName    = errors.New("invalid_folder_name")
-	ErrFolderExists         = errors.New("folder_already_exists")
-	ErrFolderNotFound       = errors.New("folder_not_found")
-	ErrFolderNotEmpty       = errors.New("folder_not_empty")
-	ErrInvalidFolderMove    = errors.New("invalid_folder_move")
-	ErrFolderCycle          = errors.New("folder_cycle")
-	ErrParentFolderNotFound = errors.New("parent_folder_not_found")
+	ErrFolderNameRequired = errors.New("folder_name_required")
+	ErrInvalidFolderName  = errors.New("invalid_folder_name")
+	ErrFolderExists       = errors.New("folder_already_exists")
+	ErrFolderNotFound     = errors.New("folder_not_found")
+	ErrFolderNotEmpty     = errors.New("folder_not_empty")
 )
 
 var nonSlugChars = regexp.MustCompile(`[^a-z0-9_-]+`)
 
 type FolderItem struct {
 	ID        uint      `json:"id"`
-	ParentID  *uint     `json:"parent_id"`
 	Name      string    `json:"name"`
 	Slug      string    `json:"slug"`
 	Path      string    `json:"path"`
@@ -39,15 +36,9 @@ type FolderItem struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type FolderTreeNode struct {
-	FolderItem
-	Children []FolderTreeNode `json:"children"`
-}
-
 type FolderContents struct {
-	Folder  *FolderItem             `json:"folder,omitempty"`
-	Folders []FolderItem            `json:"folders"`
-	Repos   []RepositorySummaryItem `json:"repos"`
+	Folder *FolderItem             `json:"folder,omitempty"`
+	Repos  []RepositorySummaryItem `json:"repos"`
 }
 
 type RepositorySummaryItem struct {
@@ -65,8 +56,6 @@ type CreateFolderInput struct {
 	ViewerID uint
 	OwnerID  uint
 	Name     string
-	ParentID *uint
-	Path     string
 }
 
 type RenameFolderInput struct {
@@ -76,22 +65,22 @@ type RenameFolderInput struct {
 	Name     string
 }
 
-type MoveFolderInput struct {
-	ViewerID    uint
-	OwnerID     uint
-	ID          uint
-	NewParentID *uint
-}
-
 type FolderUseCase struct {
-	folders domain.FolderStore
-	repos   domain.RepositoryStore
+	folders   domain.FolderStore
+	repos     domain.RepositoryStore
+	git       domain.GitRepository
+	reposRoot string
 }
 
-func NewFolderUseCase(folders domain.FolderStore, repos domain.RepositoryStore) *FolderUseCase {
+func NewFolderUseCase(folders domain.FolderStore, repos domain.RepositoryStore, git domain.GitRepository, reposRoot string) *FolderUseCase {
+	if reposRoot == "" {
+		reposRoot = filepath.Join("data", "repos")
+	}
 	return &FolderUseCase{
-		folders: folders,
-		repos:   repos,
+		folders:   folders,
+		repos:     repos,
+		git:       git,
+		reposRoot: reposRoot,
 	}
 }
 
@@ -117,36 +106,17 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = ownerID
 
 	name, slug, err := normalizeFolderName(in.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	parentID := in.ParentID
-	var parent *domain.Folder
-	if parentID == nil && strings.TrimSpace(in.Path) != "" {
-		parentPath := strings.Trim(strings.TrimSpace(in.Path), "/")
-		parent, err = uc.folders.FindByOwnerAndPath(ownerKind, ownerID, parentPath)
-		if err != nil {
-			return nil, ErrParentFolderNotFound
-		}
-
-		parentID = &parent.ID
-	} else if parentID != nil {
-		parent, err = uc.folders.FindByOwnerAndID(ownerKind, ownerID, *parentID)
-		if err != nil {
-			return nil, ErrParentFolderNotFound
-		}
+	if IsReservedSlug(slug) {
+		return nil, ErrReservedSlug
 	}
 
-	parentPath := ""
-	if parent != nil {
-		parentPath = parent.Path
-	}
-
-	exists, err := uc.folders.ExistsByOwnerParentSlug(ownerKind, ownerID, parentID, slug)
+	exists, err := uc.folders.ExistsByOwnerSlug(ownerKind, ownerID, slug)
 	if err != nil {
 		return nil, fmt.Errorf("check folder existence: %w", err)
 	}
@@ -155,18 +125,12 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 		return nil, ErrFolderExists
 	}
 
-	path := slug
-	if parentPath != "" {
-		path = parentPath + "/" + slug
-	}
-
 	folder := &domain.Folder{
 		OwnerKind: ownerKind,
 		OwnerID:   ownerID,
-		ParentID:  parentID,
 		Name:      name,
 		Slug:      slug,
-		Path:      path,
+		Path:      slug,
 	}
 	if err := uc.folders.Create(folder); err != nil {
 		return nil, fmt.Errorf("create folder: %w", err)
@@ -176,7 +140,7 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 	return &item, nil
 }
 
-func (uc *FolderUseCase) List(viewerID, ownerID uint, parentID *uint, tree bool) (any, error) {
+func (uc *FolderUseCase) List(viewerID, ownerID uint) ([]FolderItem, error) {
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
 	if err != nil {
 		return nil, err
@@ -186,15 +150,7 @@ func (uc *FolderUseCase) List(viewerID, ownerID uint, parentID *uint, tree bool)
 		return nil, ErrUnauthorized
 	}
 
-	if tree {
-		all, err := uc.folders.ListByOwner(ownerKind, ownerID)
-		if err != nil {
-			return nil, fmt.Errorf("list folders: %w", err)
-		}
-		return buildFolderTree(all), nil
-	}
-
-	folders, err := uc.folders.ListByOwnerAndParent(ownerKind, ownerID, parentID)
+	folders, err := uc.folders.ListByOwner(ownerKind, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("list folders: %w", err)
 	}
@@ -222,11 +178,6 @@ func (uc *FolderUseCase) GetContents(viewerID, ownerID uint, folderID uint) (*Fo
 		return nil, ErrFolderNotFound
 	}
 
-	children, err := uc.folders.ListByOwnerAndParent(ownerKind, ownerID, &folderID)
-	if err != nil {
-		return nil, fmt.Errorf("list child folders: %w", err)
-	}
-
 	repos, err := uc.repos.ListByOwnerAndFolderID(ownerKind, ownerID, &folderID)
 	if err != nil {
 		return nil, fmt.Errorf("list folder repos: %w", err)
@@ -234,13 +185,8 @@ func (uc *FolderUseCase) GetContents(viewerID, ownerID uint, folderID uint) (*Fo
 
 	folderItem := toFolderItem(folder)
 	out := &FolderContents{
-		Folder:  &folderItem,
-		Folders: make([]FolderItem, 0, len(children)),
-		Repos:   make([]RepositorySummaryItem, 0, len(repos)),
-	}
-
-	for i := range children {
-		out.Folders = append(out.Folders, toFolderItem(&children[i]))
+		Folder: &folderItem,
+		Repos:  make([]RepositorySummaryItem, 0, len(repos)),
 	}
 
 	for _, repo := range repos {
@@ -272,7 +218,10 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	}
 
 	if slug != folder.Slug {
-		exists, err := uc.folders.ExistsByOwnerParentSlug(ownerKind, ownerID, folder.ParentID, slug)
+		if IsReservedSlug(slug) {
+			return nil, ErrReservedSlug
+		}
+		exists, err := uc.folders.ExistsByOwnerSlug(ownerKind, ownerID, slug)
 		if err != nil {
 			return nil, fmt.Errorf("check folder existence: %w", err)
 		}
@@ -282,26 +231,36 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	}
 
 	oldPath := folder.Path
-	newPath := slug
-	if folder.ParentID != nil {
-		parent, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, *folder.ParentID)
-		if err != nil {
-			return nil, ErrParentFolderNotFound
-		}
-		newPath = parent.Path + "/" + slug
-	}
-
 	folder.Name = name
 	folder.Slug = slug
-	folder.Path = newPath
-	if err := uc.folders.Update(folder); err != nil {
-		return nil, fmt.Errorf("rename folder: %w", err)
+	folder.Path = slug
+
+	if oldPath != slug {
+		repos, err := uc.repos.ListByOwnerAndFolderID(ownerKind, ownerID, &folder.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list folder repos: %w", err)
+		}
+		
+		for i := range repos {
+			repo := &repos[i]
+			newLogical := slug + "/" + repo.Name + ".git"
+			newDisk := buildRepoDiskPath(uc.reposRoot, repo.OwnerKind, repo.OwnerID, slug, repo.Name)
+			if uc.git != nil && repo.Path != "" && repo.Path != newDisk {
+				if err := uc.git.Move(repo.Path, newDisk); err != nil {
+					return nil, fmt.Errorf("move repository files: %w", err)
+				}
+			}
+
+			repo.Path = newDisk
+			repo.RepoPath = newLogical
+			if err := uc.repos.Update(repo); err != nil {
+				return nil, fmt.Errorf("update repository path: %w", err)
+			}
+		}
 	}
 
-	if oldPath != newPath {
-		if err := uc.rewriteDescendantPaths(ownerKind, ownerID, oldPath, newPath); err != nil {
-			return nil, err
-		}
+	if err := uc.folders.Update(folder); err != nil {
+		return nil, fmt.Errorf("rename folder: %w", err)
 	}
 
 	item := toFolderItem(folder)
@@ -322,122 +281,17 @@ func (uc *FolderUseCase) Delete(viewerID, ownerID uint, folderID uint) error {
 		return ErrFolderNotFound
 	}
 
-	childFolders, err := uc.folders.CountChildren(folderID)
-	if err != nil {
-		return fmt.Errorf("count child folders: %w", err)
-	}
-
 	childRepos, err := uc.repos.CountByFolderID(folderID)
 	if err != nil {
 		return fmt.Errorf("count folder repos: %w", err)
 	}
 
-	if childFolders > 0 || childRepos > 0 {
+	if childRepos > 0 {
 		return ErrFolderNotEmpty
 	}
 
 	if err := uc.folders.Delete(folderID); err != nil {
 		return fmt.Errorf("delete folder: %w", err)
-	}
-
-	return nil
-}
-
-func (uc *FolderUseCase) Move(in MoveFolderInput) (*FolderItem, error) {
-	viewerID := in.ViewerID
-	if viewerID == 0 {
-		viewerID = in.OwnerID
-	}
-
-	ownerKind, ownerID, err := uc.resolveOwner(viewerID, in.OwnerID, true)
-	if err != nil {
-		return nil, err
-	}
-	if in.NewParentID != nil && *in.NewParentID == in.ID {
-		return nil, ErrInvalidFolderMove
-	}
-
-	folder, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, in.ID)
-	if err != nil {
-		return nil, ErrFolderNotFound
-	}
-
-	var newParent *domain.Folder
-	if in.NewParentID != nil {
-		newParent, err = uc.folders.FindByOwnerAndID(ownerKind, ownerID, *in.NewParentID)
-		if err != nil {
-			return nil, ErrParentFolderNotFound
-		}
-
-		if newParent.Path == folder.Path || strings.HasPrefix(newParent.Path, folder.Path+"/") {
-			return nil, ErrFolderCycle
-		}
-	}
-
-	sameParent := (folder.ParentID == nil && in.NewParentID == nil) || (folder.ParentID != nil && in.NewParentID != nil && *folder.ParentID == *in.NewParentID)
-	if sameParent {
-		item := toFolderItem(folder)
-		return &item, nil
-	}
-
-	parentPath := ""
-	if newParent != nil {
-		parentPath = newParent.Path
-	}
-
-	exists, err := uc.folders.ExistsByOwnerParentSlug(ownerKind, ownerID, in.NewParentID, folder.Slug)
-	if err != nil {
-		return nil, fmt.Errorf("check folder existence: %w", err)
-	}
-
-	if exists {
-		return nil, ErrFolderExists
-	}
-
-	oldPath := folder.Path
-	newPath := folder.Slug
-	if parentPath != "" {
-		newPath = parentPath + "/" + folder.Slug
-	}
-
-	folder.ParentID = in.NewParentID
-	folder.Path = newPath
-	if err := uc.folders.Update(folder); err != nil {
-		return nil, fmt.Errorf("move folder: %w", err)
-	}
-
-	if err := uc.rewriteDescendantPaths(ownerKind, ownerID, oldPath, newPath); err != nil {
-		return nil, err
-	}
-
-	item := toFolderItem(folder)
-	return &item, nil
-}
-
-func (uc *FolderUseCase) rewriteDescendantPaths(ownerKind string, ownerID uint, oldPath, newPath string) error {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
-	}
-
-	descendants, err := uc.folders.ListDescendants(ownerKind, ownerID, oldPath)
-	if err != nil {
-		return fmt.Errorf("list descendants: %w", err)
-	}
-
-	for i := range descendants {
-		d := &descendants[i]
-		if d.Path == oldPath {
-			continue
-		}
-
-		if !strings.HasPrefix(d.Path, oldPath+"/") {
-			continue
-		}
-
-		d.Path = newPath + d.Path[len(oldPath):]
-		if err := uc.folders.Update(d); err != nil {
-			return fmt.Errorf("update descendant path: %w", err)
-		}
 	}
 
 	return nil
@@ -477,7 +331,6 @@ func normalizeFolderName(raw string) (name, slug string, err error) {
 func toFolderItem(f *domain.Folder) FolderItem {
 	return FolderItem{
 		ID:        f.ID,
-		ParentID:  f.ParentID,
 		Name:      f.Name,
 		Slug:      f.Slug,
 		Path:      f.Path,
@@ -497,38 +350,4 @@ func toRepoSummary(repo domain.Repository) RepositorySummaryItem {
 		CreatedAt:     repo.CreatedAt,
 		UpdatedAt:     repo.UpdatedAt,
 	}
-}
-
-func buildFolderTree(folders []domain.Folder) []FolderTreeNode {
-	byParent := map[uint][]domain.Folder{}
-	var roots []domain.Folder
-	for _, f := range folders {
-		if f.ParentID == nil {
-			roots = append(roots, f)
-			continue
-		}
-
-		byParent[*f.ParentID] = append(byParent[*f.ParentID], f)
-	}
-
-	var build func(f domain.Folder) FolderTreeNode
-	build = func(f domain.Folder) FolderTreeNode {
-		node := FolderTreeNode{
-			FolderItem: toFolderItem(&f),
-			Children:   []FolderTreeNode{},
-		}
-
-		for _, child := range byParent[f.ID] {
-			node.Children = append(node.Children, build(child))
-		}
-
-		return node
-	}
-
-	tree := make([]FolderTreeNode, 0, len(roots))
-	for _, root := range roots {
-		tree = append(tree, build(root))
-	}
-
-	return tree
 }

@@ -89,26 +89,29 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 		ownerID = user.ID
 	}
 
+	offset, limit := usecase.ParseOffsetLimit(r.URL.Query().Get("offset"), r.URL.Query().Get("limit"))
+	sortKey := r.URL.Query().Get("sort")
+
 	if q != "" {
-		items, err := h.repos.Search(q, ownerID, publicOnly)
+		items, err := h.repos.Search(q, ownerID, publicOnly, 0, 0)
 		if err != nil {
 			writeRepoError(w, r, err)
 			return
 		}
 
-		sortRepoItems(items, r.URL.Query().Get("sort"))
-		writeJSON(w, http.StatusOK, map[string]any{"repos": items})
+		sortRepoItems(items, sortKey)
+		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
 		return
 	}
 
 	if publicOnly {
-		items, err := h.repos.ListPublic()
+		items, err := h.repos.ListPublic(0, 0)
 		if err != nil {
 			writeRepoError(w, r, err)
 			return
 		}
-		sortRepoItems(items, r.URL.Query().Get("sort"))
-		writeJSON(w, http.StatusOK, map[string]any{"repos": items})
+		sortRepoItems(items, sortKey)
+		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
 		return
 	}
 
@@ -117,8 +120,29 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeRepoError(w, r, err)
 		return
 	}
-	sortRepoItems(items, r.URL.Query().Get("sort"))
-	writeJSON(w, http.StatusOK, map[string]any{"repos": items})
+	sortRepoItems(items, sortKey)
+	writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
+}
+
+func paginateRepoItems(items []usecase.RepositoryItem, offset, limit int) []usecase.RepositoryItem {
+	if limit <= 0 && offset <= 0 {
+		return items
+	}
+	
+	if offset < 0 {
+		offset = 0
+	}
+
+	if offset >= len(items) {
+		return nil
+	}
+
+	end := len(items)
+	if limit > 0 && offset+limit < end {
+		end = offset + limit
+	}
+
+	return items[offset:end]
 }
 
 func sortRepoItems(items []usecase.RepositoryItem, key string) {
@@ -152,7 +176,7 @@ func sortRepoItems(items []usecase.RepositoryItem, key string) {
 }
 
 func (h *RepositoryHandler) Get(w http.ResponseWriter, r *http.Request) {
-	owner, folderPath, name, err := parseRepoPath(r)
+	folderPath, name, err := parseRepoPath(r)
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
@@ -164,10 +188,9 @@ func (h *RepositoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := h.repos.Get(usecase.ResolveRepositoryInput{
-		OwnerUsername: owner,
-		FolderPath:    folderPath,
-		Name:          name,
-		ViewerID:      viewerID,
+		FolderPath: folderPath,
+		Name:       name,
+		ViewerID:   viewerID,
 	})
 	if err != nil {
 		if viewerID == 0 && (errors.Is(err, usecase.ErrRepoNotFound) || errors.Is(err, usecase.ErrUnauthorized) || errors.Is(err, usecase.ErrRepoForbidden)) {
@@ -188,7 +211,7 @@ func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	owner, folderPath, name, err := parseRepoPath(r)
+	folderPath, name, err := parseRepoPath(r)
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
@@ -202,7 +225,6 @@ func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	out, err := h.repos.Update(usecase.UpdateRepositoryInput{
 		ViewerID:             user.ID,
-		OwnerUsername:        owner,
 		FolderPath:           folderPath,
 		Name:                 name,
 		Description:          req.Description,
@@ -225,17 +247,16 @@ func (h *RepositoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	owner, folderPath, name, err := parseRepoPath(r)
+	folderPath, name, err := parseRepoPath(r)
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	err = h.repos.Delete(usecase.ResolveRepositoryInput{
-		OwnerUsername: owner,
-		FolderPath:    folderPath,
-		Name:          name,
-		ViewerID:      user.ID,
+		FolderPath: folderPath,
+		Name:       name,
+		ViewerID:   user.ID,
 	})
 	if err != nil {
 		writeRepoError(w, r, err)
@@ -245,20 +266,19 @@ func (h *RepositoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *RepositoryHandler) DispatchPost(w http.ResponseWriter, r *http.Request) {
-	h.Move(w, r)
+func (h *RepositoryHandler) MoveWithParts(w http.ResponseWriter, r *http.Request, repoParts []string) {
+	folderPath, name, err := folderAndName(repoParts)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.move(w, r, folderPath, name)
 }
 
-func (h *RepositoryHandler) Move(w http.ResponseWriter, r *http.Request) {
+func (h *RepositoryHandler) move(w http.ResponseWriter, r *http.Request, folderPath, name string) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
-	owner, folderPath, name, err := parseRepoActionPath(r, "move")
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -269,12 +289,11 @@ func (h *RepositoryHandler) Move(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := h.repos.Move(usecase.MoveRepositoryInput{
-		ViewerID:      user.ID,
-		OwnerUsername: owner,
-		FolderPath:    folderPath,
-		Name:          name,
-		NewFolderID:   req.FolderID,
-		BasePath:      h.reposRoot,
+		ViewerID:    user.ID,
+		FolderPath:  folderPath,
+		Name:        name,
+		NewFolderID: req.FolderID,
+		BasePath:    h.reposRoot,
 	})
 	if err != nil {
 		writeRepoError(w, r, err)
@@ -284,16 +303,15 @@ func (h *RepositoryHandler) Move(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func parseRepoPath(r *http.Request) (owner, folderPath, name string, err error) {
-	owner = strings.TrimSpace(r.PathValue("owner"))
+func parseRepoPath(r *http.Request) (folderPath, name string, err error) {
 	rest := strings.Trim(r.PathValue("path"), "/")
-	if owner == "" || rest == "" {
-		return "", "", "", errors.New("invalid_repository_path")
+	if rest == "" {
+		return "", "", errors.New("invalid_repository_path")
 	}
 
 	parts := strings.Split(rest, "/")
 	if len(parts) == 0 || parts[len(parts)-1] == "" {
-		return "", "", "", errors.New("invalid_repository_path")
+		return "", "", errors.New("invalid_repository_path")
 	}
 
 	name = parts[len(parts)-1]
@@ -301,25 +319,24 @@ func parseRepoPath(r *http.Request) (owner, folderPath, name string, err error) 
 		folderPath = strings.Join(parts[:len(parts)-1], "/")
 	}
 
-	return owner, folderPath, name, nil
+	return folderPath, name, nil
 }
 
-func parseRepoActionPath(r *http.Request, action string) (owner, folderPath, name string, err error) {
-	owner = strings.TrimSpace(r.PathValue("owner"))
+func parseRepoActionPath(r *http.Request, action string) (folderPath, name string, err error) {
 	rest := strings.Trim(r.PathValue("path"), "/")
-	if owner == "" || rest == "" {
-		return "", "", "", errors.New("invalid_repository_path")
+	if rest == "" {
+		return "", "", errors.New("invalid_repository_path")
 	}
 
 	suffix := "/" + action
 	if !strings.HasSuffix(rest, suffix) && rest != action {
-		return "", "", "", errors.New("invalid_repo_move_path")
+		return "", "", errors.New("invalid_repo_move_path")
 	}
 
 	rest = strings.TrimSuffix(rest, suffix)
 	rest = strings.Trim(rest, "/")
 	if rest == "" {
-		return "", "", "", errors.New("invalid_repository_path")
+		return "", "", errors.New("invalid_repository_path")
 	}
 
 	parts := strings.Split(rest, "/")
@@ -328,14 +345,15 @@ func parseRepoActionPath(r *http.Request, action string) (owner, folderPath, nam
 		folderPath = strings.Join(parts[:len(parts)-1], "/")
 	}
 
-	return owner, folderPath, name, nil
+	return folderPath, name, nil
 }
 
 func writeRepoError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrNameRequired),
 		errors.Is(err, usecase.ErrInvalidName),
-		errors.Is(err, usecase.ErrInvalidBranchName):
+		errors.Is(err, usecase.ErrInvalidBranchName),
+		errors.Is(err, usecase.ErrReservedSlug):
 		writeError(w, r, http.StatusBadRequest, err.Error())
 	case errors.Is(err, usecase.ErrAlreadyExists):
 		writeError(w, r, http.StatusConflict, err.Error())

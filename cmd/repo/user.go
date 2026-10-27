@@ -1,0 +1,71 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+
+	"git.magomedcoder.ru/repo/internal/adapter/sqlite"
+	"git.magomedcoder.ru/repo/internal/config"
+	"git.magomedcoder.ru/repo/internal/usecase"
+	"git.magomedcoder.ru/repo/pkg/argon2id"
+	"git.magomedcoder.ru/repo/pkg/token"
+)
+
+func runUser(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: repo user create -username ... -email ... -password ... ")
+	}
+
+	switch args[0] {
+	case "create":
+		return runUserCreate(args[1:])
+	default:
+		return fmt.Errorf("unknown user command %q (want create)", args[0])
+	}
+}
+
+func runUserCreate(args []string) error {
+	fs := flag.NewFlagSet("user create", flag.ContinueOnError)
+	username := fs.String("username", "", "username")
+	email := fs.String("email", "", "email")
+	password := fs.String("password", "", "password (min 8)")
+	configPath := fs.String("config", config.DefaultPath, "path to config.yaml")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *username == "" || *email == "" || *password == "" {
+		return fmt.Errorf("required: -username -email -password")
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+
+	db, err := sqlite.NewDB(cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("database: %w", err)
+	}
+
+	authUC := usecase.NewAuthUseCase(
+		sqlite.NewUserStore(db),
+		sqlite.NewSessionStore(db),
+		argon2id.NewHasher(),
+		token.NewGenerator(),
+	)
+	authUC.SetSessionSecret(cfg.SessionSecret)
+
+	user, err := authUC.CreateUser(usecase.RegisterInput{
+		Username: *username,
+		Email:    *email,
+		Password: *password,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("created user %s (id=%d)\n", user.Username, user.ID)
+
+	return nil
+}

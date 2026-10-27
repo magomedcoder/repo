@@ -7,7 +7,6 @@ import { formatDate } from '@/i18n'
 
 defineProps<{
   issue: Issue
-  owner: string
   repoPath: string
 }>()
 </script>
@@ -25,7 +24,7 @@ defineProps<{
   >
     <Icon
       :name="issue.state === 'open' ? 'issue' : 'issue-closed'"
-      :class="issue.state === 'open' ? 'mt-0.5 text-open' : 'mt-0.5 text-done'"
+      class="mt-0.5 text-ink-muted"
     />
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-2">

@@ -5,16 +5,16 @@ import { reposApi } from '@/api'
 import type { RefInfo } from '@/api/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
+import type { PageError } from '@/i18n'
 import { pageError } from '@/i18n'
 
 const props = defineProps<{
-  owner: string
   repoPath: string
 }>()
 
 const branches = ref<RefInfo[]>([])
 const tags = ref<RefInfo[]>([])
-const error = ref('')
+const error = ref<PageError | string>('')
 const loading = ref(true)
 
 async function load() {
@@ -22,8 +22,8 @@ async function load() {
   error.value = ''
   try {
     const [branchRes, tagRes] = await Promise.all([
-      reposApi.branches(props.owner, props.repoPath),
-      reposApi.tags(props.owner, props.repoPath),
+      reposApi.branches(props.repoPath),
+      reposApi.tags(props.repoPath),
     ])
     branches.value = branchRes.branches ?? []
     tags.value = tagRes.tags ?? []
@@ -34,11 +34,12 @@ async function load() {
   }
 }
 
-watch(() => [props.owner, props.repoPath], load, { immediate: true })
+watch(() => props.repoPath, load, { immediate: true })
 </script>
 
 <template>
-  <RepoShell :owner="owner" :repo-path="repoPath" tab="refs">
+  <RepoShell
+    :repo-path="repoPath" tab="refs">
     <PageState :loading="loading" :error="error">
       <table :class="dataTable">
         <thead>
@@ -49,11 +50,11 @@ watch(() => [props.owner, props.repoPath], load, { immediate: true })
         </thead>
         <tbody>
           <tr v-for="branch in branches" :key="'b-' + branch.name">
-            <td>refs/heads/{{ branch.name }}</td>
+            <td>{{ $t('refs.head', { name: branch.name }) }}</td>
             <td class="font-mono">{{ branch.commit_sha }}</td>
           </tr>
           <tr v-for="tag in tags" :key="'t-' + tag.name">
-            <td>refs/tags/{{ tag.name }}</td>
+            <td>{{ $t('refs.tag', { name: tag.name }) }}</td>
             <td class="font-mono">{{ tag.commit_sha }}</td>
           </tr>
         </tbody>

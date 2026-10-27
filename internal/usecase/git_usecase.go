@@ -55,30 +55,20 @@ func (uc *GitUseCase) ResolveClonePath(path string) (*domain.Repository, error) 
 		path += ".git"
 	}
 
-	repo, err := uc.repos.FindByRepoPath(path)
-	if err == nil {
-		return repo, nil
-	}
-
 	parts := strings.Split(path, "/")
-	if len(parts) < 2 {
+	if len(parts) < 1 || parts[0] == "" {
+		return nil, ErrRepoNotFound
+	}
+	if IsReservedSlug(parts[0]) {
 		return nil, ErrRepoNotFound
 	}
 
-	return uc.repos.FindByRepoPath(strings.Join(parts[1:], "/"))
-}
+	repo, err := uc.repos.FindByRepoPath(path)
+	if err != nil {
+		return nil, ErrRepoNotFound
+	}
 
-func (uc *GitUseCase) Resolve(ownerUsername, folderPath, name string) (*domain.Repository, error) {
-	repo, _, _, err := (&RepositoryUseCase{
-		store:   uc.repos,
-		folders: uc.folders,
-		users:   uc.users,
-	}).resolve(ResolveRepositoryInput{
-		OwnerUsername: ownerUsername,
-		FolderPath:    folderPath,
-		Name:          name,
-	})
-	return repo, err
+	return repo, nil
 }
 
 func (uc *GitUseCase) Authenticate(username, secret string) (*domain.User, error) {
@@ -134,7 +124,6 @@ func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 }
 
 func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, service GitService) error {
-	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users}
 	switch service {
 	case GitUploadPack:
 		if !repo.IsPrivate {
@@ -145,7 +134,7 @@ func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, se
 			return ErrUnauthorized
 		}
 
-		if !repoUC.canReadPrivate(repo, viewer.ID) {
+		if !CanReadPrivateRepo(repo, viewer.ID) {
 			return ErrRepoForbidden
 		}
 
@@ -155,7 +144,7 @@ func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, se
 			return ErrUnauthorized
 		}
 
-		if !repoUC.canWriteGit(repo, viewer.ID) {
+		if !CanWriteGit(repo, viewer.ID) {
 			return ErrRepoForbidden
 		}
 

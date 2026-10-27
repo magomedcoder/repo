@@ -19,9 +19,11 @@ func NewRouter(
 	profileHandler *handler.ProfileHandler,
 	activityHandler *handler.ActivityHandler,
 	auth middleware.Authenticator,
+	cookieSecure bool,
 ) http.Handler {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /api/auth/registration", authHandler.Registration)
 	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
 	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
 	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
@@ -39,48 +41,16 @@ func NewRouter(
 
 	mux.Handle("POST /api/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
 	mux.Handle("GET /api/repos", optionalAuth(http.HandlerFunc(repoHandler.List)))
-	mux.Handle("GET /api/repos/{owner}/{path...}", optionalAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if pullHandler.Handle(w, r) {
-			return
-		}
+	repoAPI := &handler.RepoDispatcher{
+		Repos:  repoHandler,
+		Issues: issueHandler,
+		Pulls:  pullHandler,
+	}
+	mux.Handle("GET /api/repos/{path...}", optionalAuth(http.HandlerFunc(repoAPI.DispatchGet)))
+	mux.Handle("PATCH /api/repos/{path...}", requireAuth(http.HandlerFunc(repoAPI.DispatchPatch)))
+	mux.Handle("DELETE /api/repos/{path...}", requireAuth(http.HandlerFunc(repoAPI.DispatchDelete)))
+	mux.Handle("POST /api/repos/{path...}", requireAuth(http.HandlerFunc(repoAPI.DispatchPost)))
 
-		if issueHandler.Handle(w, r) {
-			return
-		}
-		repoHandler.DispatchGet(w, r)
-	})))
-	mux.Handle("PATCH /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if pullHandler.Handle(w, r) {
-			return
-		}
-
-		if issueHandler.Handle(w, r) {
-			return
-		}
-		repoHandler.Update(w, r)
-	})))
-	mux.Handle("DELETE /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if pullHandler.Handle(w, r) {
-			return
-		}
-
-		if issueHandler.Handle(w, r) {
-			return
-		}
-		repoHandler.Delete(w, r)
-	})))
-	mux.Handle("POST /api/repos/{owner}/{path...}", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if pullHandler.Handle(w, r) {
-			return
-		}
-
-		if issueHandler.Handle(w, r) {
-			return
-		}
-		repoHandler.DispatchPost(w, r)
-	})))
-
-	mux.Handle("GET /api/activity", requireAuth(http.HandlerFunc(activityHandler.ListMine)))
 	mux.Handle("GET /api/activity/{owner}", optionalAuth(http.HandlerFunc(activityHandler.ListOwner)))
 
 	mux.Handle("POST /api/folders", requireAuth(http.HandlerFunc(folderHandler.Create)))
@@ -88,7 +58,6 @@ func NewRouter(
 	mux.Handle("GET /api/folders/{id}", requireAuth(http.HandlerFunc(folderHandler.Get)))
 	mux.Handle("PATCH /api/folders/{id}", requireAuth(http.HandlerFunc(folderHandler.Rename)))
 	mux.Handle("DELETE /api/folders/{id}", requireAuth(http.HandlerFunc(folderHandler.Delete)))
-	mux.Handle("POST /api/folders/{id}/move", requireAuth(http.HandlerFunc(folderHandler.Move)))
 
 	mux.Handle("POST /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.Create)))
 	mux.Handle("GET /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.List)))
@@ -96,8 +65,9 @@ func NewRouter(
 
 	apiLimiter := middleware.NewRateLimiter(180, 60)
 	authLimiter := middleware.NewRateLimiter(30, 10)
-	api := middleware.SecurityHeaders(middleware.CSRF(middleware.CookieSecure)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(mux))))))
-	gitHTTP := middleware.SecurityHeaders(middleware.Logger(gitHandler))
+	gitLimiter := middleware.NewRateLimiter(60, 20)
+	api := middleware.SecurityHeaders(middleware.CSRF(cookieSecure)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(mux))))))
+	gitHTTP := middleware.SecurityHeaders(middleware.RateLimitIP(gitLimiter)(middleware.Logger(gitHandler)))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if handler.IsGitHTTPPath(r.URL.Path) {

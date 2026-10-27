@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { reposApi } from '@/api'
 import { useAuth } from '@/composables/useAuth'
-import { rememberOwner } from '@/composables/useRepoOwner'
+import { useRegistration } from '@/composables/useRegistration'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -120,7 +119,6 @@ const routes: RouteRecordRaw[] = [
       {
         path: ':repoPath(.*)/settings',
         name: 'repo-settings',
-        meta: { publicRead: true },
         component: () => import('@/views/RepoSettingsView.vue'),
         props: true,
       },
@@ -163,17 +161,11 @@ router.beforeEach(async (to) => {
     return { name: 'home' }
   }
 
-  const repoPath = to.params.repoPath
-  if (repoPath && !auth.user.value?.username) {
-    const path = Array.isArray(repoPath) ? repoPath.join('/') : String(repoPath)
-    const res = await reposApi.search('', 'public').catch(() => ({ repos: [] }))
-    const hit = (res.repos ?? []).find((repo) => {
-      const logical = (repo.repo_path || (repo.folder_path ? `${repo.folder_path}/${repo.name}` : repo.name)).replace(/\.git$/, '')
-      return logical === path
-    })
-    
-    if (hit?.owner) {
-      rememberOwner(hit.owner)
+  if (to.name === 'register') {
+    const { fetchAllowRegistration } = useRegistration()
+    const allowed = await fetchAllowRegistration()
+    if (!allowed) {
+      return { name: 'login' }
     }
   }
 

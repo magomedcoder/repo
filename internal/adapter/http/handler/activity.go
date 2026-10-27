@@ -16,23 +16,6 @@ func NewActivityHandler(activity *usecase.ActivityUseCase) *ActivityHandler {
 	return &ActivityHandler{activity: activity}
 }
 
-func (h *ActivityHandler) ListMine(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
-	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	items, err := h.activity.ListMine(user.ID, limit)
-	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "internal_error")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"events": items})
-}
-
 func (h *ActivityHandler) ListOwner(w http.ResponseWriter, r *http.Request) {
 	var viewerID uint
 	if user, ok := middleware.UserFromContext(r.Context()); ok {

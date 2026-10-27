@@ -2,6 +2,7 @@ package http_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,11 +15,17 @@ import (
 	"git.magomedcoder.ru/repo/internal/adapter/http/handler"
 	"git.magomedcoder.ru/repo/internal/adapter/sqlite"
 	"git.magomedcoder.ru/repo/internal/usecase"
-	"git.magomedcoder.ru/repo/pkg/bcrypt"
+	"git.magomedcoder.ru/repo/pkg/argon2id"
 	"git.magomedcoder.ru/repo/pkg/token"
 )
 
-func newTestServer(t *testing.T) (*httptest.Server, string) {
+type testEnv struct {
+	Server *httptest.Server
+	Dir    string
+	Auth   *usecase.AuthUseCase
+}
+
+func newTestServer(t *testing.T) testEnv {
 	t.Helper()
 	dir := t.TempDir()
 	wd, err := os.Getwd()
@@ -49,13 +56,14 @@ func newTestServer(t *testing.T) (*httptest.Server, string) {
 	pullStore := sqlite.NewPullRequestStore(db)
 	activityStore := sqlite.NewActivityStore(db)
 	gitRepo := git.NewRepository()
-	hasher := bcrypt.NewHasher()
+	hasher := argon2id.NewHasher()
 	tokens := token.NewGenerator()
 	avatarsDir := filepath.Join(dir, "data", "avatars")
 	reposRoot := filepath.Join(dir, "data", "repos")
 
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
-	folderUC := usecase.NewFolderUseCase(folderStore, repoStore)
+	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
+	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo, t.TempDir())
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo, activityStore)
@@ -75,10 +83,29 @@ func newTestServer(t *testing.T) (*httptest.Server, string) {
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
 		authUC,
+		false,
 	)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
-	return srv, dir
+	return testEnv{Server: srv, Dir: dir, Auth: authUC}
+}
+
+func loginUser(t *testing.T, env testEnv, username, email, password string) []*http.Cookie {
+	t.Helper()
+	if _, err := env.Auth.CreateUser(usecase.RegisterInput{
+		Username: username,
+		Email:    email,
+		Password: password,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	body := fmt.Sprintf(`{"login":%q,"password":%q}`, username, password)
+	res := doJSON(t, env.Server, http.MethodPost, "/api/auth/login", body, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login %d %s", res.StatusCode, res.Body)
+	}
+	return res.Cookies
 }
 
 type jsonResp struct {

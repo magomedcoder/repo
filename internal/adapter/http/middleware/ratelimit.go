@@ -22,6 +22,12 @@ type RateLimiter struct {
 	lastSweep time.Time
 }
 
+var trustedProxies []*net.IPNet
+
+func SetTrustedProxies(nets []*net.IPNet) {
+	trustedProxies = nets
+}
+
 func NewRateLimiter(perMinute int, burst int) *RateLimiter {
 	if perMinute <= 0 {
 		perMinute = 120
@@ -83,7 +89,7 @@ func (l *RateLimiter) sweep(now time.Time) {
 func RateLimit(apiLimiter, authLimiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := clientIP(r)
+			ip := ClientIP(r)
 			if strings.HasPrefix(r.URL.Path, "/api/auth/") {
 				if authLimiter != nil && !authLimiter.Allow(ip) {
 					w.Header().Set("Retry-After", "60")
@@ -103,16 +109,52 @@ func RateLimit(apiLimiter, authLimiter *RateLimiter) func(http.Handler) http.Han
 	}
 }
 
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
+func RateLimitIP(limiter *RateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if limiter != nil && !limiter.Allow(ClientIP(r)) {
+				w.Header().Set("Retry-After", "60")
+				http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+				return
+			}
 
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func ClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+
+	remote := net.ParseIP(host)
+	if remote != nil && isTrustedProxy(remote) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.SplitSeq(xff, ",")
+			for part := range parts {
+				cand := strings.TrimSpace(part)
+				if cand == "" {
+					continue
+				}
+
+				if ip := net.ParseIP(cand); ip != nil {
+					return cand
+				}
+			}
+		}
 	}
 
 	return host
+}
+
+func isTrustedProxy(ip net.IP) bool {
+	for _, network := range trustedProxies {
+		if network != nil && network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
 }

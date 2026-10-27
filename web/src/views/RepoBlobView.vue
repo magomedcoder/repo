@@ -1,26 +1,97 @@
 <script setup lang="ts">
 import { btnGhost, dataTable } from '@/lib/classes'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { reposApi } from '@/api'
 import type { BlobContent, BlameResult } from '@/api/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
-import { localizeError, pageError } from '@/i18n'
+import type { PageError } from '@/i18n'
+import { i18n, localizeError, pageError } from '@/i18n'
 
 const props = defineProps<{
-  owner: string
   repoPath: string
 }>()
 
 const route = useRoute()
 const blob = ref<BlobContent | null>(null)
 const blame = ref<BlameResult | null>(null)
-const error = ref('')
+const error = ref<PageError | string>('')
 const blameError = ref('')
 const loading = ref(true)
 const blameLoading = ref(false)
 const showBlame = ref(false)
+
+const LINE_HEIGHT = 18
+const VIRT_THRESHOLD = 200
+const WINDOW_OVERSCAN = 40
+
+const codeScrollEl = ref<HTMLElement | null>(null)
+const scrollTop = ref(0)
+const viewportHeight = ref(480)
+
+const textLines = computed(() => (blob.value?.content || '').split('\n'))
+const virtualize = computed(() => !showBlame.value && textLines.value.length > VIRT_THRESHOLD)
+
+const visibleStart = computed(() => {
+  if (!virtualize.value) {
+    return 0
+  }
+
+  return Math.max(0, Math.floor(scrollTop.value / LINE_HEIGHT) - WINDOW_OVERSCAN)
+})
+
+const visibleEnd = computed(() => {
+  if (!virtualize.value) {
+    return textLines.value.length
+  }
+
+  const end = Math.ceil((scrollTop.value + viewportHeight.value) / LINE_HEIGHT) + WINDOW_OVERSCAN
+  return Math.min(textLines.value.length, end)
+})
+
+const topSpacer = computed(() => visibleStart.value * LINE_HEIGHT)
+const bottomSpacer = computed(() => Math.max(0, (textLines.value.length - visibleEnd.value) * LINE_HEIGHT))
+
+const visibleLineIndices = computed(() => {
+  const out: number[] = []
+  for (let i = visibleStart.value; i < visibleEnd.value; i += 1) {
+    out.push(i)
+  }
+
+  return out
+})
+
+let resizeObserver: ResizeObserver | null = null
+
+function onCodeScroll(event: Event) {
+  scrollTop.value = (event.target as HTMLElement).scrollTop
+}
+
+function attachCodeViewport() {
+  resizeObserver?.disconnect()
+  const el = codeScrollEl.value
+  if (!el) {
+    return
+  }
+  
+  viewportHeight.value = el.clientHeight || viewportHeight.value
+  scrollTop.value = el.scrollTop
+  resizeObserver = new ResizeObserver(() => {
+    if (codeScrollEl.value) {
+      viewportHeight.value = codeScrollEl.value.clientHeight || viewportHeight.value
+    }
+  })
+  resizeObserver.observe(el)
+}
+
+onMounted(() => {
+  nextTick(attachCodeViewport)
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+})
 
 const refName = computed(() => (route.query.ref as string) || 'main')
 const filePath = computed(() => (route.query.path as string) || '')
@@ -32,10 +103,10 @@ const parentDir = computed(() => {
 
 const rawFilename = computed(() => {
   const parts = filePath.value.split('/')
-  return parts[parts.length - 1] || 'file'
+  return parts[parts.length - 1] || i18n.global.t('blob.fallbackName')
 })
 
-const rawHref = computed(() => `/api/repos/${props.owner}/${props.repoPath}/raw?ref=${encodeURIComponent(refName.value)}&path=${encodeURIComponent(filePath.value)}`)
+const rawHref = computed(() => `/api/repos/${props.repoPath}/raw?ref=${encodeURIComponent(refName.value)}&path=${encodeURIComponent(filePath.value)}`)
 
 function lineClass(line: string, filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
@@ -64,7 +135,7 @@ async function loadBlob() {
       error.value = localizeError(new Error('path'), 'errors.pathRequired')
       return
     }
-    blob.value = await reposApi.blob(props.owner, props.repoPath, {
+    blob.value = await reposApi.blob(props.repoPath, {
       ref: refName.value,
       path: filePath.value,
     })
@@ -83,7 +154,7 @@ async function loadBlame() {
   blameLoading.value = true
   blameError.value = ''
   try {
-    blame.value = await reposApi.blame(props.owner, props.repoPath, {
+    blame.value = await reposApi.blame(props.repoPath, {
       ref: refName.value,
       path: filePath.value,
     })
@@ -102,31 +173,37 @@ async function toggleBlame() {
 }
 
 watch(
-  () => [props.owner, props.repoPath, route.query.ref, route.query.path],
+  () => [props.repoPath, route.query.ref, route.query.path],
   () => {
     showBlame.value = false
     loadBlob()
   },
   { immediate: true },
 )
+
+watch([blob, virtualize], () => {
+  scrollTop.value = 0
+  if (codeScrollEl.value) {
+    codeScrollEl.value.scrollTop = 0
+  }
+  nextTick(attachCodeViewport)
+})
 </script>
 
 <template>
   <RepoShell
-    :owner="owner"
     :repo-path="repoPath"
     tab="code"
   >
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <p class="min-w-0 truncate font-mono text-sm">
+      <p class="min-w-0 truncate text-sm">
         <span class="text-ink-muted">{{ refName }} /</span> {{ filePath }}
       </p>
       <div class="flex gap-2">
         <button
           v-if="blob && !blob.is_binary"
           type="button"
-          :class="btnGhost"
-          :class="{ 'bg-paper-2': showBlame }"
+          :class="[btnGhost, showBlame && 'bg-paper-2']"
           @click="toggleBlame"
         >
           {{ showBlame ? $t('blob.hideBlame') : $t('blob.blame') }}
@@ -157,7 +234,7 @@ watch(
     </div>
 
     <PageState :loading="loading" :error="error">
-      <div v-if="blob && showBlame && !blob.is_binary" class="overflow-hidden rounded-md border border-line bg-white">
+      <div v-if="blob && showBlame && !blob.is_binary" class="term-block">
         <p v-if="blameLoading" class="p-4 text-sm text-ink-muted">{{ $t('common.loading') }}</p>
         <p v-else-if="blameError" class="p-4 text-sm text-warn">{{ blameError }}</p>
         <div v-else-if="blame" class="overflow-x-auto">
@@ -177,14 +254,35 @@ watch(
           </table>
         </div>
       </div>
-      <div v-else-if="blob" class="overflow-hidden rounded-md border border-line bg-white">
-        <div class="flex items-center justify-between border-b border-line bg-paper px-4 py-2 text-xs text-ink-muted">
+      <div v-else-if="blob" class="term-block">
+        <div class="flex items-center justify-between term-block-hd text-xs text-ink-muted">
           <span>{{ $t('common.bytes', { n: blob.size }) }}</span>
           <span>{{ blob.is_binary ? $t('common.binary') : blob.encoding }}</span>
         </div>
-        <table v-if="!blob.is_binary" :class="[dataTable, 'font-mono']">
+        <div
+          v-if="!blob.is_binary && virtualize"
+          ref="codeScrollEl"
+          class="max-h-[70vh] overflow-y-auto overflow-x-auto"
+          @scroll="onCodeScroll"
+        >
+          <table :class="[dataTable, 'font-mono']">
+            <tbody>
+              <tr v-if="topSpacer" aria-hidden="true">
+                <td :style="{ height: `${topSpacer}px`, padding: 0, border: 'none' }" colspan="2" />
+              </tr>
+              <tr v-for="i in visibleLineIndices" :key="i">
+                <td class="w-10 text-right text-ink-muted">{{ i + 1 }}</td>
+                <td :class="lineClass(textLines[i] ?? '', rawFilename)">{{ textLines[i] || ' ' }}</td>
+              </tr>
+              <tr v-if="bottomSpacer" aria-hidden="true">
+                <td :style="{ height: `${bottomSpacer}px`, padding: 0, border: 'none' }" colspan="2" />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <table v-else-if="!blob.is_binary" :class="[dataTable, 'font-mono']">
           <tbody>
-            <tr v-for="(line, i) in (blob.content || '').split('\n')" :key="i">
+            <tr v-for="(line, i) in textLines" :key="i">
               <td class="w-10 text-right text-ink-muted">{{ i + 1 }}</td>
               <td :class="lineClass(line, rawFilename)">{{ line || ' ' }}</td>
             </tr>

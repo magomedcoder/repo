@@ -15,8 +15,8 @@ type issueModel struct {
 	Number       int    `gorm:"not null;uniqueIndex:idx_issue_number"`
 	Title        string `gorm:"size:200;not null"`
 	Body         string
-	State        string `gorm:"size:16;not null;index"`
-	AuthorID     uint   `gorm:"not null;index"`
+	State        string `gorm:"size:16;not null"`
+	AuthorID     uint   `gorm:"not null"`
 }
 
 func (issueModel) TableName() string {
@@ -279,20 +279,6 @@ func (s *IssueStore) SetIssueLabels(issueID uint, labelIDs []uint) error {
 
 		return nil
 	})
-}
-
-func (s *IssueStore) ListIssueLabels(issueID uint) ([]domain.Label, error) {
-	var models []labelModel
-	err := s.db.Model(&labelModel{}).
-		Joins("JOIN issue_labels ON issue_labels.label_id = labels.id").
-		Where("issue_labels.issue_id = ?", issueID).
-		Order("labels.name asc").
-		Find(&models).Error
-	if err != nil {
-		return nil, err
-	}
-
-	return labelsToDomain(models), nil
 }
 
 func (s *IssueStore) ListLabelsByIssues(issueIDs []uint) (map[uint][]domain.Label, error) {

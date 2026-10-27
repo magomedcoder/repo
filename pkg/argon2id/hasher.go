@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -36,10 +35,6 @@ func (h *Hasher) Hash(password string) (string, error) {
 }
 
 func (h *Hasher) Compare(hash, password string) error {
-	if strings.HasPrefix(hash, "$2") {
-		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	}
-
 	parts := strings.Split(hash, "$")
 	if len(parts) != 5 || parts[0] != "argon2id" {
 		return fmt.Errorf("unknown hash")

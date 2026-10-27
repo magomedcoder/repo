@@ -25,9 +25,19 @@ func (r *Repository) open(repoPath string) (*gogit.Repository, error) {
 		return nil, err
 	}
 
+	if r.opens != nil {
+		if cached, ok := r.opens.get(safe); ok {
+			return cached, nil
+		}
+	}
+
 	repo, err := gogit.PlainOpen(safe)
 	if err != nil {
 		return nil, fmt.Errorf("open repository: %w", err)
+	}
+
+	if r.opens != nil {
+		r.opens.put(safe, repo)
 	}
 
 	return repo, nil
@@ -259,6 +269,12 @@ func (r *Repository) GetBlob(repoPath, ref, filePath string) (*domain.BlobConten
 }
 
 func (r *Repository) GetBlame(repoPath, ref, filePath string) (*domain.BlameResult, error) {
+	return withGitTimeout(func() (*domain.BlameResult, error) {
+		return r.getBlame(repoPath, ref, filePath)
+	})
+}
+
+func (r *Repository) getBlame(repoPath, ref, filePath string) (*domain.BlameResult, error) {
 	filePath = strings.Trim(filePath, "/")
 	if filePath == "" {
 		return nil, fmt.Errorf("path required")
@@ -302,6 +318,12 @@ func (r *Repository) GetBlame(repoPath, ref, filePath string) (*domain.BlameResu
 }
 
 func (r *Repository) GetCommitDiff(repoPath, sha string) (*domain.CommitDiff, error) {
+	return withGitTimeout(func() (*domain.CommitDiff, error) {
+		return r.getCommitDiff(repoPath, sha)
+	})
+}
+
+func (r *Repository) getCommitDiff(repoPath, sha string) (*domain.CommitDiff, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return nil, err
@@ -387,6 +409,14 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 		return nil, err
 	}
 
+	hash, herr := r.resolveHash(repo, ref)
+	cacheKey := repoPath + "@" + hash.String()
+	if herr == nil && r.stats != nil {
+		if cached, ok := r.stats.get(cacheKey); ok {
+			return cached, nil
+		}
+	}
+
 	stats := &domain.RepoStats{
 		Languages: map[string]int64{},
 	}
@@ -399,8 +429,7 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 		return nil
 	})
 
-	hash, err := r.resolveHash(repo, ref)
-	if err != nil {
+	if herr != nil {
 		return stats, nil
 	}
 
@@ -434,6 +463,10 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 		stats.Languages[lang] += f.Size
 		return nil
 	})
+
+	if r.stats != nil && herr == nil {
+		r.stats.put(cacheKey, stats)
+	}
 
 	return stats, nil
 }

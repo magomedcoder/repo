@@ -31,16 +31,16 @@ function save() {
 </script>
 
 <template>
-  <article class="overflow-hidden rounded-md border border-line bg-white">
-    <header class="flex items-center justify-between gap-2 border-b border-line bg-paper px-4 py-2 text-xs">
+  <article class="term-block">
+    <header class="term-block-hd justify-between">
       <p>
         <span class="font-semibold text-ink">{{ author }}</span>
-        <span class="text-ink-muted"> {{ formatDate(createdAt) }}</span>
+        <span class="font-normal text-ink-muted"> {{ formatDate(createdAt) }}</span>
       </p>
-      <div v-if="canEdit" class="flex gap-3">
+      <div v-if="canEdit" class="flex gap-3 font-normal normal-case tracking-normal">
         <button
           type="button"
-          class="text-ink-muted hover:text-accent"
+          class="text-ink-muted hover:text-ink"
           @click="startEdit"
         >{{ $t('issues.editComment') }}</button>
         <button
@@ -52,12 +52,12 @@ function save() {
     </header>
     <form
       v-if="editing"
-      class="space-y-2 p-4"
+      class="term-block-bd space-y-2"
       @submit.prevent="save"
     >
       <textarea
         v-model="draft"
-        :class="[field, 'min-h-20 font-sans']"
+        :class="[field, 'min-h-20']"
         required
       />
       <button

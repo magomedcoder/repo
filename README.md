@@ -1,14 +1,15 @@
 # Repo
 
-Lightweight self-hosted Git hosting.
+Git. Simple and light.
 
-## Run
+## Commands
 
 ```bash
-go run ./cmd/repo
+make build
 
-cd web
-yarn install
-yarn dev
+./build/repo
+
+./build/repo serve
+
+./build/repo user create -username NAME -email EMAIL -password PASS
 ```
-

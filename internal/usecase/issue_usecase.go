@@ -191,7 +191,7 @@ func (uc *IssueUseCase) Update(in ResolveRepositoryInput, number int, title *str
 		return nil, err
 	}
 
-	if issue.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if issue.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
@@ -221,7 +221,7 @@ func (uc *IssueUseCase) Update(in ResolveRepositoryInput, number int, title *str
 	}
 
 	if labelIDs != nil {
-		if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+		if !CanAdminRepo(repo, in.ViewerID) {
 			return nil, ErrIssueForbidden
 		}
 
@@ -255,7 +255,7 @@ func (uc *IssueUseCase) Delete(in ResolveRepositoryInput, number int) error {
 		return err
 	}
 
-	if issue.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if issue.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
 		return ErrIssueForbidden
 	}
 
@@ -314,7 +314,7 @@ func (uc *IssueUseCase) UpdateComment(in ResolveRepositoryInput, number, comment
 		return nil, err
 	}
 
-	if comment.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if comment.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
@@ -351,7 +351,7 @@ func (uc *IssueUseCase) DeleteComment(in ResolveRepositoryInput, number, comment
 		return err
 	}
 
-	if comment.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if comment.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
 		return ErrIssueForbidden
 	}
 
@@ -477,7 +477,7 @@ func (uc *IssueUseCase) readable(in ResolveRepositoryInput) (*domain.Repository,
 		return nil, err
 	}
 
-	if err := repoUC.authorizeRead(repo, in.ViewerID); err != nil {
+	if err := CanReadRepo(repo, in.ViewerID); err != nil {
 		return nil, err
 	}
 
@@ -494,7 +494,7 @@ func (uc *IssueUseCase) ownerRepo(in ResolveRepositoryInput) (*domain.Repository
 		return nil, err
 	}
 
-	if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if !CanAdminRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
@@ -677,10 +677,3 @@ func isNotFound(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "record not found")
 }
 
-func (uc *IssueUseCase) repoUC() *RepositoryUseCase {
-	return &RepositoryUseCase{
-		store:   uc.repos,
-		folders: uc.folders,
-		users:   uc.users,
-	}
-}

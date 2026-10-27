@@ -5,12 +5,19 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
-export default defineConfig({
-  plugins: [vue(), tailwindcss(), vueDevTools()],
+export default defineConfig(({ command }) => ({
+  plugins: [
+    vue(),
+    tailwindcss(),
+    ...(command === 'serve' ? [vueDevTools()] : []),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+  },
+  build: {
+    assetsDir: 'assets',
   },
   server: {
     port: 5173,
@@ -21,4 +28,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

@@ -117,7 +117,7 @@ func (uc *PullRequestUseCase) Get(in ResolveRepositoryInput, number int) (*PullD
 		return nil, err
 	}
 
-	item, err := uc.mapPull(pr)
+	item, err := uc.mapPull(pr, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,7 @@ func (uc *PullRequestUseCase) Create(in ResolveRepositoryInput, title, body, bas
 	}
 
 	recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityPROpen, activitySummary("opened pull request #%d: %s", pr.Number, pr.Title))
-	return uc.mapPull(pr)
+	return uc.mapPull(pr, nil)
 }
 
 func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, title, body, state, base, head *string) (*PullItem, error) {
@@ -217,7 +217,7 @@ func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, titl
 		return nil, err
 	}
 
-	if pr.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if pr.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -255,7 +255,7 @@ func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, titl
 	}
 
 	if base != nil || head != nil {
-		if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+		if !CanAdminRepo(repo, in.ViewerID) {
 			return nil, ErrPullForbidden
 		}
 
@@ -299,7 +299,7 @@ func (uc *PullRequestUseCase) Update(in ResolveRepositoryInput, number int, titl
 	if state != nil && *state != prevState && *state == "closed" {
 		recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityPRClose, activitySummary("closed pull request #%d", pr.Number))
 	}
-	return uc.mapPull(pr)
+	return uc.mapPull(pr, nil)
 }
 
 func (uc *PullRequestUseCase) Delete(in ResolveRepositoryInput, number int) error {
@@ -317,7 +317,7 @@ func (uc *PullRequestUseCase) Delete(in ResolveRepositoryInput, number int) erro
 		return err
 	}
 
-	if pr.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if pr.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
 		return ErrPullForbidden
 	}
 
@@ -368,7 +368,7 @@ func (uc *PullRequestUseCase) Merge(in ResolveRepositoryInput, number int, strat
 		return nil, err
 	}
 
-	if !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if !CanAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -413,7 +413,7 @@ func (uc *PullRequestUseCase) Merge(in ResolveRepositoryInput, number int, strat
 	_ = uc.repos.TouchLastActivity(repo.ID, now)
 	recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityPRMerge, activitySummary("merged pull request #%d", pr.Number))
 
-	return uc.mapPull(pr)
+	return uc.mapPull(pr, nil)
 }
 
 func (uc *PullRequestUseCase) AddComment(in ResolveRepositoryInput, number int, body string) (*CommentItem, error) {
@@ -441,7 +441,7 @@ func (uc *PullRequestUseCase) AddComment(in ResolveRepositoryInput, number int, 
 		return nil, fmt.Errorf("create comment: %w", err)
 	}
 
-	return uc.mapComment(c)
+	return uc.mapComment(c, nil)
 }
 
 func (uc *PullRequestUseCase) UpdateComment(in ResolveRepositoryInput, number int, commentID uint, body string) (*CommentItem, error) {
@@ -464,7 +464,7 @@ func (uc *PullRequestUseCase) UpdateComment(in ResolveRepositoryInput, number in
 		return nil, ErrCommentNotFound
 	}
 
-	if c.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if c.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -478,7 +478,7 @@ func (uc *PullRequestUseCase) UpdateComment(in ResolveRepositoryInput, number in
 		return nil, fmt.Errorf("update comment: %w", err)
 	}
 
-	return uc.mapComment(c)
+	return uc.mapComment(c, nil)
 }
 
 func (uc *PullRequestUseCase) DeleteComment(in ResolveRepositoryInput, number int, commentID uint) error {
@@ -501,7 +501,7 @@ func (uc *PullRequestUseCase) DeleteComment(in ResolveRepositoryInput, number in
 		return ErrCommentNotFound
 	}
 
-	if c.AuthorID != in.ViewerID && !uc.repoUC().canAdminRepo(repo, in.ViewerID) {
+	if c.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
 		return ErrPullForbidden
 	}
 
@@ -515,7 +515,7 @@ func (uc *PullRequestUseCase) readable(in ResolveRepositoryInput) (*domain.Repos
 		return nil, err
 	}
 
-	if err := repoUC.authorizeRead(repo, in.ViewerID); err != nil {
+	if err := CanReadRepo(repo, in.ViewerID); err != nil {
 		return nil, err
 	}
 
@@ -551,9 +551,30 @@ func (uc *PullRequestUseCase) ensureBranch(repoPath, name string) error {
 }
 
 func (uc *PullRequestUseCase) mapPulls(items []domain.PullRequest) ([]PullItem, error) {
+	idSet := make(map[uint]struct{})
+	for i := range items {
+		if items[i].AuthorID != 0 {
+			idSet[items[i].AuthorID] = struct{}{}
+		}
+		
+		if items[i].MergedBy != nil && *items[i].MergedBy != 0 {
+			idSet[*items[i].MergedBy] = struct{}{}
+		}
+	}
+
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+
+	usersByID, err := uc.users.FindByIDs(ids)
+	if err != nil {
+		return nil, fmt.Errorf("load pull users: %w", err)
+	}
+
 	out := make([]PullItem, 0, len(items))
 	for i := range items {
-		item, err := uc.mapPull(&items[i])
+		item, err := uc.mapPull(&items[i], usersByID)
 		if err != nil {
 			return nil, err
 		}
@@ -564,10 +585,29 @@ func (uc *PullRequestUseCase) mapPulls(items []domain.PullRequest) ([]PullItem, 
 	return out, nil
 }
 
-func (uc *PullRequestUseCase) mapPull(pr *domain.PullRequest) (*PullItem, error) {
-	author, err := uc.users.FindByID(pr.AuthorID)
-	if err != nil {
-		return nil, fmt.Errorf("find author: %w", err)
+func (uc *PullRequestUseCase) mapPull(pr *domain.PullRequest, usersByID map[uint]*domain.User) (*PullItem, error) {
+	if usersByID == nil {
+		var err error
+		usersByID, err = uc.users.FindByIDs([]uint{pr.AuthorID})
+		if err != nil {
+			return nil, fmt.Errorf("find author: %w", err)
+		}
+
+		if pr.MergedBy != nil && *pr.MergedBy != 0 {
+			extra, err := uc.users.FindByIDs([]uint{*pr.MergedBy})
+			if err != nil {
+				return nil, fmt.Errorf("find merger: %w", err)
+			}
+
+			for id, u := range extra {
+				usersByID[id] = u
+			}
+		}
+	}
+
+	author := usersByID[pr.AuthorID]
+	if author == nil {
+		return nil, fmt.Errorf("find author: not found")
 	}
 
 	count, err := uc.pulls.CountComments(pr.ID)
@@ -589,7 +629,7 @@ func (uc *PullRequestUseCase) mapPull(pr *domain.PullRequest) (*PullItem, error)
 		UpdatedAt:    pr.UpdatedAt,
 	}
 	if pr.MergedBy != nil {
-		if u, err := uc.users.FindByID(*pr.MergedBy); err == nil {
+		if u := usersByID[*pr.MergedBy]; u != nil {
 			item.MergedBy = u.Username
 		}
 	}
@@ -598,9 +638,26 @@ func (uc *PullRequestUseCase) mapPull(pr *domain.PullRequest) (*PullItem, error)
 }
 
 func (uc *PullRequestUseCase) mapComments(comments []domain.PullRequestComment) ([]CommentItem, error) {
+	idSet := make(map[uint]struct{})
+	for i := range comments {
+		if comments[i].AuthorID != 0 {
+			idSet[comments[i].AuthorID] = struct{}{}
+		}
+	}
+
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+
+	usersByID, err := uc.users.FindByIDs(ids)
+	if err != nil {
+		return nil, fmt.Errorf("load comment authors: %w", err)
+	}
+
 	out := make([]CommentItem, 0, len(comments))
 	for i := range comments {
-		item, err := uc.mapComment(&comments[i])
+		item, err := uc.mapComment(&comments[i], usersByID)
 		if err != nil {
 			return nil, err
 		}
@@ -610,10 +667,18 @@ func (uc *PullRequestUseCase) mapComments(comments []domain.PullRequestComment) 
 	return out, nil
 }
 
-func (uc *PullRequestUseCase) mapComment(c *domain.PullRequestComment) (*CommentItem, error) {
-	user, err := uc.users.FindByID(c.AuthorID)
-	if err != nil {
-		return nil, fmt.Errorf("find author: %w", err)
+func (uc *PullRequestUseCase) mapComment(c *domain.PullRequestComment, usersByID map[uint]*domain.User) (*CommentItem, error) {
+	if usersByID == nil {
+		var err error
+		usersByID, err = uc.users.FindByIDs([]uint{c.AuthorID})
+		if err != nil {
+			return nil, fmt.Errorf("find author: %w", err)
+		}
+	}
+
+	user := usersByID[c.AuthorID]
+	if user == nil {
+		return nil, fmt.Errorf("find author: not found")
 	}
 
 	return &CommentItem{
@@ -648,10 +713,3 @@ func mapGitMergeErr(err error) error {
 	}
 }
 
-func (uc *PullRequestUseCase) repoUC() *RepositoryUseCase {
-	return &RepositoryUseCase{
-		store:   uc.repos,
-		folders: uc.folders,
-		users:   uc.users,
-	}
-}

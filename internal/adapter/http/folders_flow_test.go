@@ -7,66 +7,31 @@ import (
 	"testing"
 )
 
-func TestFoldersTreeMoveAndCreateRepo(t *testing.T) {
-	srv, _ := newTestServer(t)
+func TestFoldersCreateRepo(t *testing.T) {
+	env := newTestServer(t)
+	cookies := loginUser(t, env, "utest", "utest@example.com", "password1")
+	srv := env.Server
 
-	reg := doJSON(t, srv, http.MethodPost, "/api/auth/register", `{"username":"utest","email":"utest@example.com","password":"password1"}`, nil)
-	if reg.StatusCode != http.StatusCreated {
-		t.Fatalf("register %d %s", reg.StatusCode, reg.Body)
-	}
-	cookies := reg.Cookies
-
-	parent := doJSON(t, srv, http.MethodPost, "/api/folders", `{"name":"work"}`, cookies)
-	if parent.StatusCode != http.StatusCreated {
-		t.Fatalf("create parent %d %s", parent.StatusCode, parent.Body)
+	folderRes := doJSON(t, srv, http.MethodPost, "/api/folders", `{"name":"work"}`, cookies)
+	if folderRes.StatusCode != http.StatusCreated {
+		t.Fatalf("create folder %d %s", folderRes.StatusCode, folderRes.Body)
 	}
 
-	var parentFolder struct {
+	var folder struct {
 		ID uint `json:"id"`
 	}
-
-	if err := json.Unmarshal([]byte(parent.Body), &parentFolder); err != nil || parentFolder.ID == 0 {
-		t.Fatalf("parent body %s", parent.Body)
+	if err := json.Unmarshal([]byte(folderRes.Body), &folder); err != nil || folder.ID == 0 {
+		t.Fatalf("folder body %s", folderRes.Body)
 	}
 
-	child := doJSON(t, srv, http.MethodPost, "/api/folders", `{"name":"backend","parent_id":`+itoa(parentFolder.ID)+`}`, cookies)
-	if child.StatusCode != http.StatusCreated {
-		t.Fatalf("create child %d %s", child.StatusCode, child.Body)
+	inFolder := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"api","folder_id":`+itoa(folder.ID)+`,"private":false}`, cookies)
+	if inFolder.StatusCode != http.StatusCreated {
+		t.Fatalf("create repo in folder %d %s", inFolder.StatusCode, inFolder.Body)
 	}
 
-	var childFolder struct {
-		ID   uint   `json:"id"`
-		Path string `json:"path"`
-	}
-	if err := json.Unmarshal([]byte(child.Body), &childFolder); err != nil {
-		t.Fatal(err)
-	}
-
-	tree := doJSON(t, srv, http.MethodGet, "/api/folders?tree=1", "", cookies)
-	if tree.StatusCode != http.StatusOK || !strings.Contains(tree.Body, `"name":"work"`) || !strings.Contains(tree.Body, `"name":"backend"`) {
-		t.Fatalf("tree %d %s", tree.StatusCode, tree.Body)
-	}
-
-	repo := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"api","folder_id":`+itoa(childFolder.ID)+`,"private":false}`, cookies)
-	if repo.StatusCode != http.StatusCreated {
-		t.Fatalf("create repo %d %s", repo.StatusCode, repo.Body)
-	}
-
-	if !strings.Contains(repo.Body, `"name":"api"`) {
-		t.Fatalf("repo body %s", repo.Body)
-	}
-
-	moved := doJSON(t, srv, http.MethodPost, "/api/folders/"+itoa(childFolder.ID)+"/move", `{"parent_id":null}`, cookies)
-	if moved.StatusCode != http.StatusOK {
-		t.Fatalf("move folder %d %s", moved.StatusCode, moved.Body)
-	}
-
-	var movedFolder struct {
-		Path string `json:"path"`
-	}
-
-	if err := json.Unmarshal([]byte(moved.Body), &movedFolder); err != nil || movedFolder.Path != "backend" {
-		t.Fatalf("moved path %s", moved.Body)
+	rootRepo := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"solo","private":false}`, cookies)
+	if rootRepo.StatusCode != http.StatusCreated {
+		t.Fatalf("create root repo %d %s", rootRepo.StatusCode, rootRepo.Body)
 	}
 
 	search := doJSON(t, srv, http.MethodGet, "/api/repos?q=api", "", cookies)

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
 	"strings"
@@ -59,5 +60,9 @@ func needsCSRF(r *http.Request) bool {
 
 func validCSRF(r *http.Request, cookieToken string) bool {
 	header := r.Header.Get("X-CSRF-Token")
-	return header != "" && header == cookieToken
+	if header == "" || cookieToken == "" {
+		return false
+	}
+	
+	return subtle.ConstantTimeCompare([]byte(header), []byte(cookieToken)) == 1
 }

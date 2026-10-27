@@ -47,15 +47,6 @@ func (uc *ProfileUseCase) GetByUsername(username string, viewerID uint) (*Profil
 	return toProfileItem(user, viewerID == user.ID), nil
 }
 
-func (uc *ProfileUseCase) GetMe(userID uint) (*ProfileItem, error) {
-	user, err := uc.users.FindByID(userID)
-	if err != nil {
-		return nil, ErrUnauthorized
-	}
-
-	return toProfileItem(user, true), nil
-}
-
 func (uc *ProfileUseCase) UpdateEmail(userID uint, email string) (*ProfileItem, error) {
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" {

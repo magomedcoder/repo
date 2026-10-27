@@ -5,9 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
-	"git.magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"git.magomedcoder.ru/repo/internal/usecase"
 )
 
@@ -33,52 +31,6 @@ type commentWriteRequest struct {
 type labelWriteRequest struct {
 	Name  *string `json:"name"`
 	Color *string `json:"color"`
-}
-
-func (h *IssueHandler) Handle(w http.ResponseWriter, r *http.Request) bool {
-	owner := strings.TrimSpace(r.PathValue("owner"))
-	rest := strings.Trim(r.PathValue("path"), "/")
-	if owner == "" || rest == "" {
-		return false
-	}
-
-	action, repoParts, extra, ok := splitIssuePath(strings.Split(rest, "/"))
-	if !ok {
-		return false
-	}
-
-	folderPath, name, err := folderAndName(repoParts)
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_repository_path")
-		return true
-	}
-
-	var viewerID uint
-	if user, loggedIn := middleware.UserFromContext(r.Context()); loggedIn {
-		viewerID = user.ID
-	}
-
-	in := usecase.ResolveRepositoryInput{
-		OwnerUsername: owner,
-		FolderPath:    folderPath,
-		Name:          name,
-		ViewerID:      viewerID,
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		h.get(w, r, in, action, extra)
-	case http.MethodPost:
-		h.post(w, r, in, action, extra)
-	case http.MethodPatch:
-		h.patch(w, r, in, action, extra)
-	case http.MethodDelete:
-		h.delete(w, r, in, action, extra)
-	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
-	}
-
-	return true
 }
 
 func (h *IssueHandler) get(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {

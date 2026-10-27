@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { field } from '@/lib/classes'
-import { ref } from 'vue'
-import { reposApi } from '@/api'
+import { onMounted, ref } from 'vue'
+import { foldersApi, reposApi } from '@/api'
+import type { Folder } from '@/api/types'
 import ModalForm from '@/components/ModalForm.vue'
 import { localizeError } from '@/i18n'
 
@@ -15,21 +16,31 @@ const emit = defineEmits<{
 }>()
 
 const name = ref('')
-const path = ref('')
+const folderKey = ref(props.folderId == null ? '' : String(props.folderId))
+const folders = ref<Folder[]>([])
 const description = ref('')
-const isPrivate = ref(false)
+const isPrivate = ref(true)
 const defaultBranch = ref('main')
 const error = ref('')
 const busy = ref(false)
+
+onMounted(async () => {
+  try {
+    const res = await foldersApi.list()
+    folders.value = res.folders ?? []
+  } catch {
+    folders.value = []
+  }
+})
+
 async function submit() {
   error.value = ''
   busy.value = true
   try {
     await reposApi.create({
       name: name.value.trim(),
-      path: path.value.trim(),
       description: description.value.trim(),
-      folder_id: props.folderId ?? null,
+      folder_id: folderKey.value === '' ? null : Number(folderKey.value),
       private: isPrivate.value,
       default_branch: defaultBranch.value.trim() || 'main',
     })
@@ -46,6 +57,7 @@ async function submit() {
 <template>
   <ModalForm
     :title="$t('modal.newRepository')"
+    :busy="busy"
     :submit-label="busy ? $t('modal.creating') : $t('modal.createRepository')"
     @close="emit('close')"
     @submit="submit"
@@ -55,19 +67,24 @@ async function submit() {
       <input
         v-model="name"
         :class="field"
-        :required="!path"
+        required
         maxlength="100"
-        placeholder="my-repo"
+        :placeholder="$t('modal.repoNamePlaceholder')"
         autofocus
       />
     </label>
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">{{ $t('modal.path') }}</span>
-      <input
-        v-model="path"
-        :class="[field, 'font-mono']"
-        placeholder="notes/diary.git"
-      />
+      <span class="mb-1 block font-medium">{{ $t('modal.folder') }}</span>
+      <select v-model="folderKey" :class="field">
+        <option value="">{{ $t('nav.root') }}</option>
+        <option
+          v-for="folder in folders"
+          :key="folder.id"
+          :value="String(folder.id)"
+        >
+          {{ folder.name }}
+        </option>
+      </select>
     </label>
     <label class="block text-sm">
       <span class="mb-1 block font-medium">{{ $t('modal.description') }}</span>
@@ -82,13 +99,14 @@ async function submit() {
       <input
         v-model="defaultBranch"
         :class="[field, 'font-mono']"
+        :placeholder="$t('modal.defaultBranchPlaceholder')"
       />
     </label>
     <label class="flex items-center gap-2 text-sm">
       <input
         v-model="isPrivate"
         type="checkbox"
-        class="accent-moss"
+        class="accent-ink"
       />
       {{ $t('modal.private') }}
     </label>

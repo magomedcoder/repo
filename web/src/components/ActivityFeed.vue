@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ActivityEvent } from '@/api/types'
 import { formatDate } from '@/i18n'
+import { dataTable } from '@/lib/classes'
 
 defineProps<{
   events: ActivityEvent[]
@@ -10,25 +11,28 @@ defineProps<{
 </script>
 
 <template>
-  <section class="overflow-hidden rounded-md border border-line bg-white">
-    <h2 class="border-b border-line bg-paper px-4 py-2 text-sm font-semibold">
-      {{ $t('activity.title') }}
-    </h2>
-    <p v-if="loading" class="px-4 py-6 text-sm text-ink-muted">{{ $t('common.loading') }}</p>
-    <p v-else-if="error" class="px-4 py-6 text-sm text-warn">{{ error }}</p>
-    <ul v-else-if="events.length" class="divide-y divide-line">
-      <li v-for="ev in events" :key="ev.id" class="px-4 py-3 text-sm">
-        <p>
-          <span class="font-semibold">{{ ev.actor }}</span>
-          <span class="text-ink-muted"> {{ ev.owner }}</span>
-        </p>
-        <p class="mt-0.5">{{ ev.summary }}</p>
-        <p class="mt-1 text-xs text-ink-muted">
-          <span v-if="ev.ref" class="font-mono">{{ ev.ref }} </span>
-          {{ formatDate(ev.created_at) }}
-        </p>
-      </li>
-    </ul>
-    <p v-else class="px-4 py-8 text-center text-sm text-ink-muted">{{ $t('activity.empty') }}</p>
-  </section>
+  <div>
+    <h2 class="mb-2 font-bold text-ink">{{ $t('activity.title') }}</h2>
+    <p v-if="loading" class="text-ink-muted">{{ $t('common.loading') }}</p>
+    <p v-else-if="error" class="text-warn">{{ error }}</p>
+    <table v-else-if="events.length" :class="dataTable">
+      <thead>
+        <tr>
+          <th>{{ $t('index.age') }}</th>
+          <th>{{ $t('index.message') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="ev in events" :key="ev.id">
+          <td class="whitespace-nowrap text-ink-muted">{{ formatDate(ev.created_at) }}</td>
+          <td>
+            <span class="font-bold">{{ ev.actor }}</span>
+            {{ ev.summary }}
+            <span v-if="ev.ref" class="font-mono text-ink-muted"> {{ ev.ref }}</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p v-else class="text-ink-muted">{{ $t('activity.empty') }}</p>
+  </div>
 </template>

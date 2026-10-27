@@ -45,15 +45,6 @@ func ParseRepoPath(raw string) (segments []string, err error) {
 	return parts, nil
 }
 
-func SectionPrefix(path string) string {
-	parts, err := ParseRepoPath(path)
-	if err != nil || len(parts) < 2 {
-		return ""
-	}
-
-	return parts[0]
-}
-
 func validSegment(part string) bool {
 	if part == "" || part == "." || part == ".." {
 		return false

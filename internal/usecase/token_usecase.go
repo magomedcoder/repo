@@ -31,7 +31,7 @@ type TokenItem struct {
 
 type CreateTokenOutput struct {
 	TokenItem
-	Token string `json:"token"` // shown once
+	Token string `json:"token"`
 }
 
 type TokenUseCase struct {

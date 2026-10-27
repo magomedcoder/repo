@@ -69,7 +69,5 @@ type IssueStore interface {
 
 	SetIssueLabels(issueID uint, labelIDs []uint) error
 
-	ListIssueLabels(issueID uint) ([]Label, error)
-
 	ListLabelsByIssues(issueIDs []uint) (map[uint][]Label, error)
 }

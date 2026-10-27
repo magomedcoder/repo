@@ -43,16 +43,22 @@ var reservedSlugs = map[string]struct{}{
 	"me":       {},
 }
 
+func IsReservedSlug(slug string) bool {
+	_, ok := reservedSlugs[strings.ToLower(strings.TrimSpace(slug))]
+	return ok
+}
+
 var (
 	usernamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 	emailPattern    = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 )
 
 const (
-	minPasswordLen = 8
-	sessionTTL     = 30 * 24 * time.Hour
-	minUsernameLen = 3
-	maxUsernameLen = 39
+	minPasswordLen     = 8
+	sessionAbsoluteTTL = 30 * 24 * time.Hour
+	sessionIdleTTL     = 14 * 24 * time.Hour
+	minUsernameLen     = 3
+	maxUsernameLen     = 39
 )
 
 type AuthOutput struct {
@@ -67,25 +73,27 @@ type RegisterInput struct {
 }
 
 type LoginInput struct {
-	Login    string // username or email
+	Login    string
 	Password string
 	Key      string
 }
 
 type ChangePasswordInput struct {
-	UserID  uint
-	Current string
-	Next    string
+	UserID    uint
+	Current   string
+	Next      string
+	KeepToken string
 }
 
 type AuthUseCase struct {
-	users    domain.UserStore
-	sessions domain.SessionStore
-	hasher   domain.PasswordHasher
-	tokens   domain.TokenGenerator
-	attempts AttemptCounter
-	secret   string
-	now      func() time.Time
+	users             domain.UserStore
+	sessions          domain.SessionStore
+	hasher            domain.PasswordHasher
+	tokens            domain.TokenGenerator
+	attempts          AttemptCounter
+	secret            string
+	allowRegistration bool
+	now               func() time.Time
 }
 
 func NewAuthUseCase(
@@ -108,35 +116,29 @@ func (uc *AuthUseCase) SetSessionSecret(secret string) {
 	uc.secret = secret
 }
 
-func (uc *AuthUseCase) EnsureOwner(username, email, password string) error {
-	if strings.TrimSpace(password) == "" {
-		return nil
-	}
-
-	n, err := uc.users.Count()
-	if err != nil || n > 0 {
-		return err
-	}
-
-	username = strings.ToLower(strings.TrimSpace(username))
-	if username == "" {
-		username = "owner"
-	}
-
-	email = strings.ToLower(strings.TrimSpace(email))
-	if email == "" {
-		email = username + "@localhost"
-	}
-
-	_, err = uc.Register(RegisterInput{
-		Username: username,
-		Email:    email,
-		Password: password,
-	})
-	return err
+func (uc *AuthUseCase) SetAllowRegistration(allow bool) {
+	uc.allowRegistration = allow
 }
 
 func (uc *AuthUseCase) Register(in RegisterInput) (*AuthOutput, error) {
+	if !uc.allowRegistration {
+		return nil, ErrRegistrationClosed
+	}
+
+	user, err := uc.CreateUser(in)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := uc.createSession(user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AuthOutput{User: user, Token: token}, nil
+}
+
+func (uc *AuthUseCase) CreateUser(in RegisterInput) (*domain.User, error) {
 	username := strings.ToLower(strings.TrimSpace(in.Username))
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	password := in.Password
@@ -161,26 +163,16 @@ func (uc *AuthUseCase) Register(in RegisterInput) (*AuthOutput, error) {
 		return nil, ErrPasswordTooShort
 	}
 
-	count, err := uc.users.Count()
-	if err != nil {
-		return nil, fmt.Errorf("count users: %w", err)
-	}
-
-	if count > 0 {
-		return nil, ErrRegistrationClosed
+	if IsReservedSlug(username) {
+		return nil, ErrReservedSlug
 	}
 
 	taken, err := uc.users.ExistsByUsername(username)
 	if err != nil {
 		return nil, fmt.Errorf("check username: %w", err)
 	}
-
 	if taken {
 		return nil, ErrUsernameTaken
-	}
-
-	if _, ok := reservedSlugs[username]; ok {
-		return nil, ErrReservedSlug
 	}
 
 	taken, err = uc.users.ExistsByEmail(email)
@@ -205,12 +197,7 @@ func (uc *AuthUseCase) Register(in RegisterInput) (*AuthOutput, error) {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
-	token, err := uc.createSession(user.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &AuthOutput{User: sanitizeUser(user), Token: token}, nil
+	return sanitizeUser(user), nil
 }
 
 func (uc *AuthUseCase) Login(in LoginInput) (*AuthOutput, error) {
@@ -233,6 +220,9 @@ func (uc *AuthUseCase) Login(in LoginInput) (*AuthOutput, error) {
 		user, err = uc.users.FindByUsername(login)
 	}
 	if err != nil {
+		if in.Key != "" && uc.attempts != nil {
+			uc.attempts.Fail(in.Key)
+		}
 		return nil, ErrInvalidCredentials
 	}
 
@@ -279,7 +269,15 @@ func (uc *AuthUseCase) ChangePassword(in ChangePasswordInput) error {
 	}
 
 	user.PasswordHash = hash
-	return uc.users.Update(user)
+	if err := uc.users.Update(user); err != nil {
+		return err
+	}
+
+	if err := uc.sessions.DeleteByUserIDExcept(in.UserID, in.KeepToken); err != nil {
+		return fmt.Errorf("revoke sessions: %w", err)
+	}
+
+	return nil
 }
 
 func (uc *AuthUseCase) Logout(token string) error {
@@ -309,9 +307,40 @@ func (uc *AuthUseCase) Authenticate(token string) (*domain.User, *domain.Session
 		return nil, nil, ErrUnauthorized
 	}
 
-	if !session.ExpiresAt.After(uc.now()) {
+	now := uc.now()
+	if !session.ExpiresAt.After(now) {
 		_ = uc.sessions.DeleteByToken(token)
 		return nil, nil, ErrSessionExpired
+	}
+
+	if !session.CreatedAt.IsZero() && now.After(session.CreatedAt.Add(sessionAbsoluteTTL)) {
+		_ = uc.sessions.DeleteByToken(token)
+		return nil, nil, ErrSessionExpired
+	}
+
+	lastSeen := session.LastSeenAt
+	if lastSeen.IsZero() {
+		lastSeen = session.CreatedAt
+	}
+
+	if !lastSeen.IsZero() && now.After(lastSeen.Add(sessionIdleTTL)) {
+		_ = uc.sessions.DeleteByToken(token)
+		return nil, nil, ErrSessionExpired
+	}
+
+	absoluteEnd := session.CreatedAt.Add(sessionAbsoluteTTL)
+	idleEnd := now.Add(sessionIdleTTL)
+	newExpiry := absoluteEnd
+	if idleEnd.Before(absoluteEnd) {
+		newExpiry = idleEnd
+	}
+
+	const touchMinInterval = time.Minute
+	needsTouch := session.LastSeenAt.IsZero() || now.Sub(session.LastSeenAt) >= touchMinInterval || !session.ExpiresAt.Equal(newExpiry)
+	if needsTouch {
+		session.LastSeenAt = now
+		session.ExpiresAt = newExpiry
+		_ = uc.sessions.Touch(session)
 	}
 
 	user, err := uc.users.FindByID(session.UserID)
@@ -329,10 +358,13 @@ func (uc *AuthUseCase) createSession(userID uint) (string, error) {
 	}
 	token = uc.signSession(token)
 
+	now := uc.now()
 	session := &domain.Session{
-		Token:     token,
-		UserID:    userID,
-		ExpiresAt: uc.now().Add(sessionTTL),
+		Token:      token,
+		UserID:     userID,
+		ExpiresAt:  now.Add(sessionIdleTTL),
+		LastSeenAt: now,
+		CreatedAt:  now,
 	}
 	if err := uc.sessions.Create(session); err != nil {
 		return "", fmt.Errorf("create session: %w", err)
@@ -358,10 +390,6 @@ func validateUsername(username string) error {
 }
 
 func (uc *AuthUseCase) signSession(token string) string {
-	if uc.secret == "" {
-		return token
-	}
-
 	mac := hmac.New(sha256.New, []byte(uc.secret))
 	_, _ = mac.Write([]byte(token))
 	return token + "." + hex.EncodeToString(mac.Sum(nil))
@@ -369,7 +397,7 @@ func (uc *AuthUseCase) signSession(token string) string {
 
 func (uc *AuthUseCase) validSessionToken(token string) bool {
 	if uc.secret == "" {
-		return true
+		return false
 	}
 
 	raw, sig, ok := strings.Cut(token, ".")

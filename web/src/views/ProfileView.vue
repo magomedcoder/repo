@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { btnGhost, btnPrimary, field } from '@/lib/classes'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { activityApi, authApi, usersApi } from '@/api'
 import type { ActivityEvent, Profile } from '@/api/types'
 import ActivityFeed from '@/components/ActivityFeed.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { useAuth } from '@/composables/useAuth'
-import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
 import { localizeError } from '@/i18n'
 
 const auth = useAuth()
-const { setBreadcrumbs, clearBreadcrumbs } = useBreadcrumbs()
-
 const profile = ref<Profile | null>(null)
 const email = ref('')
 const error = ref('')
@@ -27,23 +24,20 @@ const activity = ref<ActivityEvent[]>([])
 const activityError = ref('')
 const activityLoading = ref(true)
 
+const avatarBust = ref(0)
 const avatarSrc = computed(() => {
   const u = auth.user.value
   if (!u?.has_avatar) {
     return ''
   }
-  
-  return `${usersApi.avatarURL(u.username)}?t=${Date.now()}`
+  const q = avatarBust.value ? `?t=${avatarBust.value}` : ''
+  return `${usersApi.avatarURL(u.username)}${q}`
 })
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    setBreadcrumbs([{ 
-      label: 'profile', 
-      labelKey: 'nav.profile' 
-    }])
     const username = auth.user.value?.username
     if (!username) {
       throw new Error('unauthorized')
@@ -98,6 +92,7 @@ async function onAvatarSelected(ev: Event) {
   error.value = ''
   try {
     profile.value = await usersApi.uploadAvatar(file)
+    avatarBust.value = Date.now()
     if (auth.user.value) {
       auth.setUser({ 
         ...auth.user.value, 
@@ -117,6 +112,7 @@ async function removeAvatar() {
   error.value = ''
   try {
     profile.value = await usersApi.deleteAvatar()
+    avatarBust.value = Date.now()
     if (auth.user.value) {
       auth.setUser({ 
         ...auth.user.value, 
@@ -147,18 +143,16 @@ async function changePassword() {
 }
 
 onMounted(load)
-onUnmounted(clearBreadcrumbs)
 </script>
 
 <template>
   <div class="mx-auto max-w-xl">
-    <h1 class="text-2xl font-semibold">{{ $t('profile.title') }}</h1>
-    <p class="mt-1 text-sm text-ink-muted">{{ $t('profile.lead') }}</p>
+    <h1 class="mb-3 text-[140%] font-bold text-ink">{{ $t('profile.title') }}</h1>
 
     <PageState :loading="loading" :error="error">
       <div v-if="profile" class="mt-6 space-y-6">
         <div class="flex items-center gap-4">
-          <div class="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-paper-2 text-xl font-semibold text-ink-muted">
+          <div class="flex h-16 w-16 items-center justify-center overflow-hidden border border-line bg-paper-2 text-xl font-semibold text-ink">
             <img
               v-if="avatarSrc"
               :src="avatarSrc"
@@ -225,7 +219,7 @@ onUnmounted(clearBreadcrumbs)
         <p class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           <RouterLink
             :to="{ name: 'tokens' }"
-            class="text-accent hover:underline"
+            class="text-ink hover:underline"
           >{{ $t('nav.accessTokens') }}</RouterLink>
         </p>
 

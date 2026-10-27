@@ -7,7 +7,6 @@ import { entryRoute } from '@/lib/repoNav'
 
 defineProps<{
   entries: TreeEntry[]
-  owner: string
   repoPath: string
   refName: string
   parentTo?: RouteLocationRaw | null
@@ -42,7 +41,7 @@ defineProps<{
         <tr v-for="entry in entries" :key="entry.path">
           <td class="font-mono">{{ entry.mode }}</td>
           <td>
-            <RouterLink :to="entryRoute(owner, repoPath, refName, entry)">{{ entry.name }}</RouterLink>
+            <RouterLink :to="entryRoute(repoPath, refName, entry)">{{ entry.name }}</RouterLink>
           </td>
           <td>{{ entry.type === 'blob' ? entry.size : '' }}</td>
         </tr>
