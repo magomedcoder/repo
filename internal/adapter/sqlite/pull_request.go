@@ -3,8 +3,8 @@ package sqlite
 import (
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
 	"gorm.io/gorm"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type pullRequestModel struct {
@@ -15,12 +15,12 @@ type pullRequestModel struct {
 	Number       int    `gorm:"not null;uniqueIndex:idx_pull_number"`
 	Title        string `gorm:"size:200;not null"`
 	Body         string
-	State      string `gorm:"size:16;not null"`
-	AuthorID   uint   `gorm:"not null"`
-	BaseBranch string `gorm:"size:255;not null"`
-	HeadBranch string `gorm:"size:255;not null"`
-	MergedAt   *time.Time
-	MergedBy   *uint
+	State        string `gorm:"size:16;not null"`
+	AuthorID     uint   `gorm:"not null"`
+	BaseBranch   string `gorm:"size:255;not null"`
+	HeadBranch   string `gorm:"size:255;not null"`
+	MergedAt     *time.Time
+	MergedBy     *uint
 }
 
 func (pullRequestModel) TableName() string {

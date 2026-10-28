@@ -1,11 +1,11 @@
 import type { Repository, RepoSummary } from '@/api/types'
+import { repositoryPath } from '@/lib/repoPath'
 
 export type ContentRow = {
   id: number
   name: string
   description: string
   folder_path: string
-  folder_id: number | null
   owner: string
   updated_at: string
   last_activity_at?: string
@@ -18,24 +18,13 @@ export function toContentRow(
   repoOwner?: string,
 ): ContentRow {
   const owner = 'owner' in repo && repo.owner ? repo.owner : repoOwner || ''
-  let repo_path = ''
-  if ('repo_path' in repo && repo.repo_path) {
-    repo_path = repo.repo_path.replace(/\.git$/, '')
-  } else if ('folder_path' in repo && repo.folder_path) {
-    repo_path = `${repo.folder_path}/${repo.name}`
-  } else if (folderPath) {
-    repo_path = `${folderPath}/${repo.name}`
-  } else {
-    repo_path = owner ? `${owner}/${repo.name}` : repo.name
-  }
-  
+  const repo_path = repositoryPath(repo)
   const folder_path = 'folder_path' in repo && repo.folder_path ? repo.folder_path : folderPath || ''
   return {
     id: repo.id,
     name: repo.name,
     description: repo.description,
     folder_path,
-    folder_id: 'folder_id' in repo ? repo.folder_id : null,
     owner,
     updated_at: repo.updated_at,
     last_activity_at: 'last_activity_at' in repo ? repo.last_activity_at : undefined,

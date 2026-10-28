@@ -3,8 +3,8 @@ package sqlite
 import (
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
 	"gorm.io/gorm"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type userModel struct {
@@ -37,8 +37,8 @@ func (m userModel) toDomain() *domain.User {
 type sessionModel struct {
 	ID         uint `gorm:"primaryKey"`
 	CreatedAt  time.Time
-	Token      string `gorm:"uniqueIndex;size:128;not null"`
-	UserID     uint   `gorm:"index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Token      string    `gorm:"uniqueIndex;size:128;not null"`
+	UserID     uint      `gorm:"index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	User       userModel `gorm:"foreignKey:UserID;references:ID"`
 	ExpiresAt  time.Time
 	LastSeenAt time.Time

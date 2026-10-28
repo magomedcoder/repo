@@ -3,8 +3,8 @@ package sqlite
 import (
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
 	"gorm.io/gorm"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type folderModel struct {
@@ -12,13 +12,13 @@ type folderModel struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt
-	OwnerKind string `gorm:"size:8;not null;default:user"`
-	OwnerID   uint   `gorm:"not null"`
-	ParentID  *uint  `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
+	OwnerKind string       `gorm:"size:8;not null;default:user"`
+	OwnerID   uint         `gorm:"not null"`
+	ParentID  *uint        `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 	Parent    *folderModel `gorm:"foreignKey:ParentID;references:ID"`
-	Name      string `gorm:"size:64;not null"`
-	Slug      string `gorm:"size:64;not null"`
-	Path      string `gorm:"size:512;not null"`
+	Name      string       `gorm:"size:64;not null"`
+	Slug      string       `gorm:"size:64;not null"`
+	Path      string       `gorm:"size:512;not null"`
 }
 
 func (folderModel) TableName() string {
@@ -35,7 +35,6 @@ func (m folderModel) toDomain() domain.Folder {
 		ID:        m.ID,
 		OwnerKind: kind,
 		OwnerID:   m.OwnerID,
-		ParentID:  m.ParentID,
 		Name:      m.Name,
 		Slug:      m.Slug,
 		Path:      m.Path,
@@ -54,7 +53,7 @@ func folderFromDomain(f *domain.Folder) *folderModel {
 		ID:        f.ID,
 		OwnerKind: kind,
 		OwnerID:   f.OwnerID,
-		ParentID:  f.ParentID,
+		ParentID:  nil,
 		Name:      f.Name,
 		Slug:      f.Slug,
 		Path:      f.Path,

@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { dataTable } from '@/lib/classes'
 import { ref, watch } from 'vue'
 import { reposApi } from '@/api'
 import type { RefInfo } from '@/api/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
+import { useRepo } from '@/composables/useRepo'
 import type { PageError } from '@/i18n'
 import { pageError } from '@/i18n'
 
 const props = defineProps<{
   repoPath: string
 }>()
+
+const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
 
 const branches = ref<RefInfo[]>([])
 const tags = ref<RefInfo[]>([])
@@ -39,9 +41,14 @@ watch(() => props.repoPath, load, { immediate: true })
 
 <template>
   <RepoShell
-    :repo-path="repoPath" tab="refs">
+    :repo-path="repoPath"
+    tab="refs"
+    :repo="repo"
+    :loading="repoLoading"
+    :error="repoError"
+  >
     <PageState :loading="loading" :error="error">
-      <table :class="dataTable">
+      <table class="w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_th]:text-ink-muted [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover">
         <thead>
           <tr>
             <th>{{ $t('index.ref') }}</th>

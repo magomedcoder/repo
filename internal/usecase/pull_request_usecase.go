@@ -3,10 +3,11 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 var (
@@ -509,17 +510,7 @@ func (uc *PullRequestUseCase) DeleteComment(in ResolveRepositoryInput, number in
 }
 
 func (uc *PullRequestUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users}
-	repo, _, _, err := repoUC.resolve(in)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := CanReadRepo(repo, in.ViewerID); err != nil {
-		return nil, err
-	}
-
-	return repo, nil
+	return ResolveReadable(uc.repos, uc.folders, uc.users, in)
 }
 
 func (uc *PullRequestUseCase) findPull(repoID uint, number int) (*domain.PullRequest, error) {
@@ -556,7 +547,7 @@ func (uc *PullRequestUseCase) mapPulls(items []domain.PullRequest) ([]PullItem, 
 		if items[i].AuthorID != 0 {
 			idSet[items[i].AuthorID] = struct{}{}
 		}
-		
+
 		if items[i].MergedBy != nil && *items[i].MergedBy != 0 {
 			idSet[*items[i].MergedBy] = struct{}{}
 		}
@@ -599,9 +590,7 @@ func (uc *PullRequestUseCase) mapPull(pr *domain.PullRequest, usersByID map[uint
 				return nil, fmt.Errorf("find merger: %w", err)
 			}
 
-			for id, u := range extra {
-				usersByID[id] = u
-			}
+			maps.Copy(usersByID, extra)
 		}
 	}
 
@@ -712,4 +701,3 @@ func mapGitMergeErr(err error) error {
 		return err
 	}
 }
-

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { btnPrimary, field } from '@/lib/classes'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
@@ -33,20 +32,20 @@ async function submit() {
         <tr>
           <td class="whitespace-nowrap py-1 pr-3">{{ $t('auth.usernameOrEmail') }}</td>
           <td class="w-full py-1">
-            <input v-model="login" required :class="field" autocomplete="username" />
+            <input v-model="login" required class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" autocomplete="username" />
           </td>
         </tr>
         <tr>
           <td class="whitespace-nowrap py-1 pr-3">{{ $t('auth.password') }}</td>
           <td class="py-1">
-            <input v-model="password" type="password" required :class="field" autocomplete="current-password" />
+            <input v-model="password" type="password" required class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" autocomplete="current-password" />
           </td>
         </tr>
         <tr>
           <td />
           <td class="py-2">
             <p v-if="error" class="mb-2 text-warn">{{ error }}</p>
-            <button :class="btnPrimary" type="submit" :disabled="busy">
+            <button class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" type="submit" :disabled="busy">
               {{ busy ? $t('auth.signingIn') : $t('auth.signIn') }}
             </button>
           </td>

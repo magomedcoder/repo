@@ -3,9 +3,9 @@ package http
 import (
 	"net/http"
 
-	"git.magomedcoder.ru/repo/internal/adapter/http/handler"
-	"git.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"git.magomedcoder.ru/repo/pkg/i18n"
+	"repo.magomedcoder.ru/repo/internal/adapter/http/handler"
+	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"repo.magomedcoder.ru/repo/pkg/i18n"
 )
 
 func NewRouter(
@@ -55,9 +55,9 @@ func NewRouter(
 
 	mux.Handle("POST /api/folders", requireAuth(http.HandlerFunc(folderHandler.Create)))
 	mux.Handle("GET /api/folders", requireAuth(http.HandlerFunc(folderHandler.List)))
-	mux.Handle("GET /api/folders/{id}", requireAuth(http.HandlerFunc(folderHandler.Get)))
-	mux.Handle("PATCH /api/folders/{id}", requireAuth(http.HandlerFunc(folderHandler.Rename)))
-	mux.Handle("DELETE /api/folders/{id}", requireAuth(http.HandlerFunc(folderHandler.Delete)))
+	mux.Handle("GET /api/folders/{path...}", requireAuth(http.HandlerFunc(folderHandler.Get)))
+	mux.Handle("PATCH /api/folders/{path...}", requireAuth(http.HandlerFunc(folderHandler.Rename)))
+	mux.Handle("DELETE /api/folders/{path...}", requireAuth(http.HandlerFunc(folderHandler.Delete)))
 
 	mux.Handle("POST /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.Create)))
 	mux.Handle("GET /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.List)))

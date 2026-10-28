@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"git.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"git.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"repo.magomedcoder.ru/repo/internal/usecase"
 )
 
 type ActivityHandler struct {

@@ -10,13 +10,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"git.magomedcoder.ru/repo/internal/adapter/git"
-	deliveryhttp "git.magomedcoder.ru/repo/internal/adapter/http"
-	"git.magomedcoder.ru/repo/internal/adapter/http/handler"
-	"git.magomedcoder.ru/repo/internal/adapter/sqlite"
-	"git.magomedcoder.ru/repo/internal/usecase"
-	"git.magomedcoder.ru/repo/pkg/argon2id"
-	"git.magomedcoder.ru/repo/pkg/token"
+	"repo.magomedcoder.ru/repo/internal/adapter/git"
+	deliveryhttp "repo.magomedcoder.ru/repo/internal/adapter/http"
+	"repo.magomedcoder.ru/repo/internal/adapter/http/handler"
+	"repo.magomedcoder.ru/repo/internal/adapter/sqlite"
+	"repo.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/pkg/argon2id"
+	"repo.magomedcoder.ru/repo/pkg/token"
 )
 
 type testEnv struct {
@@ -66,7 +66,7 @@ func newTestServer(t *testing.T) testEnv {
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo, t.TempDir())
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
-	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo, activityStore)
+	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
 	profileUC := usecase.NewProfileUseCase(userStore, avatarsDir)

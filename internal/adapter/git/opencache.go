@@ -3,8 +3,8 @@ package git
 import (
 	"sync"
 
-	"git.magomedcoder.ru/repo/internal/domain"
 	gogit "github.com/go-git/go-git/v6"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type openCache struct {
@@ -84,7 +84,7 @@ func (c *statsCache) put(key string, stats *domain.RepoStats) {
 	if stats == nil {
 		return
 	}
-	
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	cp := *stats

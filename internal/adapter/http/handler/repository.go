@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"git.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"git.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"repo.magomedcoder.ru/repo/internal/usecase"
 )
 
 type RepositoryHandler struct {
@@ -18,7 +18,7 @@ type RepositoryHandler struct {
 
 func NewRepositoryHandler(repos *usecase.RepositoryUseCase, reposRoot string) *RepositoryHandler {
 	if reposRoot == "" {
-		reposRoot = "data/repos"
+		reposRoot = usecase.DefaultReposRoot
 	}
 
 	return &RepositoryHandler{
@@ -31,13 +31,14 @@ type createRepoRequest struct {
 	Name          string `json:"name"`
 	Path          string `json:"path"`
 	Description   string `json:"description"`
-	FolderID      *uint  `json:"folder_id"`
+	FolderPath    string `json:"folder_path"`
 	Private       bool   `json:"private"`
 	ShowOnHome    bool   `json:"show_on_home"`
 	DefaultBranch string `json:"default_branch"`
 }
 
 type updateRepoRequest struct {
+	Name                 *string `json:"name"`
 	Description          *string `json:"description"`
 	Private              *bool   `json:"private"`
 	ShowOnHome           *bool   `json:"show_on_home"`
@@ -46,7 +47,7 @@ type updateRepoRequest struct {
 }
 
 type moveRepoRequest struct {
-	FolderID *uint `json:"folder_id"`
+	FolderPath string `json:"folder_path"`
 }
 
 func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +69,7 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Description:   req.Description,
 		ViewerID:      user.ID,
 		OwnerID:       user.ID,
-		FolderID:      req.FolderID,
+		FolderPath:    req.FolderPath,
 		Private:       req.Private,
 		ShowOnHome:    req.ShowOnHome,
 		DefaultBranch: req.DefaultBranch,
@@ -95,48 +96,70 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	offset, limit := usecase.ParseOffsetLimit(r.URL.Query().Get("offset"), r.URL.Query().Get("limit"))
 	sortKey := r.URL.Query().Get("sort")
 
+	sqlPage := sortKey == ""
+	fetchOff, fetchLim := 0, 0
+	if sqlPage {
+		fetchOff, fetchLim = offset, limit
+	}
+
 	if q != "" {
 		searchPublic := scope == "public" || scope == "home" || !loggedIn
-		items, err := h.repos.Search(q, ownerID, searchPublic, 0, 0)
+		items, err := h.repos.Search(q, ownerID, searchPublic, fetchLim, fetchOff)
 		if err != nil {
 			writeRepoError(w, r, err)
 			return
 		}
 
 		sortRepoItems(items, sortKey)
+		if sqlPage {
+			writeJSON(w, http.StatusOK, map[string]any{"repos": items})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
 		return
 	}
 
 	if scope == "home" || (!loggedIn && scope != "public") {
-		items, err := h.repos.ListHome(0, 0)
+		items, err := h.repos.ListHome(fetchLim, fetchOff)
 		if err != nil {
 			writeRepoError(w, r, err)
 			return
 		}
 
 		sortRepoItems(items, sortKey)
+		if sqlPage {
+			writeJSON(w, http.StatusOK, map[string]any{"repos": items})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
 		return
 	}
 
 	if publicOnly {
-		items, err := h.repos.ListPublic(0, 0)
+		items, err := h.repos.ListPublic(fetchLim, fetchOff)
 		if err != nil {
 			writeRepoError(w, r, err)
 			return
 		}
 		sortRepoItems(items, sortKey)
+		if sqlPage {
+			writeJSON(w, http.StatusOK, map[string]any{"repos": items})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
 		return
 	}
 
-	items, err := h.repos.ListOwn(user.ID)
+	items, err := h.repos.ListOwn(user.ID, fetchLim, fetchOff)
 	if err != nil {
 		writeRepoError(w, r, err)
 		return
 	}
 	sortRepoItems(items, sortKey)
+	if sqlPage {
+		writeJSON(w, http.StatusOK, map[string]any{"repos": items})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
 }
 
@@ -243,11 +266,13 @@ func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		ViewerID:             user.ID,
 		FolderPath:           folderPath,
 		Name:                 name,
+		NewName:              req.Name,
 		Description:          req.Description,
 		Private:              req.Private,
 		ShowOnHome:           req.ShowOnHome,
 		DefaultBranch:        req.DefaultBranch,
 		ProtectDefaultBranch: req.ProtectDefaultBranch,
+		BasePath:             h.reposRoot,
 	})
 	if err != nil {
 		writeRepoError(w, r, err)
@@ -306,11 +331,11 @@ func (h *RepositoryHandler) move(w http.ResponseWriter, r *http.Request, folderP
 	}
 
 	out, err := h.repos.Move(usecase.MoveRepositoryInput{
-		ViewerID:    user.ID,
-		FolderPath:  folderPath,
-		Name:        name,
-		NewFolderID: req.FolderID,
-		BasePath:    h.reposRoot,
+		ViewerID:      user.ID,
+		FolderPath:    folderPath,
+		Name:          name,
+		NewFolderPath: req.FolderPath,
+		BasePath:      h.reposRoot,
 	})
 	if err != nil {
 		writeRepoError(w, r, err)
@@ -325,44 +350,7 @@ func parseRepoPath(r *http.Request) (folderPath, name string, err error) {
 	if rest == "" {
 		return "", "", errors.New("invalid_repository_path")
 	}
-
-	parts := strings.Split(rest, "/")
-	if len(parts) == 0 || parts[len(parts)-1] == "" {
-		return "", "", errors.New("invalid_repository_path")
-	}
-
-	name = parts[len(parts)-1]
-	if len(parts) > 1 {
-		folderPath = strings.Join(parts[:len(parts)-1], "/")
-	}
-
-	return folderPath, name, nil
-}
-
-func parseRepoActionPath(r *http.Request, action string) (folderPath, name string, err error) {
-	rest := strings.Trim(r.PathValue("path"), "/")
-	if rest == "" {
-		return "", "", errors.New("invalid_repository_path")
-	}
-
-	suffix := "/" + action
-	if !strings.HasSuffix(rest, suffix) && rest != action {
-		return "", "", errors.New("invalid_repo_move_path")
-	}
-
-	rest = strings.TrimSuffix(rest, suffix)
-	rest = strings.Trim(rest, "/")
-	if rest == "" {
-		return "", "", errors.New("invalid_repository_path")
-	}
-
-	parts := strings.Split(rest, "/")
-	name = parts[len(parts)-1]
-	if len(parts) > 1 {
-		folderPath = strings.Join(parts[:len(parts)-1], "/")
-	}
-
-	return folderPath, name, nil
+	return folderAndName(strings.Split(rest, "/"))
 }
 
 func writeRepoError(w http.ResponseWriter, r *http.Request, err error) {

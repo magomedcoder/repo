@@ -4,11 +4,11 @@ import (
 	"flag"
 	"fmt"
 
-	"git.magomedcoder.ru/repo/internal/adapter/sqlite"
-	"git.magomedcoder.ru/repo/internal/config"
-	"git.magomedcoder.ru/repo/internal/usecase"
-	"git.magomedcoder.ru/repo/pkg/argon2id"
-	"git.magomedcoder.ru/repo/pkg/token"
+	"repo.magomedcoder.ru/repo/internal/adapter/sqlite"
+	"repo.magomedcoder.ru/repo/internal/config"
+	"repo.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/pkg/argon2id"
+	"repo.magomedcoder.ru/repo/pkg/token"
 )
 
 func runUser(args []string) error {

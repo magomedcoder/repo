@@ -6,7 +6,6 @@ type Folder struct {
 	ID        uint
 	OwnerKind string
 	OwnerID   uint
-	ParentID  *uint
 	Name      string
 	Slug      string
 	Path      string

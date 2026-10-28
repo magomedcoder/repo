@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { btnDanger, btnGhost, btnPrimary, field } from '@/lib/classes'
 import { onMounted, ref } from 'vue'
 import { tokensApi } from '@/api'
 import type { AccessToken } from '@/api/types'
@@ -78,44 +77,44 @@ onMounted(load)
       <div>
         <h1 class="text-[140%] font-bold text-ink">{{ $t('tokens.title') }}</h1>
       </div>
-      <button type="button" :class="btnPrimary" @click="showForm = !showForm">
+      <button type="button" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" @click="showForm = !showForm">
         {{ $t('tokens.add') }}
       </button>
     </div>
 
     <div
       v-if="createdToken"
-      class="term-block mb-4"
+      class="overflow-hidden border border-line bg-paper mb-4"
     >
-      <div class="term-block-hd">{{ $t('tokens.createdTitle') }}</div>
-      <div class="term-block-bd">
+      <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('tokens.createdTitle') }}</div>
+      <div class="p-3 sm:p-4">
         <p class="text-xs text-ink-muted">{{ $t('tokens.createdHint') }}</p>
         <pre class="mt-2 overflow-x-auto border border-line bg-paper-2 p-3 font-mono text-xs">{{ createdToken }}</pre>
         <div class="mt-3 flex flex-wrap gap-2">
-          <button type="button" :class="btnPrimary" @click="copyToken">{{ $t('common.copy') }}</button>
-          <button type="button" :class="btnGhost" @click="createdToken = ''">{{ $t('common.close') }}</button>
+          <button type="button" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" @click="copyToken">{{ $t('common.copy') }}</button>
+          <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50" @click="createdToken = ''">{{ $t('common.close') }}</button>
         </div>
       </div>
     </div>
 
     <form
       v-if="showForm"
-      class="term-block mb-4"
+      class="overflow-hidden border border-line bg-paper mb-4"
       @submit.prevent="create"
     >
-      <div class="term-block-hd">{{ $t('tokens.add') }}</div>
-      <div class="term-block-bd space-y-3">
+      <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('tokens.add') }}</div>
+      <div class="p-3 sm:p-4 space-y-3">
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ $t('tokens.nameField') }}</span>
           <input
             v-model="name"
-            :class="field"
+            class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
             required
             maxlength="64"
             :placeholder="$t('tokens.namePlaceholder')"
           />
         </label>
-        <button type="submit" :class="btnPrimary" :disabled="creating">
+        <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="creating">
           {{ creating ? $t('tokens.creating') : $t('tokens.submit') }}
         </button>
       </div>
@@ -123,7 +122,7 @@ onMounted(load)
 
     <p v-if="error" class="mb-3 text-sm text-warn">{{ error }}</p>
     <PageState :loading="loading">
-      <ul class="term-block divide-y divide-line">
+      <ul class="overflow-hidden border border-line bg-paper divide-y divide-line">
         <li
           v-for="token in tokens"
           :key="token.id"
@@ -139,7 +138,7 @@ onMounted(load)
               {{ $t('tokens.lastUsed') }}: {{ formatDate(token.last_used_at) }}
             </p>
           </div>
-          <button type="button" :class="btnDanger" @click="revoke(token.id)">
+          <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-warn hover:bg-warn-soft disabled:cursor-not-allowed disabled:opacity-50" @click="revoke(token.id)">
             {{ $t('tokens.revoke') }}
           </button>
         </li>

@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { btnGhost } from '@/lib/classes'
-import { onMounted, ref, watch } from 'vue'
-import { foldersApi, reposApi } from '@/api'
-import type { Folder, Repository } from '@/api/types'
+import { computed, onMounted, ref, watch } from 'vue'
+import { reposApi } from '@/api'
+import type { Repository } from '@/api/types'
 import ContentsList from '@/components/ContentsList.vue'
 import { useAuth } from '@/composables/useAuth'
 import { localizeError } from '@/i18n'
@@ -12,50 +11,43 @@ const PAGE_SIZE = 50
 const auth = useAuth()
 const ownRepos = ref<Repository[]>([])
 const homeRepos = ref<Repository[]>([])
-const folders = ref<Folder[]>([])
 const error = ref('')
 const loading = ref(true)
-const loadingMoreOwn = ref(false)
-const loadingMoreHome = ref(false)
+const loadingMore = ref(false)
 const hasMoreOwn = ref(false)
 const hasMoreHome = ref(false)
 const sort = ref('name')
 
+const repos = computed(() => {
+  if (!auth.isAuthenticated.value) {
+    return homeRepos.value
+  }
+
+  const seen = new Set(ownRepos.value.map((r) => r.id))
+  return [...ownRepos.value, ...homeRepos.value.filter((r) => !seen.has(r.id))]
+})
+
+const hasMore = computed(() => auth.isAuthenticated.value ? hasMoreOwn.value || hasMoreHome.value : hasMoreHome.value)
+
 async function loadOwn(append = false) {
   if (!auth.isAuthenticated.value) {
     ownRepos.value = []
-    folders.value = []
     hasMoreOwn.value = false
     return
-  }
-  
-  if (append) {
-    loadingMoreOwn.value = true
   }
 
   try {
     const offset = append ? ownRepos.value.length : 0
-    const [repoRes, folderRes] = await Promise.all([
-      reposApi.listOwn(sort.value, { offset, limit: PAGE_SIZE }),
-      append ? Promise.resolve(null) : foldersApi.list().catch(() => ({ folders: [] as Folder[] })),
-    ])
+    const repoRes = await reposApi.listOwn(sort.value, { offset, limit: PAGE_SIZE })
     const batch = repoRes.repos ?? []
     ownRepos.value = append ? [...ownRepos.value, ...batch] : batch
     hasMoreOwn.value = batch.length >= PAGE_SIZE
-    if (!append && folderRes) {
-      folders.value = folderRes.folders ?? []
-    }
   } catch (err) {
     error.value = localizeError(err, 'errors.loadFailed')
-  } finally {
-    loadingMoreOwn.value = false
   }
 }
 
 async function loadHome(append = false) {
-  if (append) {
-    loadingMoreHome.value = true
-  }
   try {
     const offset = append ? homeRepos.value.length : 0
     const repoRes = await reposApi.listHome(sort.value, { offset, limit: PAGE_SIZE })
@@ -64,8 +56,6 @@ async function loadHome(append = false) {
     hasMoreHome.value = batch.length >= PAGE_SIZE
   } catch (err) {
     error.value = localizeError(err, 'errors.loadFailed')
-  } finally {
-    loadingMoreHome.value = false
   }
 }
 
@@ -76,6 +66,26 @@ async function load() {
     await Promise.all([loadOwn(false), loadHome(false)])
   } finally {
     loading.value = false
+  }
+}
+
+async function loadMore() {
+  if (loadingMore.value || !hasMore.value) {
+    return
+  }
+
+  loadingMore.value = true
+  try {
+    const tasks: Promise<void>[] = []
+    if (auth.isAuthenticated.value && hasMoreOwn.value) {
+      tasks.push(loadOwn(true))
+    }
+    if (hasMoreHome.value) {
+      tasks.push(loadHome(true))
+    }
+    await Promise.all(tasks)
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -99,50 +109,17 @@ onMounted(() => load())
     <p v-if="loading" class="text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-warn">{{ error }}</p>
     <template v-else>
-      <section v-if="auth.isAuthenticated.value" class="mb-8">
-        <h2 class="mb-2 text-sm font-semibold text-ink">{{ $t('home.myRepos') }}</h2>
-        <ContentsList
-          :folders="folders"
-          :repos="ownRepos"
-          show-folder
-          @sort="onSort"
-        />
-        <p v-if="hasMoreOwn" class="mt-3">
-          <button
-            type="button"
-            :class="btnGhost"
-            :disabled="loadingMoreOwn"
-            @click="loadOwn(true)"
-          >
-            {{ loadingMoreOwn ? $t('common.loading') : $t('common.loadMore') }}
-          </button>
-        </p>
-      </section>
-
-      <section>
-        <h2 class="mb-2 text-sm font-semibold text-ink">{{ $t('home.publicRepos') }}</h2>
-        <ContentsList
-          :repos="homeRepos"
-          show-folder
-          @sort="onSort"
-        />
-        <p v-if="hasMoreHome" class="mt-3">
-          <button
-            type="button"
-            :class="btnGhost"
-            :disabled="loadingMoreHome"
-            @click="loadHome(true)"
-          >
-            {{ loadingMoreHome ? $t('common.loading') : $t('common.loadMore') }}
-          </button>
-        </p>
-        <p
-          v-else-if="!homeRepos.length"
-          class="text-sm text-ink-muted"
+      <ContentsList :repos="repos" show-folder @sort="onSort" />
+      <p v-if="hasMore" class="mt-3">
+        <button 
+          type="button" 
+          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50" 
+          :disabled="loadingMore" 
+          @click="loadMore"
         >
-          {{ $t('home.publicEmpty') }}
-        </p>
-      </section>
+          {{ loadingMore ? $t('common.loading') : $t('common.loadMore') }}
+        </button>
+      </p>
     </template>
   </div>
 </template>

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"git.magomedcoder.ru/repo/langs"
+	"repo.magomedcoder.ru/repo/langs"
 )
 
 type Locale string

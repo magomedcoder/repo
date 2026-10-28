@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"git.magomedcoder.ru/repo/pkg/i18n"
+	"repo.magomedcoder.ru/repo/pkg/i18n"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

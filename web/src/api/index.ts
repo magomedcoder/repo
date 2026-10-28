@@ -1,4 +1,5 @@
-import { api, ApiError } from './client'
+import { encodeRepoPath } from '@/lib/repoPath'
+import { api } from './client'
 import type { AccessToken, ActivityEvent, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
 
 export const authApi = {
@@ -46,8 +47,8 @@ export const foldersApi = {
       folders: Folder[]
     }>('/api/folders')
   },
-  get(id: number) {
-    return api<FolderContents>(`/api/folders/${id}`)
+  get(path: string) {
+    return api<FolderContents>(`/api/folders/${encodeRepoPath(path)}`)
   },
   create(body: {
     name: string
@@ -55,6 +56,17 @@ export const foldersApi = {
     return api<Folder>('/api/folders', {
       method: 'POST',
       body: JSON.stringify(body)
+    })
+  },
+  rename(path: string, body: { name: string }) {
+    return api<Folder>(`/api/folders/${encodeRepoPath(path)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+  remove(path: string) {
+    return api<void>(`/api/folders/${encodeRepoPath(path)}`, {
+      method: 'DELETE',
     })
   },
 }
@@ -110,15 +122,6 @@ export const usersApi = {
 }
 
 
-function encodeRepoPath(path: string) {
-  return path
-    .replace(/^\/+|\/+$/g, '')
-    .split('/')
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join('/')
-}
-
 type ListParams = {
   sort?: string
   offset?: number
@@ -156,7 +159,12 @@ export const reposApi = {
 
     return api<{ repos: Repository[] }>(`/api/repos?${params}`)
   },
-  search(q: string, scope?: 'public', paging?: Pick<ListParams, 'offset' | 'limit'>) {
+  search(
+    q: string,
+    scope?: 'public',
+    paging?: Pick<ListParams, 'offset' | 'limit'>,
+    init?: RequestInit,
+  ) {
     const params = new URLSearchParams({ q })
     if (scope) params.set('scope', scope)
     if (paging?.offset != null) {
@@ -165,7 +173,7 @@ export const reposApi = {
     if (paging?.limit != null) {
       params.set('limit', String(paging.limit))
     }
-    return api<{ repos: Repository[] }>(`/api/repos?${params}`)
+    return api<{ repos: Repository[] }>(`/api/repos?${params}`, init)
   },
   get(path: string) {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}`)
@@ -174,7 +182,7 @@ export const reposApi = {
     name?: string
     path?: string
     description?: string
-    folder_id?: number | null
+    folder_path?: string
     private?: boolean
     show_on_home?: boolean
     default_branch?: string
@@ -187,6 +195,7 @@ export const reposApi = {
   update(
     path: string,
     body: {
+      name?: string
       description?: string
       private?: boolean
       show_on_home?: boolean
@@ -199,10 +208,10 @@ export const reposApi = {
       body: JSON.stringify(body),
     })
   },
-  move(path: string, folder_id: number | null) {
+  move(path: string, folder_path: string) {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}/move`, {
       method: 'POST',
-      body: JSON.stringify({ folder_id }),
+      body: JSON.stringify({ folder_path }),
     })
   },
   remove(path: string) {
@@ -264,6 +273,10 @@ export const reposApi = {
     const q = new URLSearchParams({ ref: params.ref, path: params.path })
     return api<BlameResult>(`/api/repos/${encodeRepoPath(path)}/blame?${q}`)
   },
+  rawHref(repoPath: string, params: { ref: string; path: string }) {
+    const q = new URLSearchParams({ ref: params.ref, path: params.path })
+    return `/api/repos/${encodeRepoPath(repoPath)}/raw?${q}`
+  },
   readme(path: string, ref?: string) {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
     return api<BlobContent>(`/api/repos/${encodeRepoPath(path)}/readme${q}`)
@@ -272,16 +285,9 @@ export const reposApi = {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
     return api<RepoStats>(`/api/repos/${encodeRepoPath(path)}/stats${q}`)
   },
-  async summary(path: string, ref?: string) {
+  summary(path: string, ref?: string) {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
-    try {
-      return await api<RepoBrowseSummary>(`/api/repos/${encodeRepoPath(path)}/summary${q}`)
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        return null
-      }
-      throw err
-    }
+    return api<RepoBrowseSummary>(`/api/repos/${encodeRepoPath(path)}/summary${q}`)
   },
 }
 

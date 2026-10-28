@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"git.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/internal/usecase"
 )
 
 type IssueHandler struct {

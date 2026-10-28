@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
+	"strings"
 
-	"git.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"git.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"repo.magomedcoder.ru/repo/internal/usecase"
 )
 
 type FolderHandler struct {
@@ -75,13 +75,8 @@ func (h *FolderHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := parseID(r.PathValue("id"))
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_folder_id")
-		return
-	}
-
-	out, err := h.folders.GetContents(user.ID, user.ID, id)
+	path := strings.Trim(r.PathValue("path"), "/")
+	out, err := h.folders.GetContents(user.ID, user.ID, path)
 	if err != nil {
 		writeFolderError(w, r, err)
 		return
@@ -96,12 +91,7 @@ func (h *FolderHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := parseID(r.PathValue("id"))
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_folder_id")
-		return
-	}
-
+	path := strings.Trim(r.PathValue("path"), "/")
 	var req renameFolderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_json")
@@ -111,7 +101,7 @@ func (h *FolderHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	out, err := h.folders.Rename(usecase.RenameFolderInput{
 		ViewerID: user.ID,
 		OwnerID:  user.ID,
-		ID:       id,
+		Path:     path,
 		Name:     req.Name,
 	})
 
@@ -130,27 +120,13 @@ func (h *FolderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := parseID(r.PathValue("id"))
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_folder_id")
-		return
-	}
-
-	if err := h.folders.Delete(user.ID, user.ID, id); err != nil {
+	path := strings.Trim(r.PathValue("path"), "/")
+	if err := h.folders.Delete(user.ID, user.ID, path); err != nil {
 		writeFolderError(w, r, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func parseID(raw string) (uint, error) {
-	id, err := strconv.ParseUint(raw, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint(id), nil
 }
 
 func writeFolderError(w http.ResponseWriter, r *http.Request, err error) {

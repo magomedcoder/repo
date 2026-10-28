@@ -1,4 +1,4 @@
-module git.magomedcoder.ru/repo
+module repo.magomedcoder.ru/repo
 
 go 1.27.1
 

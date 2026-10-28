@@ -28,7 +28,6 @@
   "internal_error": "Внутренняя ошибка сервера",
   "invalid_repository_path": "Некорректный путь к репозиторию",
   "not_found": "Не найдено",
-  "invalid_folder_id": "Некорректный идентификатор папки",
   "invalid_token_id": "Некорректный идентификатор токена",
   "token_name_required": "Укажите название токена",
   "token_not_found": "Токен не найден",

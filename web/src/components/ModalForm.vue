@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { btnGhost, btnPrimary } from '@/lib/classes'
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import Icon from '@/components/ui/Icon.vue'
 
@@ -104,11 +103,11 @@ onUnmounted(() => {
       <form class="space-y-3" @submit.prevent="!busy && emit('submit')">
         <slot />
         <div class="flex justify-end gap-2 pt-1">
-          <button type="button" :class="btnGhost" :disabled="busy" @click="emit('close')">
+          <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50" :disabled="busy" @click="emit('close')">
             {{ $t('common.cancel') }}
           </button>
-          <button type="submit" :class="btnPrimary" :disabled="busy">
-            {{ submitLabel || $t('modal.createFolder') }}
+          <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="busy">
+            {{ submitLabel || $t('common.ok') }}
           </button>
         </div>
       </form>

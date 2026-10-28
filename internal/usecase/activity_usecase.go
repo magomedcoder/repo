@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type ActivityItem struct {

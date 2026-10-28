@@ -1,132 +1,98 @@
 <script setup lang="ts">
-import { tabBar, tabLink, tabLinkOn } from '@/lib/classes'
-import { computed, onMounted, provide, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
-import { reposApi } from '@/api'
 import type { Repository } from '@/api/types'
 import { useAuth } from '@/composables/useAuth'
+import { folderLocation } from '@/lib/folderNav'
+import { repoLocation } from '@/lib/repoNav'
+import { normalizeRepoPath } from '@/lib/repoPath'
+import PageState from '@/components/ui/PageState.vue'
+import type { PageError } from '@/i18n'
 
 const props = defineProps<{
   repoPath: string
-  tab: 'summary' | 'log' | 'tree' | 'commit' | 'refs' | 'about' | 'issues' | 'pulls' | 'settings' | 'code'
+  tab: 'summary' | 'log' | 'tree' | 'commit' | 'refs' | 'issues' | 'pulls' | 'settings'
+  repo: Repository | null
+  loading?: boolean
+  error?: PageError | string
 }>()
 
 const auth = useAuth()
-const repo = ref<Repository | null>(null)
-provide('repo', repo)
 
-const parts = computed(() => props.repoPath.split('/').filter(Boolean))
-const folderSlug = computed(() => (parts.value.length > 1 ? parts.value.slice(0, -1).join('/') : ''))
+const parts = computed(() => normalizeRepoPath(props.repoPath).split('/').filter(Boolean))
+const folderSlug = computed(() => {
+  if (props.repo?.folder_path) {
+    return normalizeRepoPath(props.repo.folder_path)
+  }
+
+  return parts.value.length > 1 ? parts.value.slice(0, -1).join('/') : ''
+})
 const repoName = computed(() => parts.value[parts.value.length - 1] || props.repoPath)
-const isOwner = computed(() => !!auth.user.value?.username && !!repo.value?.owner && auth.user.value.username === repo.value.owner)
+const isOwner = computed(() => !!auth.user.value?.username && !!props.repo?.owner && auth.user.value.username === props.repo.owner)
 
 function active(name: string) {
-  if (name === 'summary') {
-    return props.tab === 'summary' || props.tab === 'code'
-  }
-
-  if (name === 'tree') {
-    return props.tab === 'tree'
-  }
-
-  if (name === 'log') {
-    return props.tab === 'log' || props.tab === 'commit'
-  }
-
   return props.tab === name
 }
-
-async function load() {
-  try {
-    repo.value = await reposApi.get(props.repoPath)
-  } catch {
-    repo.value = null
-  }
-}
-
-onMounted(load)
-watch(() => props.repoPath, load)
 </script>
 
 <template>
   <div>
-    <div class="cgit-path mb-0 font-mono text-[90%]">
-      <RouterLink to="/" class="text-ink-muted no-underline hover:underline">{{ $t('nav.root') }}</RouterLink>
-      <template v-if="folderSlug">
+    <div class="mb-0 font-mono text-[90%] text-ink">
+      <div>
+        <RouterLink to="/" class="text-ink-muted no-underline hover:underline">{{ $t('nav.root') }}</RouterLink>
+        <template v-if="folderSlug">
+          <span> / </span>
+          <RouterLink
+            v-if="isOwner"
+            :to="folderLocation(folderSlug)"
+            class="text-ink-muted no-underline hover:underline"
+          >
+            {{ folderSlug }}
+          </RouterLink>
+          <span v-else class="text-ink-muted">{{ folderSlug }}</span>
+        </template>
         <span> / </span>
-        <RouterLink
-          v-if="repo?.folder_id != null"
-          :to="{ name: 'folder', params: { id: String(repo.folder_id) } }"
-          class="text-ink-muted no-underline hover:underline"
-        >
-          {{ folderSlug }}
+        <RouterLink class="font-bold no-underline hover:underline" :to="repoLocation('repo', repoPath)">
+          {{ repoName }}
         </RouterLink>
-        <span v-else class="text-ink-muted">{{ folderSlug }}</span>
-      </template>
-      <span> / </span>
-      <RouterLink
-        class="font-bold no-underline hover:underline"
-        :to="{ name: 'repo', params: { repoPath } }"
-      >
-        {{ repoName }}
-      </RouterLink>
-      <span v-if="repo?.description" class="ml-3 font-sans text-ink-muted">{{ repo.description }}</span>
+      </div>
+      <div v-if="repo?.description" class="mt-0.5 font-sans text-ink-muted">
+        {{ repo.description }}
+      </div>
     </div>
 
-    <nav :class="tabBar" :aria-label="$t('nav.issues')">
-      <RouterLink
-        :to="{ name: 'repo', params: { repoPath } }"
-        :class="[tabLink, active('summary') && tabLinkOn]"
-      >
+    <nav class="m-0 mt-1.5 mb-0 flex w-full flex-wrap items-stretch gap-0 border-b border-line" :aria-label="$t('nav.repo')">
+      <RouterLink :to="repoLocation('repo', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('summary') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
         {{ $t('index.summary') }}
       </RouterLink>
-      <RouterLink
-        :to="{ name: 'repo-commits', params: { repoPath } }"
-        :class="[tabLink, active('log') && tabLinkOn]"
-      >
+      <RouterLink :to="repoLocation('repo-commits', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('log') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
         {{ $t('index.log') }}
       </RouterLink>
-      <RouterLink
-        :to="{ name: 'repo-tree', params: { repoPath } }"
-        :class="[tabLink, active('tree') && tabLinkOn]"
-      >
+      <RouterLink :to="repoLocation('repo-tree', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('tree') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
         {{ $t('index.tree') }}
       </RouterLink>
-      <RouterLink
-        :to="{ name: 'repo-refs', params: { repoPath } }"
-        :class="[tabLink, active('refs') && tabLinkOn]"
-      >
+      <RouterLink :to="repoLocation('repo-refs', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('refs') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
         {{ $t('nav.refs') }}
       </RouterLink>
-      <RouterLink
-        :to="{ name: 'repo-about', params: { repoPath } }"
-        :class="[tabLink, active('about') && tabLinkOn]"
-      >
-        {{ $t('nav.about') }}
-      </RouterLink>
-      <RouterLink
-        :to="{ name: 'repo-issues', params: { repoPath } }"
-        :class="[tabLink, active('issues') && tabLinkOn]"
-      >
+      <RouterLink :to="repoLocation('repo-issues', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('issues') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
         {{ $t('nav.issues') }}
       </RouterLink>
-      <RouterLink
-        :to="{ name: 'repo-pulls', params: { repoPath } }"
-        :class="[tabLink, active('pulls') && tabLinkOn]"
-      >
+      <RouterLink :to="repoLocation('repo-pulls', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('pulls') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
         {{ $t('nav.pulls') }}
       </RouterLink>
       <RouterLink
         v-if="isOwner"
-        :to="{ name: 'repo-settings', params: { repoPath } }"
-        :class="[tabLink, active('settings') && tabLinkOn]"
+        :to="repoLocation('repo-settings', repoPath)"
+        :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('settings') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']"
       >
         {{ $t('nav.settings') }}
       </RouterLink>
     </nav>
 
     <div class="pt-4">
-      <slot />
+      <PageState :loading="!!loading" :error="error || ''">
+        <slot v-if="repo" />
+      </PageState>
     </div>
   </div>
 </template>

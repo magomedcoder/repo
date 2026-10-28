@@ -40,5 +40,5 @@ func migrate(db *gorm.DB) error {
 		}
 	}
 
-	return nil
+	return applyVersionedMigrations(db)
 }

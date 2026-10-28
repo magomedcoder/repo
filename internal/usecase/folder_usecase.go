@@ -3,13 +3,13 @@ package usecase
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 const (
@@ -28,7 +28,7 @@ var (
 var nonSlugChars = regexp.MustCompile(`[^a-z0-9_-]+`)
 
 type FolderItem struct {
-	ID        uint      `json:"id"`
+	ID        uint      `json:"-"`
 	Name      string    `json:"name"`
 	Slug      string    `json:"slug"`
 	Path      string    `json:"path"`
@@ -45,9 +45,10 @@ type RepositorySummaryItem struct {
 	ID            uint      `json:"id"`
 	Name          string    `json:"name"`
 	Description   string    `json:"description"`
-	FolderID      *uint     `json:"folder_id"`
 	IsPrivate     bool      `json:"is_private"`
 	DefaultBranch string    `json:"default_branch"`
+	RepoPath      string    `json:"repo_path"`
+	FolderPath    string    `json:"folder_path,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -61,7 +62,7 @@ type CreateFolderInput struct {
 type RenameFolderInput struct {
 	ViewerID uint
 	OwnerID  uint
-	ID       uint
+	Path     string
 	Name     string
 }
 
@@ -74,7 +75,7 @@ type FolderUseCase struct {
 
 func NewFolderUseCase(folders domain.FolderStore, repos domain.RepositoryStore, git domain.GitRepository, reposRoot string) *FolderUseCase {
 	if reposRoot == "" {
-		reposRoot = filepath.Join("data", "repos")
+		reposRoot = DefaultReposRoot
 	}
 	return &FolderUseCase{
 		folders:   folders,
@@ -163,7 +164,7 @@ func (uc *FolderUseCase) List(viewerID, ownerID uint) ([]FolderItem, error) {
 	return items, nil
 }
 
-func (uc *FolderUseCase) GetContents(viewerID, ownerID uint, folderID uint) (*FolderContents, error) {
+func (uc *FolderUseCase) GetContents(viewerID, ownerID uint, path string) (*FolderContents, error) {
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
 	if err != nil {
 		return nil, err
@@ -173,11 +174,21 @@ func (uc *FolderUseCase) GetContents(viewerID, ownerID uint, folderID uint) (*Fo
 		return nil, ErrUnauthorized
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, folderID)
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return nil, ErrFolderNotFound
+	}
+
+	folder, err := uc.folders.FindByOwnerAndPath(ownerKind, ownerID, path)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
 
+	return uc.folderContents(ownerKind, ownerID, folder)
+}
+
+func (uc *FolderUseCase) folderContents(ownerKind string, ownerID uint, folder *domain.Folder) (*FolderContents, error) {
+	folderID := folder.ID
 	repos, err := uc.repos.ListByOwnerAndFolderID(ownerKind, ownerID, &folderID)
 	if err != nil {
 		return nil, fmt.Errorf("list folder repos: %w", err)
@@ -190,7 +201,7 @@ func (uc *FolderUseCase) GetContents(viewerID, ownerID uint, folderID uint) (*Fo
 	}
 
 	for _, repo := range repos {
-		out.Repos = append(out.Repos, toRepoSummary(repo))
+		out.Repos = append(out.Repos, toRepoSummary(repo, folder.Path))
 	}
 
 	return out, nil
@@ -207,7 +218,12 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 		return nil, err
 	}
 
-	folder, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, in.ID)
+	path := strings.Trim(in.Path, "/")
+	if path == "" {
+		return nil, ErrFolderNotFound
+	}
+
+	folder, err := uc.folders.FindByOwnerAndPath(ownerKind, ownerID, path)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
@@ -235,18 +251,23 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	folder.Slug = slug
 	folder.Path = slug
 
+	var moved []folderMovedRepo
+
 	if oldPath != slug {
 		repos, err := uc.repos.ListByOwnerAndFolderID(ownerKind, ownerID, &folder.ID)
 		if err != nil {
 			return nil, fmt.Errorf("list folder repos: %w", err)
 		}
-		
+
 		for i := range repos {
 			repo := &repos[i]
+			oldDisk := repo.Path
+			oldLogic := repo.RepoPath
 			newLogical := slug + "/" + repo.Name + ".git"
 			newDisk := buildRepoDiskPath(uc.reposRoot, repo.OwnerKind, repo.OwnerID, slug, repo.Name)
 			if uc.git != nil && repo.Path != "" && repo.Path != newDisk {
 				if err := uc.git.Move(repo.Path, newDisk); err != nil {
+					uc.rollbackFolderMoves(moved)
 					return nil, fmt.Errorf("move repository files: %w", err)
 				}
 			}
@@ -254,12 +275,15 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 			repo.Path = newDisk
 			repo.RepoPath = newLogical
 			if err := uc.repos.Update(repo); err != nil {
+				uc.rollbackFolderMoves(append(moved, folderMovedRepo{repo: repo, oldDisk: oldDisk, oldLogic: oldLogic}))
 				return nil, fmt.Errorf("update repository path: %w", err)
 			}
+			moved = append(moved, folderMovedRepo{repo: repo, oldDisk: oldDisk, oldLogic: oldLogic})
 		}
 	}
 
 	if err := uc.folders.Update(folder); err != nil {
+		uc.rollbackFolderMoves(moved)
 		return nil, fmt.Errorf("rename folder: %w", err)
 	}
 
@@ -267,7 +291,7 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	return &item, nil
 }
 
-func (uc *FolderUseCase) Delete(viewerID, ownerID uint, folderID uint) error {
+func (uc *FolderUseCase) Delete(viewerID, ownerID uint, path string) error {
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, true)
 	if err != nil {
 		return err
@@ -277,11 +301,17 @@ func (uc *FolderUseCase) Delete(viewerID, ownerID uint, folderID uint) error {
 		return ErrUnauthorized
 	}
 
-	if _, err := uc.folders.FindByOwnerAndID(ownerKind, ownerID, folderID); err != nil {
+	path = strings.Trim(path, "/")
+	if path == "" {
 		return ErrFolderNotFound
 	}
 
-	childRepos, err := uc.repos.CountByFolderID(folderID)
+	folder, err := uc.folders.FindByOwnerAndPath(ownerKind, ownerID, path)
+	if err != nil {
+		return ErrFolderNotFound
+	}
+
+	childRepos, err := uc.repos.CountByFolderID(folder.ID)
 	if err != nil {
 		return fmt.Errorf("count folder repos: %w", err)
 	}
@@ -290,7 +320,7 @@ func (uc *FolderUseCase) Delete(viewerID, ownerID uint, folderID uint) error {
 		return ErrFolderNotEmpty
 	}
 
-	if err := uc.folders.Delete(folderID); err != nil {
+	if err := uc.folders.Delete(folder.ID); err != nil {
 		return fmt.Errorf("delete folder: %w", err)
 	}
 
@@ -339,14 +369,43 @@ func toFolderItem(f *domain.Folder) FolderItem {
 	}
 }
 
-func toRepoSummary(repo domain.Repository) RepositorySummaryItem {
+type folderMovedRepo struct {
+	repo     *domain.Repository
+	oldDisk  string
+	oldLogic string
+}
+
+func (uc *FolderUseCase) rollbackFolderMoves(moved []folderMovedRepo) {
+	for _, m := range slices.Backward(moved) {
+
+		if uc.git != nil && m.repo.Path != "" && m.oldDisk != "" && m.repo.Path != m.oldDisk {
+			_ = uc.git.Move(m.repo.Path, m.oldDisk)
+		}
+
+		m.repo.Path = m.oldDisk
+		m.repo.RepoPath = m.oldLogic
+		_ = uc.repos.Update(m.repo)
+	}
+}
+
+func toRepoSummary(repo domain.Repository, folderPath string) RepositorySummaryItem {
+	repoPath := strings.TrimSuffix(repo.RepoPath, ".git")
+	if repoPath == "" {
+		if folderPath != "" {
+			repoPath = folderPath + "/" + repo.Name
+		} else {
+			repoPath = repo.Name
+		}
+	}
+
 	return RepositorySummaryItem{
 		ID:            repo.ID,
 		Name:          repo.Name,
 		Description:   repo.Description,
-		FolderID:      repo.FolderID,
 		IsPrivate:     repo.IsPrivate,
 		DefaultBranch: repo.DefaultBranch,
+		RepoPath:      repoPath,
+		FolderPath:    folderPath,
 		CreatedAt:     repo.CreatedAt,
 		UpdatedAt:     repo.UpdatedAt,
 	}

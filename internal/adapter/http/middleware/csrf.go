@@ -15,7 +15,9 @@ func CSRF(secure bool) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := ensureCSRFCookie(w, r, secure)
 			if needsCSRF(r) && !validCSRF(r, token) {
-				http.Error(w, "csrf", http.StatusForbidden)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error":"CSRF token invalid","code":"csrf"}`))
 				return
 			}
 
@@ -63,6 +65,6 @@ func validCSRF(r *http.Request, cookieToken string) bool {
 	if header == "" || cookieToken == "" {
 		return false
 	}
-	
+
 	return subtle.ConstantTimeCompare([]byte(header), []byte(cookieToken)) == 1
 }

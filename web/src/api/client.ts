@@ -1,3 +1,5 @@
+import { detectLocale } from '@/i18n'
+
 export class ApiError extends Error {
   status: number
   code?: string
@@ -23,11 +25,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   }
   if (!headers.has('Accept-Language')) {
-    const saved = localStorage.getItem('repo.locale')
-    const locale = saved === 'en' || saved === 'ru'
-      ? saved
-      : navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en'
-    headers.set('Accept-Language', locale)
+    headers.set('Accept-Language', detectLocale())
   }
 
   const res = await fetch(path, {

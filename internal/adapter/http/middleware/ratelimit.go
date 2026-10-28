@@ -3,6 +3,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -86,21 +87,26 @@ func (l *RateLimiter) sweep(now time.Time) {
 	}
 }
 
+func writeRateLimited(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", "60")
+	w.WriteHeader(http.StatusTooManyRequests)
+	_, _ = w.Write([]byte(`{"error":"Too many requests","code":"rate_limited"}`))
+}
+
 func RateLimit(apiLimiter, authLimiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := ClientIP(r)
 			if strings.HasPrefix(r.URL.Path, "/api/auth/") {
 				if authLimiter != nil && !authLimiter.Allow(ip) {
-					w.Header().Set("Retry-After", "60")
-					http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+					writeRateLimited(w)
 					return
 				}
 			}
 
 			if apiLimiter != nil && !apiLimiter.Allow(ip) {
-				w.Header().Set("Retry-After", "60")
-				http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+				writeRateLimited(w)
 				return
 			}
 
@@ -113,8 +119,7 @@ func RateLimitIP(limiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if limiter != nil && !limiter.Allow(ClientIP(r)) {
-				w.Header().Set("Retry-After", "60")
-				http.Error(w, `{"error":"rate_limited"}`, http.StatusTooManyRequests)
+				writeRateLimited(w)
 				return
 			}
 
@@ -130,20 +135,29 @@ func ClientIP(r *http.Request) string {
 	}
 
 	remote := net.ParseIP(host)
-	if remote != nil && isTrustedProxy(remote) {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			parts := strings.SplitSeq(xff, ",")
-			for part := range parts {
-				cand := strings.TrimSpace(part)
-				if cand == "" {
-					continue
-				}
+	if remote == nil || !isTrustedProxy(remote) {
+		return host
+	}
 
-				if ip := net.ParseIP(cand); ip != nil {
-					return cand
-				}
-			}
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff == "" {
+		return host
+	}
+
+	parts := strings.Split(xff, ",")
+	for _, part := range slices.Backward(parts) {
+		cand := strings.TrimSpace(part)
+		if cand == "" {
+			continue
 		}
+		ip := net.ParseIP(cand)
+		if ip == nil {
+			continue
+		}
+		if isTrustedProxy(ip) {
+			continue
+		}
+		return cand
 	}
 
 	return host

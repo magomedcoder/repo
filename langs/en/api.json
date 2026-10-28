@@ -28,7 +28,6 @@
   "internal_error": "Internal server error",
   "invalid_repository_path": "Invalid repository path",
   "not_found": "Not found",
-  "invalid_folder_id": "Invalid folder id",
   "invalid_token_id": "Invalid token id",
   "token_name_required": "Enter a token name",
   "token_not_found": "Token not found",

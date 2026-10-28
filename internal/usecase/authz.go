@@ -1,6 +1,6 @@
 package usecase
 
-import "git.magomedcoder.ru/repo/internal/domain"
+import "repo.magomedcoder.ru/repo/internal/domain"
 
 func CanReadRepo(repo *domain.Repository, viewerID uint) error {
 	if repo == nil {
@@ -26,7 +26,7 @@ func CanReadPrivateRepo(repo *domain.Repository, viewerID uint) bool {
 	if viewerID == 0 {
 		return false
 	}
-	
+
 	kind := repo.OwnerKind
 	if kind == "" {
 		kind = domain.OwnerKindUser

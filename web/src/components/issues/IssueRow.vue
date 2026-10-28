@@ -4,6 +4,7 @@ import type { Issue } from '@/api/types'
 import Icon from '@/components/ui/Icon.vue'
 import LabelPill from '@/components/ui/LabelPill.vue'
 import { formatDate } from '@/i18n'
+import { repoLocation } from '@/lib/repoNav'
 
 defineProps<{
   issue: Issue
@@ -13,13 +14,7 @@ defineProps<{
 
 <template>
   <RouterLink
-    :to="{
-      name: 'repo-issue',
-      params: {
-        repoPath,
-        number: String(issue.number)
-      }
-    }"
+    :to="repoLocation('repo-issue', repoPath, { number: issue.number })"
     class="flex items-start gap-3 px-4 py-3 hover:bg-paper"
   >
     <Icon

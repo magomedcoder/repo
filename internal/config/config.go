@@ -13,6 +13,7 @@ const (
 	MinSessionSecretLen = 32
 	DefaultReceiveMax   = 512 << 20
 	DefaultPath         = "config.yaml"
+	DefaultReposRoot    = "data/repos"
 )
 
 type Config struct {
@@ -34,7 +35,7 @@ func Default() Config {
 		HTTPAddr:        ":8080",
 		DataDir:         "data",
 		DBPath:          "data/db.sqlite",
-		ReposRoot:       "data/repos",
+		ReposRoot:       DefaultReposRoot,
 		AvatarsDir:      "data/avatars",
 		ReceiveMaxBytes: DefaultReceiveMax,
 	}
@@ -58,7 +59,7 @@ func Load(path string) (Config, error) {
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = ":8080"
 	}
-	
+
 	if cfg.DataDir == "" {
 		cfg.DataDir = "data"
 	}
@@ -66,9 +67,9 @@ func Load(path string) (Config, error) {
 	if cfg.DBPath == "" {
 		cfg.DBPath = "data/db.sqlite"
 	}
-	
+
 	if cfg.ReposRoot == "" {
-		cfg.ReposRoot = "data/repos"
+		cfg.ReposRoot = DefaultReposRoot
 	}
 
 	if cfg.AvatarsDir == "" {

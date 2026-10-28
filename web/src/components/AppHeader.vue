@@ -47,6 +47,7 @@ async function onLogout() {
     </div>
     <nav class="flex max-w-full flex-wrap items-center justify-end gap-x-2.5 gap-y-1 text-[90%]">
       <template v-if="username">
+        <RouterLink :to="{ name: 'folders' }">{{ $t('nav.folders') }}</RouterLink>
         <button
           type="button"
           class="cursor-pointer border-0 bg-transparent p-0 text-link hover:underline"

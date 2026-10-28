@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type RepositoryStore struct {

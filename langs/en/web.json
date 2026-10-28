@@ -7,7 +7,12 @@
     "copy": "Copy",
     "ok": "Done",
     "binary": "binary",
-    "bytes": "{n} bytes"
+    "bytes": "{n} bytes",
+    "sizeB": "{n} B",
+    "sizeKB": "{n} KB",
+    "sizeMB": "{n} MB",
+    "sizeGB": "{n} GB",
+    "sizeTB": "{n} TB"
   },
   "brand": {
     "name": "Repo",
@@ -31,7 +36,8 @@
   "nav": {
     "root": "Root",
     "logout": "Log out",
-    "breadcrumb": "Navigation",
+    "repo": "Repository",
+    "folders": "Folders",
     "language": "Language",
     "settings": "Settings",
     "issues": "Issues",
@@ -40,27 +46,28 @@
     "accessTokens": "Access tokens",
     "tagline": "Git. Simple and light.",
     "refs": "refs",
-    "about": "about",
     "langEn": "en",
     "langRu": "ru"
   },
   "home": {
     "newFolder": "New folder",
-    "newRepository": "New repository",
-    "myRepos": "My repositories",
-    "publicRepos": "Public repositories",
-    "publicEmpty": "No public repositories are listed on the home page yet."
+    "newRepository": "New repository"
   },
   "folder": {
-    "fallback": "Folder"
+    "fallback": "Folder",
+    "empty": "No repositories in this folder.",
+    "rename": "Rename",
+    "delete": "Delete",
+    "confirmDelete": "Delete folder “{name}”? This cannot be undone."
   },
   "list": {
-    "noRepos": "No repositories yet."
+    "noRepos": "No repositories yet.",
+    "noFolders": "No folders yet."
   },
   "index": {
     "name": "Name",
     "description": "Description",
-    "folder": "Folder",
+    "path": "Path",
     "owner": "Owner",
     "idle": "Activity",
     "idleMin": "1 min. | {n} min.",
@@ -120,8 +127,10 @@
   },
   "settings": {
     "title": "Settings",
+    "name": "Name",
     "description": "Description",
     "defaultBranch": "Default branch",
+    "noBranches": "This repository has no branches yet",
     "private": "Private repository",
     "showOnHome": "Show on the home page",
     "showOnHomeHint": "Only public repositories can appear on the home page for everyone, including guests.",
@@ -156,7 +165,16 @@
   },
   "activity": {
     "title": "Recent activity",
-    "empty": "No recent activity."
+    "empty": "No recent activity.",
+    "types": {
+      "push": "pushed",
+      "issue_opened": "opened an issue",
+      "issue_closed": "closed an issue",
+      "pull_opened": "opened a pull request",
+      "pull_merged": "merged a pull request",
+      "pull_closed": "closed a pull request",
+      "repo_created": "created a repository"
+    }
   },
   "tokens": {
     "title": "Access tokens",
@@ -204,7 +222,6 @@
       "internal_error": "Internal server error",
       "invalid_repository_path": "Invalid repository path",
       "not_found": "Not found",
-      "invalid_folder_id": "Invalid folder id",
       "invalid_token_id": "Invalid token id",
       "token_name_required": "Enter a token name",
       "token_not_found": "Token not found",
@@ -271,7 +288,9 @@
     "loadTokens": "Could not load tokens",
     "createToken": "Could not create token",
     "loadActivity": "Could not load activity",
-    "loadBlame": "Could not load authorship details"
+    "loadBlame": "Could not load authorship details",
+    "notFound": "Page not found",
+    "notFoundHint": "This path does not exist."
   },
   "search": {
     "title": "Search",

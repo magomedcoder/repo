@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { btnGhost, btnPrimary, field } from '@/lib/classes'
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { activityApi, authApi, usersApi } from '@/api'
@@ -166,14 +165,14 @@ onMounted(load)
             <div class="flex flex-wrap gap-2">
               <button
                 type="button"
-                :class="btnGhost"
+                class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="uploading"
                 @click="fileInput?.click()"
               >{{ uploading ? $t('profile.uploading') : $t('profile.changeAvatar') }}</button>
               <button
                 v-if="profile.has_avatar"
                 type="button"
-                :class="btnGhost"
+                class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="uploading"
                 @click="removeAvatar"
               >{{ $t('profile.removeAvatar') }}</button>
@@ -195,10 +194,10 @@ onMounted(load)
               v-model="email" 
               type="email" 
               required 
-              :class="[field, 'w-full']"
+              :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'w-full']"
             >
           </label>
-          <button type="submit" :class="btnPrimary" :disabled="saving">
+          <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="saving">
             {{ saving ? $t('profile.saving') : $t('profile.save') }}
           </button>
         </form>
@@ -206,13 +205,13 @@ onMounted(load)
         <form class="space-y-3" @submit.prevent="changePassword">
           <label class="block text-sm">
             <span class="mb-1 block font-semibold">{{ $t('auth.password') }}</span>
-            <input v-model="currentPassword" type="password" required :class="field" autocomplete="current-password" />
+            <input v-model="currentPassword" type="password" required class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" autocomplete="current-password" />
           </label>
           <label class="block text-sm">
             <span class="mb-1 block font-semibold">{{ $t('profile.newPassword') }}</span>
-            <input v-model="nextPassword" type="password" required minlength="8" :class="field" autocomplete="new-password" />
+            <input v-model="nextPassword" type="password" required minlength="8" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" autocomplete="new-password" />
           </label>
-          <button type="submit" :class="btnPrimary">{{ $t('profile.save') }}</button>
+          <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50">{{ $t('profile.save') }}</button>
           <p v-if="passwordMessage">{{ $t('common.ok') }}</p>
         </form>
 

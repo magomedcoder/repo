@@ -27,10 +27,9 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/HomeView.vue'),
       },
       {
-        path: 'folders/:id',
-        name: 'folder',
-        component: () => import('@/views/FolderView.vue'),
-        props: true,
+        path: 'folders',
+        name: 'folders',
+        component: () => import('@/views/FoldersView.vue'),
       },
       {
         path: 'settings/tokens',
@@ -91,13 +90,6 @@ const routes: RouteRecordRaw[] = [
         props: true,
       },
       {
-        path: ':repoPath(.*)/about',
-        name: 'repo-about',
-        meta: { publicRead: true },
-        component: () => import('@/views/RepoAboutView.vue'),
-        props: true,
-      },
-      {
         path: ':repoPath(.*)/commits',
         name: 'repo-commits',
         meta: { publicRead: true },
@@ -125,11 +117,26 @@ const routes: RouteRecordRaw[] = [
         props: true,
       },
       {
-        path: ':repoPath(.*)',
+        path: ':folder/:name',
         name: 'repo',
         meta: { publicRead: true },
         component: () => import('@/views/RepoHomeView.vue'),
+        props: (route) => ({
+          repoPath: `${String(route.params.folder)}/${String(route.params.name)}`,
+        }),
+      },
+      {
+        path: ':folderPath',
+        name: 'folder',
+        meta: { publicRead: true },
+        component: () => import('@/views/PathEntryView.vue'),
         props: true,
+      },
+      {
+        path: ':pathMatch(.*)*',
+        name: 'not-found',
+        meta: { publicRead: true },
+        component: () => import('@/views/NotFoundView.vue'),
       },
     ],
   },

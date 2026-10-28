@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 func TestMigrateFreshDatabase(t *testing.T) {

@@ -8,8 +8,14 @@ import (
 )
 
 func SafePath(root, path string) (string, error) {
-	if path == "" || strings.Contains(path, "..") {
+	if path == "" {
 		return "", fmt.Errorf("path outside data root")
+	}
+
+	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
+		if seg == ".." {
+			return "", fmt.Errorf("path outside data root")
+		}
 	}
 
 	abs, err := filepath.Abs(path)

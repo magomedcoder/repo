@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"git.magomedcoder.ru/repo/internal/domain"
-	"git.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/usecase"
 )
 
 type GitHandler struct {
@@ -28,7 +28,8 @@ func (h *GitHandler) SetReceiveMaxBytes(n int64) {
 }
 
 func IsGitHTTPPath(path string) bool {
-	return strings.Contains(path, ".git/info/refs") || strings.Contains(path, ".git/git-upload-pack") || strings.Contains(path, ".git/git-receive-pack")
+	_, _, err := parseGitHTTPPath(path)
+	return err == nil
 }
 
 func (h *GitHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -119,9 +120,18 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 					}
 				}
 				if err := domain.CheckRefUpdate(true, repo.DefaultBranch, cmd[2], cmd[0], cmd[1], ancestor); err != nil {
-					http.Error(w, "branch protected", http.StatusForbidden)
+					if errors.Is(err, domain.ErrBranchProtected) {
+						writeError(w, r, http.StatusForbidden, domain.ErrBranchProtected.Error())
+						return
+					}
+					http.Error(w, "forbidden", http.StatusForbidden)
 					return
 				}
+			}
+
+			if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
 			}
 			body = tmp
 		} else {
@@ -156,6 +166,10 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 	viewer, authErr := h.authenticateRequest(r)
 	needAuth := repo.IsPrivate || service == usecase.GitReceivePack
 	if needAuth && authErr != nil {
+		if errors.Is(authErr, usecase.ErrTooManyAttempts) {
+			http.Error(w, "too many attempts", http.StatusTooManyRequests)
+			return nil, nil, authErr
+		}
 		w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return nil, nil, authErr
@@ -181,7 +195,11 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 
 func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) {
 	if user, pass, ok := r.BasicAuth(); ok {
-		return h.git.Authenticate(user, pass)
+		u, err := h.git.Authenticate(user, pass)
+		if errors.Is(err, usecase.ErrTooManyAttempts) {
+			return nil, err
+		}
+		return u, err
 	}
 
 	auth := r.Header.Get("Authorization")
@@ -198,34 +216,28 @@ func parseGitHTTPPath(urlPath string) (repoPath, action string, err error) {
 	}
 
 	urlPath = strings.Trim(urlPath, "/")
-	var suffix string
 	switch {
-	case strings.Contains(urlPath, ".git/info/refs"):
-		suffix = ".git/info/refs"
+	case strings.HasSuffix(urlPath, ".git/info/refs"):
+		repoPath = strings.TrimSuffix(urlPath, ".git/info/refs")
 		action = "info/refs"
-	case strings.Contains(urlPath, ".git/git-upload-pack"):
-		suffix = ".git/git-upload-pack"
+	case strings.HasSuffix(urlPath, ".git/git-upload-pack"):
+		repoPath = strings.TrimSuffix(urlPath, ".git/git-upload-pack")
 		action = "git-upload-pack"
-	case strings.Contains(urlPath, ".git/git-receive-pack"):
-		suffix = ".git/git-receive-pack"
+	case strings.HasSuffix(urlPath, ".git/git-receive-pack"):
+		repoPath = strings.TrimSuffix(urlPath, ".git/git-receive-pack")
 		action = "git-receive-pack"
 	default:
 		return "", "", errors.New("not a git path")
 	}
 
-	idx := strings.Index(urlPath, suffix)
-	if idx <= 0 {
+	repoPath = strings.Trim(repoPath, "/")
+	if repoPath == "" {
 		return "", "", errors.New("not a git path")
 	}
 
-	repoPath = strings.Trim(urlPath[:idx], "/")
-	parts := strings.Split(repoPath, "/")
-	if len(parts) == 0 {
-		return "", "", errors.New("invalid_repository_path")
-	}
-
-	for _, part := range parts {
-		if part == "" || part == "." || part == ".." || part == "api" {
+	parts := strings.SplitSeq(repoPath, "/")
+	for part := range parts {
+		if part == "" || part == "." || part == ".." || usecase.IsReservedSlug(part) {
 			return "", "", errors.New("invalid_repository_path")
 		}
 	}
@@ -239,12 +251,21 @@ func readReceiveCommands(r io.Reader) (cmds [][3]string, err error) {
 		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
 			return cmds, err
 		}
+
+		if string(lenBuf[:]) == "PACK" {
+			return cmds, errors.New("missing flush before pack")
+		}
+
 		n, perr := strconv.ParseInt(string(lenBuf[:]), 16, 32)
-		if perr != nil || n < 4 {
+		if perr != nil || n < 0 {
 			return cmds, errors.New("invalid pkt-line")
 		}
-		if n == 4 {
+
+		if n == 0 {
 			break
+		}
+		if n < 4 {
+			return cmds, errors.New("invalid pkt-line")
 		}
 		payload := make([]byte, n-4)
 		if _, err := io.ReadFull(r, payload); err != nil {

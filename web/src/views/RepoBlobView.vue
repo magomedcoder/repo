@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { btnGhost, dataTable } from '@/lib/classes'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { reposApi } from '@/api'
 import type { BlobContent, BlameResult } from '@/api/types'
+import PathCrumbs from '@/components/repo/PathCrumbs.vue'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
+import { useRepo } from '@/composables/useRepo'
 import type { PageError } from '@/i18n'
 import { i18n, localizeError, pageError } from '@/i18n'
+import { formatBytes } from '@/lib/bytes'
+import { repoLocation } from '@/lib/repoNav'
 
 const props = defineProps<{
   repoPath: string
 }>()
+
+const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
 
 const route = useRoute()
 const blob = ref<BlobContent | null>(null)
@@ -93,7 +98,9 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
 })
 
-const refName = computed(() => (route.query.ref as string) || 'main')
+const refName = computed(
+  () => (route.query.ref as string) || repo.value?.default_branch || 'main',
+)
 const filePath = computed(() => (route.query.path as string) || '')
 const parentDir = computed(() => {
   const parts = filePath.value.split('/')
@@ -106,7 +113,9 @@ const rawFilename = computed(() => {
   return parts[parts.length - 1] || i18n.global.t('blob.fallbackName')
 })
 
-const rawHref = computed(() => `/api/repos/${props.repoPath}/raw?ref=${encodeURIComponent(refName.value)}&path=${encodeURIComponent(filePath.value)}`)
+const rawHref = computed(() =>
+  reposApi.rawHref(props.repoPath, { ref: refName.value, path: filePath.value }),
+)
 
 function lineClass(line: string, filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
@@ -173,7 +182,7 @@ async function toggleBlame() {
 }
 
 watch(
-  () => [props.repoPath, route.query.ref, route.query.path],
+  () => [props.repoPath, route.query.ref, route.query.path, repo.value?.default_branch],
   () => {
     showBlame.value = false
     loadBlob()
@@ -191,38 +200,37 @@ watch([blob, virtualize], () => {
 </script>
 
 <template>
-  <RepoShell
-    :repo-path="repoPath"
-    tab="code"
+  <RepoShell 
+    :repo-path="repoPath" 
+    tab="tree" 
+    :repo="repo" 
+    :loading="repoLoading" 
+    :error="repoError"
   >
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <p class="min-w-0 truncate text-sm">
-        <span class="text-ink-muted">{{ refName }} /</span> {{ filePath }}
-      </p>
+      <PathCrumbs
+        class="min-w-0"
+        :repo-path="repoPath"
+        :ref-name="refName"
+        :path="filePath"
+      />
       <div class="flex gap-2">
         <button
           v-if="blob && !blob.is_binary"
           type="button"
-          :class="[btnGhost, showBlame && 'bg-paper-2']"
+          :class="['inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50', showBlame && 'bg-paper-2']"
           @click="toggleBlame"
         >
           {{ showBlame ? $t('blob.hideBlame') : $t('blob.blame') }}
         </button>
         <RouterLink
-          :class="btnGhost"
-          :to="{
-            name: 'repo-tree',
-            params: { repoPath },
-            query: {
-              ref: refName,
-              path: parentDir || undefined
-            }
-          }"
+          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
+          :to="repoLocation('repo-tree', repoPath, { query: { ref: refName, path: parentDir || undefined } })"
         >
           {{ $t('blob.tree') }}
         </RouterLink>
         <a
-          :class="btnGhost"
+          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
           :href="rawHref"
           :download="rawFilename"
           target="_blank"
@@ -234,7 +242,7 @@ watch([blob, virtualize], () => {
     </div>
 
     <PageState :loading="loading" :error="error">
-      <div v-if="blob && showBlame && !blob.is_binary" class="term-block">
+      <div v-if="blob && showBlame && !blob.is_binary" class="overflow-hidden border border-line bg-paper">
         <p v-if="blameLoading" class="p-4 text-sm text-ink-muted">{{ $t('common.loading') }}</p>
         <p v-else-if="blameError" class="p-4 text-sm text-warn">{{ blameError }}</p>
         <div v-else-if="blame" class="overflow-x-auto">
@@ -254,9 +262,9 @@ watch([blob, virtualize], () => {
           </table>
         </div>
       </div>
-      <div v-else-if="blob" class="term-block">
-        <div class="flex items-center justify-between term-block-hd text-xs text-ink-muted">
-          <span>{{ $t('common.bytes', { n: blob.size }) }}</span>
+      <div v-else-if="blob" class="overflow-hidden border border-line bg-paper">
+        <div class="flex items-center justify-between flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink text-xs text-ink-muted">
+          <span>{{ formatBytes(blob.size) }}</span>
           <span>{{ blob.is_binary ? $t('common.binary') : blob.encoding }}</span>
         </div>
         <div
@@ -265,7 +273,7 @@ watch([blob, virtualize], () => {
           class="max-h-[70vh] overflow-y-auto overflow-x-auto"
           @scroll="onCodeScroll"
         >
-          <table :class="[dataTable, 'font-mono']">
+          <table :class="['w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_th]:text-ink-muted [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover', 'font-mono']">
             <tbody>
               <tr v-if="topSpacer" aria-hidden="true">
                 <td :style="{ height: `${topSpacer}px`, padding: 0, border: 'none' }" colspan="2" />
@@ -280,7 +288,7 @@ watch([blob, virtualize], () => {
             </tbody>
           </table>
         </div>
-        <table v-else-if="!blob.is_binary" :class="[dataTable, 'font-mono']">
+        <table v-else-if="!blob.is_binary" :class="['w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_th]:text-ink-muted [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover', 'font-mono']">
           <tbody>
             <tr v-for="(line, i) in textLines" :key="i">
               <td class="w-10 text-right text-ink-muted">{{ i + 1 }}</td>

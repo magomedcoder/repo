@@ -103,21 +103,3 @@
     border-width: 0;
   }
 }
-
-@layer utilities {
-  .term-block {
-    @apply overflow-hidden border border-line bg-paper;
-  }
-
-  .term-block-hd {
-    @apply flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink;
-  }
-
-  .term-block-bd {
-    @apply p-3 sm:p-4;
-  }
-
-  .cgit-path {
-    @apply border border-line bg-path px-3 py-1.5 text-ink sm:px-4;
-  }
-}

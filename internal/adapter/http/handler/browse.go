@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"git.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/internal/usecase"
 )
 
 func (h *RepositoryHandler) serveBrowseGet(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {

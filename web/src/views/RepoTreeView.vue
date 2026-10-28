@@ -4,47 +4,44 @@ import { useRoute } from 'vue-router'
 import { reposApi } from '@/api'
 import type { TreeEntry } from '@/api/types'
 import FileTable from '@/components/repo/FileTable.vue'
+import PathCrumbs from '@/components/repo/PathCrumbs.vue'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
+import { useRepo } from '@/composables/useRepo'
 import type { PageError } from '@/i18n'
 import { pageError } from '@/i18n'
-
+import { repoLocation } from '@/lib/repoNav'
 
 const props = defineProps<{
   repoPath: string
 }>()
+
+const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
 
 const route = useRoute()
 const tree = ref<TreeEntry[]>([])
 const error = ref<PageError | string>('')
 const loading = ref(true)
 
-const refName = computed(() => (route.query.ref as string) || 'main')
+const refName = computed(
+  () => (route.query.ref as string) || repo.value?.default_branch || 'main',
+)
 const dirPath = computed(() => (route.query.path as string) || '')
 
 const parentTo = computed(() => {
   if (!dirPath.value) {
-    return {
-      name: 'repo' as const,
-      params: {
-        repoPath: props.repoPath
-      }
-    }
+    return repoLocation('repo', props.repoPath)
   }
 
   const parts = dirPath.value.split('/')
   parts.pop()
   const path = parts.join('/')
-  return {
-    name: 'repo-tree' as const,
-    params: {
-      repoPath: props.repoPath
-    },
+  return repoLocation('repo-tree', props.repoPath, {
     query: {
       ref: refName.value,
-      path: path || undefined
+      path: path || undefined,
     },
-  }
+  })
 })
 
 async function load() {
@@ -63,19 +60,34 @@ async function load() {
   }
 }
 
-watch(() => [props.repoPath, route.query.ref, route.query.path], load, { immediate: true })
+watch(
+  () => [props.repoPath, route.query.ref, route.query.path, repo.value?.default_branch],
+  load,
+  { immediate: true },
+)
 </script>
 
 <template>
-  <RepoShell
-    :repo-path="repoPath" tab="code">
-    <p v-if="dirPath" class="mb-3 text-sm text-ink-muted">{{ refName }} / {{ dirPath }}</p>
+  <RepoShell 
+  :repo-path="repoPath" 
+    tab="tree" 
+    :repo="repo" 
+    :loading="repoLoading" 
+    :error="repoError"
+  >
+    <div class="mb-3">
+      <PathCrumbs 
+        :repo-path="repoPath" 
+        :ref-name="refName" 
+        :path="dirPath"
+      />
+    </div>
     <PageState :loading="loading" :error="error">
       <FileTable
         :entries="tree"
         :repo-path="repoPath"
         :ref-name="refName"
-        :parent-to="parentTo"
+        :parent-to="dirPath ? parentTo : null"
       />
     </PageState>
   </RepoShell>

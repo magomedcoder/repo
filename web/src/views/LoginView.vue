@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { btnPrimary, field } from '@/lib/classes'
 import { onMounted, ref } from 'vue'
 import { useRegistration } from '@/composables/useRegistration'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
@@ -50,7 +49,7 @@ async function submit() {
               <td class="w-full py-1">
                 <input
                   v-model="login"
-                  :class="field"
+                  class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
                   required
                   autocomplete="username"
                 />
@@ -62,7 +61,7 @@ async function submit() {
                 <input
                   v-model="password"
                   type="password"
-                  :class="field"
+                  class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
                   required
                   autocomplete="current-password"
                 />
@@ -72,7 +71,7 @@ async function submit() {
               <td />
               <td class="py-2">
                 <p v-if="error" class="mb-2 text-warn">{{ error }}</p>
-                <button type="submit" :class="btnPrimary" :disabled="busy">
+                <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="busy">
                   {{ busy ? $t('auth.signingIn') : $t('auth.signIn') }}
                 </button>
               </td>

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"git.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/internal/usecase"
 )
 
 type PullRequestHandler struct {

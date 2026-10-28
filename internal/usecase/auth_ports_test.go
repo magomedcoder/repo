@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type memUsers struct {

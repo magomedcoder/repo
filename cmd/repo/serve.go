@@ -6,16 +6,16 @@ import (
 	"strings"
 	"time"
 
-	"git.magomedcoder.ru/repo"
-	"git.magomedcoder.ru/repo/internal/adapter/git"
-	deliveryhttp "git.magomedcoder.ru/repo/internal/adapter/http"
-	"git.magomedcoder.ru/repo/internal/adapter/http/handler"
-	"git.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"git.magomedcoder.ru/repo/internal/adapter/sqlite"
-	"git.magomedcoder.ru/repo/internal/config"
-	"git.magomedcoder.ru/repo/internal/usecase"
-	"git.magomedcoder.ru/repo/pkg/argon2id"
-	"git.magomedcoder.ru/repo/pkg/token"
+	"repo.magomedcoder.ru/repo"
+	"repo.magomedcoder.ru/repo/internal/adapter/git"
+	deliveryhttp "repo.magomedcoder.ru/repo/internal/adapter/http"
+	"repo.magomedcoder.ru/repo/internal/adapter/http/handler"
+	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"repo.magomedcoder.ru/repo/internal/adapter/sqlite"
+	"repo.magomedcoder.ru/repo/internal/config"
+	"repo.magomedcoder.ru/repo/internal/usecase"
+	"repo.magomedcoder.ru/repo/pkg/argon2id"
+	"repo.magomedcoder.ru/repo/pkg/token"
 )
 
 func runServe() {
@@ -54,7 +54,7 @@ func runServe() {
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo, cfg.ReposRoot)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
-	gitUC := usecase.NewGitUseCase(repoStore, folderStore, userStore, tokenStore, hasher, gitRepo, activityStore)
+	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
 	profileUC := usecase.NewProfileUseCase(userStore, cfg.AvatarsDir)
@@ -96,12 +96,13 @@ func withStatic(dataDir string, api http.Handler) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if handler.IsGitHTTPPath(r.URL.Path) || strings.HasPrefix(r.URL.Path, "/api") {
+		path := r.URL.Path
+		if handler.IsGitHTTPPath(path) || isAPIPath(path) {
 			api.ServeHTTP(w, r)
 			return
 		}
 
-		if stringsHasData(r.URL.Path, dataDir) {
+		if isDataPath(path, dataDir) {
 			http.NotFound(w, r)
 			return
 		}
@@ -110,6 +111,16 @@ func withStatic(dataDir string, api http.Handler) http.Handler {
 	})
 }
 
-func stringsHasData(urlPath, dataDir string) bool {
-	return dataDir != "" && (urlPath == "/"+dataDir || len(urlPath) > len(dataDir)+1 && urlPath[:len(dataDir)+2] == "/"+dataDir+"/")
+func isAPIPath(urlPath string) bool {
+	return urlPath == "/api" || strings.HasPrefix(urlPath, "/api/")
+}
+
+func isDataPath(urlPath, dataDir string) bool {
+	dataDir = strings.Trim(dataDir, "/")
+	if dataDir == "" || strings.Contains(dataDir, "/") {
+		return false
+	}
+
+	prefix := "/" + dataDir
+	return urlPath == prefix || strings.HasPrefix(urlPath, prefix+"/")
 }

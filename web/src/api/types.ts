@@ -15,7 +15,6 @@ export interface Profile {
 }
 
 export interface Folder {
-  id: number
   name: string
   slug: string
   path: string
@@ -27,10 +26,11 @@ export interface RepoSummary {
   id: number
   name: string
   description: string
-  folder_id: number | null
   is_private: boolean
   show_on_home?: boolean
   default_branch: string
+  repo_path?: string
+  folder_path?: string
   created_at: string
   updated_at: string
 }
@@ -40,7 +40,6 @@ export interface Repository {
   name: string
   description: string
   owner: string
-  folder_id: number | null
   folder_path: string
   repo_path?: string
   is_private: boolean
@@ -112,7 +111,6 @@ export interface RepoBrowseSummary {
   branches: RefInfo[]
   tree: TreeEntry[]
   stats?: RepoStats | null
-  recent_commits: CommitInfo[]
   readme?: BlobContent | null
 }
 

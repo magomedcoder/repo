@@ -3,8 +3,7 @@ data_dir: "data"
 db_path: "data/db.sqlite"
 repos_root: "data/repos"
 avatars_dir: "data/avatars"
-# openssl rand -hex 32
-session_secret: "test"
+session_secret: "" # openssl rand -hex 32
 cookie_secure: false
 allow_registration: false
 receive_max_bytes: 536870912

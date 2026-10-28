@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type GitService string
@@ -18,17 +18,16 @@ const (
 
 type GitUseCase struct {
 	repos    domain.RepositoryStore
-	folders  domain.FolderStore
 	users    domain.UserStore
 	tokens   domain.AccessTokenStore
 	hasher   domain.PasswordHasher
 	git      domain.GitRepository
 	activity domain.ActivityStore
+	attempts AttemptCounter
 }
 
 func NewGitUseCase(
 	repos domain.RepositoryStore,
-	folders domain.FolderStore,
 	users domain.UserStore,
 	tokens domain.AccessTokenStore,
 	hasher domain.PasswordHasher,
@@ -37,12 +36,12 @@ func NewGitUseCase(
 ) *GitUseCase {
 	return &GitUseCase{
 		repos:    repos,
-		folders:  folders,
 		users:    users,
 		tokens:   tokens,
 		hasher:   hasher,
 		git:      git,
 		activity: activity,
+		attempts: NewAttemptCounter(),
 	}
 }
 
@@ -75,7 +74,7 @@ func (uc *GitUseCase) Authenticate(username, secret string) (*domain.User, error
 	username = strings.ToLower(strings.TrimSpace(username))
 	secret = strings.TrimSpace(secret)
 
-	if strings.HasPrefix(username, "repo_") {
+	if strings.HasPrefix(username, "repo_") && (secret == "" || secret == "x" || secret == username) {
 		return uc.authenticateToken(username)
 	}
 
@@ -96,13 +95,28 @@ func (uc *GitUseCase) Authenticate(username, secret string) (*domain.User, error
 		return nil, ErrUnauthorized
 	}
 
+	attemptKey := "git\n" + username
+	if uc.attempts != nil && uc.attempts.Locked(attemptKey) {
+		return nil, ErrTooManyAttempts
+	}
+
 	user, err := uc.users.FindByUsername(username)
 	if err != nil {
+		if uc.attempts != nil {
+			_ = uc.attempts.Fail(attemptKey)
+		}
 		return nil, ErrUnauthorized
 	}
 
 	if err := uc.hasher.Compare(user.PasswordHash, secret); err != nil {
+		if uc.attempts != nil {
+			_ = uc.attempts.Fail(attemptKey)
+		}
 		return nil, ErrUnauthorized
+	}
+
+	if uc.attempts != nil {
+		uc.attempts.Reset(attemptKey)
 	}
 
 	return sanitizeUser(user), nil

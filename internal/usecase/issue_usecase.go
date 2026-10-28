@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 var (
@@ -471,17 +471,7 @@ func (uc *IssueUseCase) DeleteLabel(in ResolveRepositoryInput, id uint) error {
 }
 
 func (uc *IssueUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	repoUC := &RepositoryUseCase{store: uc.repos, folders: uc.folders, users: uc.users}
-	repo, _, _, err := repoUC.resolve(in)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := CanReadRepo(repo, in.ViewerID); err != nil {
-		return nil, err
-	}
-
-	return repo, nil
+	return ResolveReadable(uc.repos, uc.folders, uc.users, in)
 }
 
 func (uc *IssueUseCase) ownerRepo(in ResolveRepositoryInput) (*domain.Repository, error) {
@@ -676,4 +666,3 @@ func normalizeColor(raw string) string {
 func isNotFound(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "record not found")
 }
-

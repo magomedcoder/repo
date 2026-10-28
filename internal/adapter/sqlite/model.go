@@ -3,8 +3,8 @@ package sqlite
 import (
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
 	"gorm.io/gorm"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 type repositoryModel struct {

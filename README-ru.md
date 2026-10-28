@@ -7,6 +7,8 @@ Git. Просто и легко.
 ```bash
 make build
 
+make test
+
 ./build/repo
 
 ./build/repo serve

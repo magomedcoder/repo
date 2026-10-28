@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { btnGhost, dataTable, field } from '@/lib/classes'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { reposApi } from '@/api'
@@ -7,6 +6,8 @@ import type { Repository } from '@/api/types'
 import PageState from '@/components/ui/PageState.vue'
 import { useAuth } from '@/composables/useAuth'
 import { localizeError } from '@/i18n'
+import { repoLocation } from '@/lib/repoNav'
+import { repositoryPath } from '@/lib/repoPath'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,6 +51,7 @@ async function search(append = false) {
       query,
       usePublic ? 'public' : undefined,
       { offset, limit: PAGE_SIZE },
+      signal ? { signal } : undefined,
     )
     if (signal?.aborted) {
       return
@@ -94,11 +96,7 @@ function schedule() {
 }
 
 function repoTo(repo: Repository) {
-  const path = (repo.repo_path || (repo.folder_path ? `${repo.folder_path}/${repo.name}` : repo.name)).replace(/\.git$/, '')
-  return {
-    name: 'repo' as const,
-    params: { repoPath: path },
-  }
+  return repoLocation('repo', repositoryPath(repo))
 }
 
 watch(scope, schedule)
@@ -127,14 +125,14 @@ onUnmounted(() => {
         <span class="mb-1 block text-[11px] text-ink-muted">{{ $t('search.query') }}</span>
         <input
           v-model="q"
-          :class="[field, 'w-full']"
+          :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'w-full']"
           :placeholder="$t('search.placeholder')"
           @input="schedule"
         />
       </label>
       <label v-if="auth.isAuthenticated.value" class="block text-sm">
         <span class="mb-1 block text-[11px] text-ink-muted">{{ $t('search.scope') }}</span>
-        <select v-model="scope" :class="[field, 'min-w-40']">
+        <select v-model="scope" :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-w-40']">
           <option value="own">{{ $t('search.scopeOwn') }}</option>
           <option value="public">{{ $t('search.scopePublic') }}</option>
         </select>
@@ -142,7 +140,7 @@ onUnmounted(() => {
     </div>
     <p v-if="!q.trim()" class="mt-3 text-sm text-ink-muted">{{ $t('search.hint') }}</p>
     <PageState class="mt-2" :loading="loading" :error="error">
-      <table v-if="repos.length" :class="dataTable">
+      <table v-if="repos.length" class="w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_th]:text-ink-muted [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover">
         <thead>
           <tr>
             <th>{{ $t('index.name') }}</th>
@@ -160,7 +158,7 @@ onUnmounted(() => {
       </table>
       <p v-else-if="q.trim()" class="text-sm text-ink-muted">{{ $t('search.empty') }}</p>
       <p v-if="hasMore && repos.length" class="mt-3">
-        <button type="button" :class="btnGhost" :disabled="loadingMore" @click="loadMore">
+        <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50" :disabled="loadingMore" @click="loadMore">
           {{ loadingMore ? $t('common.loading') : $t('common.loadMore') }}
         </button>
       </p>

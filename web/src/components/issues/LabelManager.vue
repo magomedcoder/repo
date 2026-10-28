@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { btnGhost, field } from '@/lib/classes'
 import { ref } from 'vue'
 import type { Label } from '@/api/types'
 import LabelPill from '@/components/ui/LabelPill.vue'
@@ -29,9 +28,9 @@ function submit() {
 </script>
 
 <template>
-  <section class="term-block">
-    <h2 class="term-block-hd">{{ $t('issues.labels') }}</h2>
-    <div class="term-block-bd">
+  <section class="overflow-hidden border border-line bg-paper">
+    <h2 class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('issues.labels') }}</h2>
+    <div class="p-3 sm:p-4">
       <ul class="mb-3 space-y-2">
         <li
           v-for="label in labels"
@@ -49,7 +48,7 @@ function submit() {
       <form class="flex flex-wrap gap-2" @submit.prevent="submit">
         <input
           v-model="name"
-          :class="[field, 'max-w-48']"
+          :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'max-w-48']"
           required
           :placeholder="$t('issues.labelName')"
         />
@@ -60,7 +59,7 @@ function submit() {
         />
         <button
           type="submit"
-          :class="btnGhost"
+          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
         >{{ $t('issues.addLabel') }}</button>
       </form>
     </div>

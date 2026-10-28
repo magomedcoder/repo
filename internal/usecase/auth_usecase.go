@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 var (
@@ -32,6 +32,7 @@ var (
 
 var reservedSlugs = map[string]struct{}{
 	"api":      {},
+	"data":     {},
 	"login":    {},
 	"register": {},
 	"folders":  {},
@@ -41,6 +42,14 @@ var reservedSlugs = map[string]struct{}{
 	"static":   {},
 	"users":    {},
 	"me":       {},
+	"issues":   {},
+	"pulls":    {},
+	"commits":  {},
+	"commit":   {},
+	"tree":     {},
+	"blob":     {},
+	"refs":     {},
+	"raw":      {},
 }
 
 func IsReservedSlug(slug string) bool {
@@ -384,6 +393,10 @@ func validateUsername(username string) error {
 
 	if !usernamePattern.MatchString(username) {
 		return ErrInvalidUsername
+	}
+
+	if strings.HasPrefix(username, "repo_") {
+		return ErrReservedSlug
 	}
 
 	return nil

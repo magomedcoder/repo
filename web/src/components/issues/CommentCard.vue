@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { btnGhost, field } from '@/lib/classes'
 import { ref } from 'vue'
 import { formatDate } from '@/i18n'
 
@@ -31,8 +30,8 @@ function save() {
 </script>
 
 <template>
-  <article class="term-block">
-    <header class="term-block-hd justify-between">
+  <article class="overflow-hidden border border-line bg-paper">
+    <header class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink justify-between">
       <p>
         <span class="font-semibold text-ink">{{ author }}</span>
         <span class="font-normal text-ink-muted"> {{ formatDate(createdAt) }}</span>
@@ -52,17 +51,17 @@ function save() {
     </header>
     <form
       v-if="editing"
-      class="term-block-bd space-y-2"
+      class="p-3 sm:p-4 space-y-2"
       @submit.prevent="save"
     >
       <textarea
         v-model="draft"
-        :class="[field, 'min-h-20']"
+        :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-h-20']"
         required
       />
       <button
         type="submit"
-        :class="btnGhost"
+        class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
         :disabled="busy"
       >{{ $t('issues.saveComment') }}</button>
     </form>

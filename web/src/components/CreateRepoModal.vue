@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { field } from '@/lib/classes'
 import { onMounted, ref } from 'vue'
 import { foldersApi, reposApi } from '@/api'
 import type { Folder } from '@/api/types'
 import ModalForm from '@/components/ModalForm.vue'
+import { folderKey } from '@/lib/folderNav'
+import { normalizeRepoPath } from '@/lib/repoPath'
 import { localizeError } from '@/i18n'
 
 const props = defineProps<{
-  folderId?: number | null
+  folderPath?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -16,7 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const name = ref('')
-const folderKey = ref(props.folderId == null ? '' : String(props.folderId))
+const folderKeyValue = ref('')
 const folders = ref<Folder[]>([])
 const description = ref('')
 const isPrivate = ref(true)
@@ -29,6 +30,13 @@ onMounted(async () => {
   try {
     const res = await foldersApi.list()
     folders.value = res.folders ?? []
+    const want = props.folderPath ? normalizeRepoPath(props.folderPath) : ''
+    if (want) {
+      const match = folders.value.find((f) => folderKey(f) === want)
+      if (match) {
+        folderKeyValue.value = folderKey(match)
+      }
+    }
   } catch {
     folders.value = []
   }
@@ -41,7 +49,7 @@ async function submit() {
     await reposApi.create({
       name: name.value.trim(),
       description: description.value.trim(),
-      folder_id: folderKey.value === '' ? null : Number(folderKey.value),
+      folder_path: folderKeyValue.value || undefined,
       private: isPrivate.value,
       show_on_home: !isPrivate.value && showOnHome.value,
       default_branch: defaultBranch.value.trim() || 'main',
@@ -68,7 +76,7 @@ async function submit() {
       <span class="mb-1 block font-medium">{{ $t('modal.name') }}</span>
       <input
         v-model="name"
-        :class="field"
+        class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
         required
         maxlength="100"
         :placeholder="$t('modal.repoNamePlaceholder')"
@@ -77,12 +85,12 @@ async function submit() {
     </label>
     <label class="block text-sm">
       <span class="mb-1 block font-medium">{{ $t('modal.folder') }}</span>
-      <select v-model="folderKey" :class="field">
+      <select v-model="folderKeyValue" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
         <option value="">{{ $t('nav.root') }}</option>
         <option
           v-for="folder in folders"
-          :key="folder.id"
-          :value="String(folder.id)"
+          :key="folder.path"
+          :value="folderKey(folder)"
         >
           {{ folder.name }}
         </option>
@@ -90,9 +98,10 @@ async function submit() {
     </label>
     <label class="block text-sm">
       <span class="mb-1 block font-medium">{{ $t('modal.description') }}</span>
-      <input
+      <textarea
         v-model="description"
-        :class="field"
+        rows="3"
+        :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-h-20 resize-y']"
         :placeholder="$t('modal.optional')"
       />
     </label>
@@ -100,7 +109,7 @@ async function submit() {
       <span class="mb-1 block font-medium">{{ $t('modal.defaultBranch') }}</span>
       <input
         v-model="defaultBranch"
-        :class="[field, 'font-mono']"
+        :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'font-mono']"
         :placeholder="$t('modal.defaultBranchPlaceholder')"
       />
     </label>

@@ -18,13 +18,18 @@ func TestFoldersCreateRepo(t *testing.T) {
 	}
 
 	var folder struct {
-		ID uint `json:"id"`
+		Path string `json:"path"`
 	}
-	if err := json.Unmarshal([]byte(folderRes.Body), &folder); err != nil || folder.ID == 0 {
+	if err := json.Unmarshal([]byte(folderRes.Body), &folder); err != nil || folder.Path == "" {
 		t.Fatalf("folder body %s", folderRes.Body)
 	}
 
-	inFolder := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"api","folder_id":`+itoa(folder.ID)+`,"private":false}`, cookies)
+	byPath := doJSON(t, srv, http.MethodGet, "/api/folders/"+folder.Path, "", cookies)
+	if byPath.StatusCode != http.StatusOK {
+		t.Fatalf("get folder by path %d %s", byPath.StatusCode, byPath.Body)
+	}
+
+	inFolder := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"api","folder_path":"work","private":false}`, cookies)
 	if inFolder.StatusCode != http.StatusCreated {
 		t.Fatalf("create repo in folder %d %s", inFolder.StatusCode, inFolder.Body)
 	}
@@ -40,11 +45,44 @@ func TestFoldersCreateRepo(t *testing.T) {
 	}
 }
 
-func itoa(v uint) string {
-	return strings.TrimSpace(strings.ReplaceAll(jsonNumber(v), " ", ""))
+func TestFolderRenameAndDelete(t *testing.T) {
+	env := newTestServer(t)
+	cookies := loginUser(t, env, "frename", "frename@example.com", "password1")
+	srv := env.Server
+
+	create := doJSON(t, srv, http.MethodPost, "/api/folders", `{"name":"old-name"}`, cookies)
+	if create.StatusCode != http.StatusCreated {
+		t.Fatalf("create %d %s", create.StatusCode, create.Body)
+	}
+
+	renamed := doJSON(t, srv, http.MethodPatch, "/api/folders/old-name", `{"name":"new-name"}`, cookies)
+	if renamed.StatusCode != http.StatusOK {
+		t.Fatalf("rename %d %s", renamed.StatusCode, renamed.Body)
+	}
+	if !strings.Contains(renamed.Body, `"path":"new-name"`) {
+		t.Fatalf("rename body %s", renamed.Body)
+	}
+
+	goneOld := doJSON(t, srv, http.MethodGet, "/api/folders/old-name", "", cookies)
+	if goneOld.StatusCode != http.StatusNotFound {
+		t.Fatalf("old path still exists %d", goneOld.StatusCode)
+	}
+
+	okNew := doJSON(t, srv, http.MethodGet, "/api/folders/new-name", "", cookies)
+	if okNew.StatusCode != http.StatusOK {
+		t.Fatalf("new path %d %s", okNew.StatusCode, okNew.Body)
+	}
+
+	del := doJSON(t, srv, http.MethodDelete, "/api/folders/new-name", "", cookies)
+	if del.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete %d %s", del.StatusCode, del.Body)
+	}
 }
 
-func jsonNumber(v uint) string {
-	b, _ := json.Marshal(v)
-	return string(b)
+func TestGuestCannotListFolders(t *testing.T) {
+	env := newTestServer(t)
+	res := doJSON(t, env.Server, http.MethodGet, "/api/folders", "", nil)
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("guest folders %d %s", res.StatusCode, res.Body)
+	}
 }

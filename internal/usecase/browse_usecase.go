@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"git.magomedcoder.ru/repo/internal/domain"
+	"repo.magomedcoder.ru/repo/internal/domain"
 )
 
 var (
@@ -296,12 +296,10 @@ func NormalizePagination(offset, limit int) (int, int) {
 }
 
 type RepositorySummary struct {
-	Repo          RepositoryItem        `json:"repo"`
-	Branches      []domain.RefInfo      `json:"branches"`
-	RecentCommits []domain.CommitInfo   `json:"recent_commits"`
-	Tree          []domain.TreeEntry    `json:"tree"`
-	Stats         *domain.RepoStats     `json:"stats,omitempty"`
-	Readme        *domain.BlobContent   `json:"readme,omitempty"`
+	Branches []domain.RefInfo    `json:"branches"`
+	Tree     []domain.TreeEntry  `json:"tree"`
+	Stats    *domain.RepoStats   `json:"stats,omitempty"`
+	Readme   *domain.BlobContent `json:"readme,omitempty"`
 }
 
 func (uc *RepositoryUseCase) GetSummary(in ResolveRepositoryInput, ref string) (*RepositorySummary, error) {
@@ -314,21 +312,9 @@ func (uc *RepositoryUseCase) GetSummary(in ResolveRepositoryInput, ref string) (
 		ref = repo.DefaultBranch
 	}
 
-	ownerSlug := ""
-	if user, uerr := uc.users.FindByID(repo.OwnerID); uerr == nil {
-		ownerSlug = user.Username
-	}
-	folderPath, _ := uc.resolveFolderForOwner(repo.OwnerKind, repo.OwnerID, repo.FolderID)
-	repoItem := toRepositoryItem(repo, ownerSlug, folderPath)
-
 	branches, err := uc.git.ListBranches(repo.Path)
 	if err != nil {
 		branches = []domain.RefInfo{}
-	}
-
-	commits, err := uc.git.ListCommits(repo.Path, ref, 0, 8)
-	if err != nil {
-		commits = []domain.CommitInfo{}
 	}
 
 	tree, err := uc.git.ListTree(repo.Path, ref, "")
@@ -340,11 +326,9 @@ func (uc *RepositoryUseCase) GetSummary(in ResolveRepositoryInput, ref string) (
 	readme, _ := uc.git.FindReadme(repo.Path, ref)
 
 	return &RepositorySummary{
-		Repo:          repoItem,
-		Branches:      branches,
-		RecentCommits: commits,
-		Tree:          tree,
-		Stats:         stats,
-		Readme:        readme,
+		Branches: branches,
+		Tree:     tree,
+		Stats:    stats,
+		Readme:   readme,
 	}, nil
 }
