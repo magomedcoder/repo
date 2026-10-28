@@ -20,6 +20,7 @@ const folderKey = ref(props.folderId == null ? '' : String(props.folderId))
 const folders = ref<Folder[]>([])
 const description = ref('')
 const isPrivate = ref(true)
+const showOnHome = ref(false)
 const defaultBranch = ref('main')
 const error = ref('')
 const busy = ref(false)
@@ -42,6 +43,7 @@ async function submit() {
       description: description.value.trim(),
       folder_id: folderKey.value === '' ? null : Number(folderKey.value),
       private: isPrivate.value,
+      show_on_home: !isPrivate.value && showOnHome.value,
       default_branch: defaultBranch.value.trim() || 'main',
     })
     emit('created')
@@ -107,8 +109,18 @@ async function submit() {
         v-model="isPrivate"
         type="checkbox"
         class="accent-ink"
+        @change="isPrivate && (showOnHome = false)"
       />
       {{ $t('modal.private') }}
+    </label>
+    <label class="flex items-center gap-2 text-sm" :class="isPrivate && 'opacity-50'">
+      <input
+        v-model="showOnHome"
+        type="checkbox"
+        class="accent-ink"
+        :disabled="isPrivate"
+      />
+      {{ $t('modal.showOnHome') }}
     </label>
     <p v-if="error" class="text-sm text-warn">{{ error }}</p>
   </ModalForm>

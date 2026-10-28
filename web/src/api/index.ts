@@ -140,6 +140,22 @@ export const reposApi = {
     const qs = params.toString()
     return api<{ repos: Repository[] }>(`/api/repos${qs ? `?${qs}` : ''}`)
   },
+  listHome(sort?: string, paging?: Pick<ListParams, 'offset' | 'limit'>) {
+    const params = new URLSearchParams({ scope: 'home' })
+    if (sort) {
+      params.set('sort', sort)
+    }
+    
+    if (paging?.offset != null) {
+      params.set('offset', String(paging.offset))
+    }
+
+    if (paging?.limit != null) {
+      params.set('limit', String(paging.limit))
+    }
+
+    return api<{ repos: Repository[] }>(`/api/repos?${params}`)
+  },
   search(q: string, scope?: 'public', paging?: Pick<ListParams, 'offset' | 'limit'>) {
     const params = new URLSearchParams({ q })
     if (scope) params.set('scope', scope)
@@ -160,6 +176,7 @@ export const reposApi = {
     description?: string
     folder_id?: number | null
     private?: boolean
+    show_on_home?: boolean
     default_branch?: string
   }) {
     return api<Repository>('/api/repos', {
@@ -172,6 +189,7 @@ export const reposApi = {
     body: {
       description?: string
       private?: boolean
+      show_on_home?: boolean
       default_branch?: string
       protect_default_branch?: boolean
     },

@@ -30,6 +30,7 @@ type CreateRepositoryInput struct {
 	OwnerID       uint
 	FolderID      *uint
 	Private       bool
+	ShowOnHome    bool
 	DefaultBranch string
 	BasePath      string
 }
@@ -40,6 +41,7 @@ type UpdateRepositoryInput struct {
 	Name                 string
 	Description          *string
 	Private              *bool
+	ShowOnHome           *bool
 	DefaultBranch        *string
 	ProtectDefaultBranch *bool
 }
@@ -66,6 +68,7 @@ type RepositoryItem struct {
 	FolderID             *uint      `json:"folder_id"`
 	FolderPath           string     `json:"folder_path"`
 	IsPrivate            bool       `json:"is_private"`
+	ShowOnHome           bool       `json:"show_on_home"`
 	ProtectDefaultBranch bool       `json:"protect_default_branch"`
 	DefaultBranch        string     `json:"default_branch"`
 	LastActivityAt       *time.Time `json:"last_activity_at,omitempty"`
@@ -224,6 +227,7 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, 
 		RepoPath:             logical,
 		Description:          strings.TrimSpace(in.Description),
 		IsPrivate:            in.Private,
+		ShowOnHome:           !in.Private && in.ShowOnHome,
 		ProtectDefaultBranch: true,
 		DefaultBranch:        branch,
 		Path:                 repoPath,
@@ -268,6 +272,16 @@ func (uc *RepositoryUseCase) ListPublic(limit, offset int) ([]RepositoryItem, er
 	repos, err := uc.store.ListPublic(limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list public repositories: %w", err)
+	}
+
+	return uc.mapReposWithOwners(repos)
+}
+
+func (uc *RepositoryUseCase) ListHome(limit, offset int) ([]RepositoryItem, error) {
+	offset, limit = NormalizePagination(offset, limit)
+	repos, err := uc.store.ListHome(limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list home repositories: %w", err)
 	}
 
 	return uc.mapReposWithOwners(repos)
@@ -359,6 +373,14 @@ func (uc *RepositoryUseCase) Update(in UpdateRepositoryInput) (*RepositoryItem, 
 
 	if in.Private != nil {
 		repo.IsPrivate = *in.Private
+	}
+
+	if in.ShowOnHome != nil {
+		repo.ShowOnHome = *in.ShowOnHome
+	}
+
+	if repo.IsPrivate {
+		repo.ShowOnHome = false
 	}
 
 	if in.DefaultBranch != nil {
@@ -654,6 +676,7 @@ func toRepositoryItem(repo *domain.Repository, ownerUsername, folderPath string)
 		FolderID:             repo.FolderID,
 		FolderPath:           folderPath,
 		IsPrivate:            repo.IsPrivate,
+		ShowOnHome:           repo.ShowOnHome && !repo.IsPrivate,
 		ProtectDefaultBranch: repo.ProtectDefaultBranch,
 		DefaultBranch:        repo.DefaultBranch,
 		LastActivityAt:       repo.LastActivityAt,

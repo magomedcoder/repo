@@ -46,7 +46,10 @@
   },
   "home": {
     "newFolder": "New folder",
-    "newRepository": "New repository"
+    "newRepository": "New repository",
+    "myRepos": "My repositories",
+    "publicRepos": "Public repositories",
+    "publicEmpty": "No public repositories are listed on the home page yet."
   },
   "folder": {
     "fallback": "Folder"
@@ -120,6 +123,8 @@
     "description": "Description",
     "defaultBranch": "Default branch",
     "private": "Private repository",
+    "showOnHome": "Show on the home page",
+    "showOnHomeHint": "Only public repositories can appear on the home page for everyone, including guests.",
     "protectBranch": "Protect the default branch from force-push and deletion",
     "folder": "Folder",
     "saving": "Saving...",
@@ -144,6 +149,7 @@
     "optional": "Optional",
     "defaultBranch": "Default branch",
     "private": "Private repository",
+    "showOnHome": "Show on the home page",
     "repoNamePlaceholder": "my-repo",
     "folderNamePlaceholder": "work",
     "defaultBranchPlaceholder": "main"

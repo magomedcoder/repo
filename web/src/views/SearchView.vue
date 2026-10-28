@@ -5,12 +5,14 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { reposApi } from '@/api'
 import type { Repository } from '@/api/types'
 import PageState from '@/components/ui/PageState.vue'
+import { useAuth } from '@/composables/useAuth'
 import { localizeError } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuth()
 const q = ref(String(route.query.q || ''))
-const scope = ref<'own' | 'public'>(route.query.scope === 'public' ? 'public' : 'own')
+const scope = ref<'own' | 'public'>(route.query.scope === 'public' || !auth.isAuthenticated.value ? 'public' : 'own')
 const PAGE_SIZE = 50
 
 const repos = ref<Repository[]>([])
@@ -43,9 +45,10 @@ async function search(append = false) {
   error.value = ''
   try {
     const offset = append ? repos.value.length : 0
+    const usePublic = !auth.isAuthenticated.value || scope.value === 'public'
     const res = await reposApi.search(
       query,
-      scope.value === 'public' ? 'public' : undefined,
+      usePublic ? 'public' : undefined,
       { offset, limit: PAGE_SIZE },
     )
     if (signal?.aborted) {
@@ -129,7 +132,7 @@ onUnmounted(() => {
           @input="schedule"
         />
       </label>
-      <label class="block text-sm">
+      <label v-if="auth.isAuthenticated.value" class="block text-sm">
         <span class="mb-1 block text-[11px] text-ink-muted">{{ $t('search.scope') }}</span>
         <select v-model="scope" :class="[field, 'min-w-40']">
           <option value="own">{{ $t('search.scopeOwn') }}</option>

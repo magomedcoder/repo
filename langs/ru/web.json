@@ -46,7 +46,10 @@
   },
   "home": {
     "newFolder": "Новая папка",
-    "newRepository": "Новый репозиторий"
+    "newRepository": "Новый репозиторий",
+    "myRepos": "Мои репозитории",
+    "publicRepos": "Публичные репозитории",
+    "publicEmpty": "На главной пока нет публичных репозиториев."
   },
   "folder": {
     "fallback": "Папка"
@@ -120,6 +123,8 @@
     "description": "Описание",
     "defaultBranch": "Ветка по умолчанию",
     "private": "Закрытый репозиторий",
+    "showOnHome": "Показывать на главной",
+    "showOnHomeHint": "На главной для всех, включая гостей, отображаются только публичные репозитории.",
     "protectBranch": "Защитить ветку по умолчанию от принудительной перезаписи и удаления",
     "folder": "Папка",
     "saving": "Сохранение...",
@@ -144,6 +149,7 @@
     "optional": "Необязательно",
     "defaultBranch": "Ветка по умолчанию",
     "private": "Закрытый репозиторий",
+    "showOnHome": "Показывать на главной",
     "repoNamePlaceholder": "my-repo",
     "folderNamePlaceholder": "work",
     "defaultBranchPlaceholder": "main"

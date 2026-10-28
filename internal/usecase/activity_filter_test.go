@@ -76,6 +76,10 @@ func (s *memRepos) ListPublic(int, int) ([]domain.Repository, error) {
 	return nil, nil
 }
 
+func (s *memRepos) ListHome(int, int) ([]domain.Repository, error) {
+	return nil, nil
+}
+
 func (s *memRepos) SearchByName(string, string, uint, bool, int, int) ([]domain.Repository, error) {
 	return nil, nil
 }

@@ -29,6 +29,7 @@ export interface RepoSummary {
   description: string
   folder_id: number | null
   is_private: boolean
+  show_on_home?: boolean
   default_branch: string
   created_at: string
   updated_at: string
@@ -43,6 +44,7 @@ export interface Repository {
   folder_path: string
   repo_path?: string
   is_private: boolean
+  show_on_home?: boolean
   protect_default_branch?: boolean
   default_branch: string
   last_activity_at?: string

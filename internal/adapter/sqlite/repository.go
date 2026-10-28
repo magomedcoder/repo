@@ -156,6 +156,25 @@ func (s *RepositoryStore) ListPublic(limit, offset int) ([]domain.Repository, er
 	return repoModelsToDomain(models), nil
 }
 
+func (s *RepositoryStore) ListHome(limit, offset int) ([]domain.Repository, error) {
+	var models []repositoryModel
+	q := s.db.Where("is_private = ? AND show_on_home = ?", false, true).Order("updated_at DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+
+	if offset > 0 {
+		q = q.Offset(offset)
+	}
+
+	err := q.Find(&models).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return repoModelsToDomain(models), nil
+}
+
 func (s *RepositoryStore) SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int) ([]domain.Repository, error) {
 	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
 	q := "%" + escaped + "%"
@@ -176,7 +195,7 @@ func (s *RepositoryStore) SearchByName(query string, ownerKind string, ownerID u
 	if limit > 0 {
 		stmt = stmt.Limit(limit)
 	}
-	
+
 	if offset > 0 {
 		stmt = stmt.Offset(offset)
 	}

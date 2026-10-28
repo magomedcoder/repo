@@ -15,6 +15,7 @@ type Repository struct {
 	FolderID             *uint
 	Description          string
 	IsPrivate            bool
+	ShowOnHome           bool
 	ProtectDefaultBranch bool
 	DefaultBranch        string
 	Path                 string
@@ -38,6 +39,8 @@ type RepositoryStore interface {
 	ListByOwnerAndFolderID(ownerKind string, ownerID uint, folderID *uint) ([]Repository, error)
 
 	ListPublic(limit, offset int) ([]Repository, error)
+
+	ListHome(limit, offset int) ([]Repository, error)
 
 	SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int) ([]Repository, error)
 

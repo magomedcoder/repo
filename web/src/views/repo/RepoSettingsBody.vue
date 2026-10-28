@@ -17,6 +17,7 @@ const repo = useInjectedRepo()
 
 const description = ref('')
 const isPrivate = ref(false)
+const showOnHome = ref(false)
 const protectBranch = ref(true)
 const defaultBranch = ref('main')
 const folderKey = ref('')
@@ -45,6 +46,7 @@ function syncFormFromRepo() {
   }
   description.value = repo.value.description
   isPrivate.value = repo.value.is_private
+  showOnHome.value = !!repo.value.show_on_home && !repo.value.is_private
   protectBranch.value = repo.value.protect_default_branch !== false
   defaultBranch.value = repo.value.default_branch
   folderKey.value = repo.value.folder_id == null ? '' : String(repo.value.folder_id)
@@ -85,6 +87,7 @@ async function save() {
     const updated = await reposApi.update(props.repoPath, {
       description: description.value,
       private: isPrivate.value,
+      show_on_home: !isPrivate.value && showOnHome.value,
       default_branch: defaultBranch.value,
       protect_default_branch: protectBranch.value,
     })
@@ -146,9 +149,14 @@ watch([() => props.repoPath, repo], load, { immediate: true })
           <input v-model="defaultBranch" :class="[field, 'font-mono']" :placeholder="$t('modal.defaultBranchPlaceholder')" />
         </label>
         <label class="flex items-center gap-2 text-sm">
-          <input v-model="isPrivate" type="checkbox" class="accent-ink" />
+          <input v-model="isPrivate" type="checkbox" class="accent-ink" @change="isPrivate && (showOnHome = false)" />
           {{ $t('settings.private') }}
         </label>
+        <label class="flex items-center gap-2 text-sm" :class="isPrivate && 'opacity-50'">
+          <input v-model="showOnHome" type="checkbox" class="accent-ink" :disabled="isPrivate" />
+          {{ $t('settings.showOnHome') }}
+        </label>
+        <p class="text-xs text-ink-muted">{{ $t('settings.showOnHomeHint') }}</p>
         <label class="flex items-center gap-2 text-sm">
           <input v-model="protectBranch" type="checkbox" class="accent-ink" />
           {{ $t('settings.protectBranch') }}

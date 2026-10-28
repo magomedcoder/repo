@@ -33,12 +33,14 @@ type createRepoRequest struct {
 	Description   string `json:"description"`
 	FolderID      *uint  `json:"folder_id"`
 	Private       bool   `json:"private"`
+	ShowOnHome    bool   `json:"show_on_home"`
 	DefaultBranch string `json:"default_branch"`
 }
 
 type updateRepoRequest struct {
 	Description          *string `json:"description"`
 	Private              *bool   `json:"private"`
+	ShowOnHome           *bool   `json:"show_on_home"`
 	DefaultBranch        *string `json:"default_branch"`
 	ProtectDefaultBranch *bool   `json:"protect_default_branch"`
 }
@@ -68,6 +70,7 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		OwnerID:       user.ID,
 		FolderID:      req.FolderID,
 		Private:       req.Private,
+		ShowOnHome:    req.ShowOnHome,
 		DefaultBranch: req.DefaultBranch,
 		BasePath:      h.reposRoot,
 	})
@@ -82,7 +85,7 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	scope := r.URL.Query().Get("scope")
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	user, loggedIn := middleware.UserFromContext(r.Context())
-	publicOnly := scope == "public" || !loggedIn
+	publicOnly := scope == "public" || scope == "home" || !loggedIn
 
 	var ownerID uint
 	if loggedIn {
@@ -93,7 +96,20 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	sortKey := r.URL.Query().Get("sort")
 
 	if q != "" {
-		items, err := h.repos.Search(q, ownerID, publicOnly, 0, 0)
+		searchPublic := scope == "public" || scope == "home" || !loggedIn
+		items, err := h.repos.Search(q, ownerID, searchPublic, 0, 0)
+		if err != nil {
+			writeRepoError(w, r, err)
+			return
+		}
+
+		sortRepoItems(items, sortKey)
+		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
+		return
+	}
+
+	if scope == "home" || (!loggedIn && scope != "public") {
+		items, err := h.repos.ListHome(0, 0)
 		if err != nil {
 			writeRepoError(w, r, err)
 			return
@@ -128,7 +144,7 @@ func paginateRepoItems(items []usecase.RepositoryItem, offset, limit int) []usec
 	if limit <= 0 && offset <= 0 {
 		return items
 	}
-	
+
 	if offset < 0 {
 		offset = 0
 	}
@@ -229,6 +245,7 @@ func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Name:                 name,
 		Description:          req.Description,
 		Private:              req.Private,
+		ShowOnHome:           req.ShowOnHome,
 		DefaultBranch:        req.DefaultBranch,
 		ProtectDefaultBranch: req.ProtectDefaultBranch,
 	})

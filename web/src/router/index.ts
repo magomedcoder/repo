@@ -23,6 +23,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: '',
         name: 'home',
+        meta: { publicRead: true },
         component: () => import('@/views/HomeView.vue'),
       },
       {
@@ -44,6 +45,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'search',
         name: 'search',
+        meta: { publicRead: true },
         component: () => import('@/views/SearchView.vue'),
       },
       {
