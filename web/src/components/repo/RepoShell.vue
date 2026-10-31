@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { Repository } from '@/api/types'
-import { useAuth } from '@/composables/useAuth'
+import { useCanWrite } from '@/composables/useCanWrite'
 import { folderLocation } from '@/lib/folderNav'
 import { repoLocation } from '@/lib/repoNav'
 import { normalizeRepoPath } from '@/lib/repoPath'
@@ -17,7 +17,7 @@ const props = defineProps<{
   error?: PageError | string
 }>()
 
-const auth = useAuth()
+const { isOwner } = useCanWrite(() => props.repo)
 
 const parts = computed(() => normalizeRepoPath(props.repoPath).split('/').filter(Boolean))
 const folderSlug = computed(() => {
@@ -28,7 +28,6 @@ const folderSlug = computed(() => {
   return parts.value.length > 1 ? parts.value.slice(0, -1).join('/') : ''
 })
 const repoName = computed(() => parts.value[parts.value.length - 1] || props.repoPath)
-const isOwner = computed(() => !!auth.user.value?.username && !!props.repo?.owner && auth.user.value.username === props.repo.owner)
 const issuesEnabled = computed(() => props.repo?.issues_enabled !== false)
 
 function active(name: string) {

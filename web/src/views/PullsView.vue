@@ -6,6 +6,7 @@ import type { PullRequest, RefInfo } from '@/api/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import Icon from '@/components/ui/Icon.vue'
 import PageState from '@/components/ui/PageState.vue'
+import { useCanWrite } from '@/composables/useCanWrite'
 import { useRepo } from '@/composables/useRepo'
 import { formatDate, localizeError } from '@/i18n'
 import { repoLocation } from '@/lib/repoNav'
@@ -15,6 +16,7 @@ const props = defineProps<{
 }>()
 
 const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
+const { isAuthenticated } = useCanWrite(repo)
 const state = ref<'open' | 'closed' | 'merged'>('open')
 const pulls = ref<PullRequest[]>([])
 const branches = ref<RefInfo[]>([])
@@ -81,15 +83,21 @@ function iconFor(s: string) {
   return s === 'merged' ? 'pull-merged' : 'pull'
 }
 
+watch(isAuthenticated, (ok) => {
+  if (!ok) {
+    showForm.value = false
+  }
+})
+
 watch([() => props.repoPath, () => state.value, repo], load, { immediate: true })
 </script>
 
 <template>
-  <RepoShell 
-    :repo-path="repoPath" 
-    tab="pulls" 
-    :repo="repo" 
-    :loading="repoLoading" 
+  <RepoShell
+    :repo-path="repoPath"
+    tab="pulls"
+    :repo="repo"
+    :loading="repoLoading"
     :error="repoError"
   >
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -105,10 +113,15 @@ watch([() => props.repoPath, () => state.value, repo], load, { immediate: true }
           {{ $t(`pulls.${tab}`) }}
         </button>
       </div>
-      <button type="button" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" @click="showForm = !showForm">{{ $t('pulls.new') }}</button>
+      <button
+        v-if="isAuthenticated"
+        type="button"
+        class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50"
+        @click="showForm = !showForm"
+      >{{ $t('pulls.new') }}</button>
     </div>
 
-    <form v-if="showForm" class="overflow-hidden border border-line bg-paper mb-4" @submit.prevent="create">
+    <form v-if="isAuthenticated && showForm" class="overflow-hidden border border-line bg-paper mb-4" @submit.prevent="create">
       <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('pulls.new') }}</div>
       <div class="p-3 sm:p-4 space-y-3">
         <input v-model="title" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" required :placeholder="$t('pulls.titleField')" />

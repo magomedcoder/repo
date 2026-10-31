@@ -114,6 +114,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: ':repoPath(.*)/settings',
         name: 'repo-settings',
+        meta: { requiresOwner: true },
         component: () => import('@/views/RepoSettingsView.vue'),
         props: true,
       },

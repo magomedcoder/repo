@@ -8,7 +8,7 @@ import LabelPicker from '@/components/issues/LabelPicker.vue'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import Icon from '@/components/ui/Icon.vue'
 import PageState from '@/components/ui/PageState.vue'
-import { useAuth } from '@/composables/useAuth'
+import { useCanWrite } from '@/composables/useCanWrite'
 import { useRepo } from '@/composables/useRepo'
 import { localizeError } from '@/i18n'
 
@@ -16,8 +16,8 @@ const props = defineProps<{
   repoPath: string
 }>()
 
-const auth = useAuth()
 const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
+const { isAuthenticated, isOwner } = useCanWrite(repo)
 const state = ref<'open' | 'closed'>('open')
 const issues = ref<Issue[]>([])
 const labels = ref<Label[]>([])
@@ -90,15 +90,21 @@ async function removeLabel(id: number) {
   }
 }
 
+watch(isAuthenticated, (ok) => {
+  if (!ok) {
+    showForm.value = false
+  }
+})
+
 watch([() => props.repoPath, () => state.value], loadIssues, { immediate: true })
 </script>
 
 <template>
-  <RepoShell 
-    :repo-path="repoPath" 
-    tab="issues" 
-    :repo="repo" 
-    :loading="repoLoading" 
+  <RepoShell
+    :repo-path="repoPath"
+    tab="issues"
+    :repo="repo"
+    :loading="repoLoading"
     :error="repoError"
   >
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -122,10 +128,15 @@ watch([() => props.repoPath, () => state.value], loadIssues, { immediate: true }
           {{ $t('issues.closed') }}
         </button>
       </div>
-      <button type="button" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" @click="showForm = !showForm">{{ $t('issues.new') }}</button>
+      <button
+        v-if="isAuthenticated"
+        type="button"
+        class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50"
+        @click="showForm = !showForm"
+      >{{ $t('issues.new') }}</button>
     </div>
 
-    <form v-if="showForm" class="overflow-hidden border border-line bg-paper mb-4" @submit.prevent="create">
+    <form v-if="isAuthenticated && showForm" class="overflow-hidden border border-line bg-paper mb-4" @submit.prevent="create">
       <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('issues.new') }}</div>
       <div class="p-3 sm:p-4 space-y-3">
         <input v-model="title" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" required :placeholder="$t('issues.titleField')" />
@@ -147,7 +158,7 @@ watch([() => props.repoPath, () => state.value], loadIssues, { immediate: true }
           <li v-if="!issues.length" class="px-4 py-10 text-center text-sm text-ink-muted">{{ $t('issues.empty') }}</li>
         </ul>
         <LabelManager
-          v-if="auth.user.value?.username && auth.user.value.username === repo?.owner"
+          v-if="isOwner"
           :labels="labels"
           @create="addLabel"
           @remove="removeLabel"

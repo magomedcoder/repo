@@ -5,6 +5,7 @@ import { foldersApi, reposApi } from '@/api'
 import type { RefInfo } from '@/api/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
+import { useCanWrite } from '@/composables/useCanWrite'
 import { useRepo } from '@/composables/useRepo'
 import type { PageError } from '@/i18n'
 import { i18n, localizeError } from '@/i18n'
@@ -18,6 +19,7 @@ const props = defineProps<{
 
 const router = useRouter()
 const { repo, loading: repoLoading, error: repoError, reload } = useRepo(() => props.repoPath)
+const { isOwner } = useCanWrite(repo)
 
 const name = ref('')
 const description = ref('')
@@ -41,6 +43,7 @@ const message = ref('')
 const dataLoading = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
+const redirected = ref(false)
 
 const loading = computed(() => dataLoading.value)
 
@@ -49,7 +52,7 @@ const branchOptions = computed(() => {
   if (defaultBranch.value && !names.includes(defaultBranch.value)) {
     return [defaultBranch.value, ...names]
   }
-  
+
   return names
 })
 
@@ -73,8 +76,22 @@ function syncFormFromRepo() {
   folderPathKey.value = normalizeRepoPath(repo.value.folder_path || '')
 }
 
+async function denyNonOwner() {
+  if (redirected.value) {
+    return
+  }
+
+  redirected.value = true
+  await router.replace(repoLocation('repo', props.repoPath))
+}
+
 async function load() {
   if (!repo.value) {
+    return
+  }
+
+  if (!isOwner.value) {
+    await denyNonOwner()
     return
   }
 
@@ -109,7 +126,7 @@ async function load() {
 }
 
 async function save() {
-  if (!repo.value) {
+  if (!repo.value || !isOwner.value) {
     return
   }
 
@@ -156,6 +173,10 @@ async function save() {
 }
 
 async function remove() {
+  if (!isOwner.value) {
+    return
+  }
+  
   if (!confirm(i18n.global.t('settings.confirmDelete', { path: props.repoPath }))) {
     return
   }
@@ -171,7 +192,14 @@ async function remove() {
   }
 }
 
-watch([() => props.repoPath, repo], load, { immediate: true })
+watch(
+  () => props.repoPath,
+  () => {
+    redirected.value = false
+  },
+)
+
+watch([() => props.repoPath, repo, isOwner], load, { immediate: true })
 </script>
 
 <template>
@@ -182,7 +210,7 @@ watch([() => props.repoPath, repo], load, { immediate: true })
     :loading="repoLoading"
     :error="repoError"
   >
-    <PageState :loading="loading" :error="loadError">
+    <PageState v-if="isOwner" :loading="loading" :error="loadError">
       <form class="overflow-hidden border border-line bg-paper" @submit.prevent="save">
         <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('settings.title') }}</div>
         <div class="p-3 sm:p-4 space-y-4">

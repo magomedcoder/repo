@@ -9,7 +9,7 @@ import RepoShell from '@/components/repo/RepoShell.vue'
 import Icon from '@/components/ui/Icon.vue'
 import LabelPill from '@/components/ui/LabelPill.vue'
 import PageState from '@/components/ui/PageState.vue'
-import { useAuth } from '@/composables/useAuth'
+import { useCanWrite } from '@/composables/useCanWrite'
 import { useRepo } from '@/composables/useRepo'
 import { formatDate, i18n, localizeError } from '@/i18n'
 import { repoLocation } from '@/lib/repoNav'
@@ -19,9 +19,9 @@ const props = defineProps<{
   number: string
 }>()
 
-const auth = useAuth()
 const router = useRouter()
 const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
+const { isAuthenticated, isOwner, username } = useCanWrite(repo)
 const issue = ref<IssueDetail | null>(null)
 const labels = ref<Label[]>([])
 const comment = ref('')
@@ -31,11 +31,10 @@ const busy = ref(false)
 const selected = ref<number[]>([])
 
 const loading = computed(() => dataLoading.value)
-const isOwner = computed(() => !!auth.user.value?.username && !!repo.value && auth.user.value.username === repo.value.owner)
-const canEdit = computed(() => isOwner.value || auth.user.value?.username === issue.value?.author)
+const canEdit = computed(() => isOwner.value || (!!username.value && username.value === issue.value?.author))
 
 function canEditComment(author: string) {
-  return isOwner.value || auth.user.value?.username === author
+  return isOwner.value || username.value === author
 }
 
 async function load() {
@@ -217,7 +216,7 @@ watch([() => props.repoPath, () => props.number], load, { immediate: true })
             />
             <p v-if="!issue.comments.length" class="text-sm text-ink-muted">{{ $t('issues.noComments') }}</p>
 
-            <form class="space-y-2" @submit.prevent="addComment">
+            <form v-if="isAuthenticated" class="space-y-2" @submit.prevent="addComment">
               <textarea v-model="comment" :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-h-24']" required :placeholder="$t('issues.comment')" />
               <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="busy">{{ $t('issues.commentAction') }}</button>
             </form>
