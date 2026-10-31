@@ -13,15 +13,14 @@ const (
 	MinSessionSecretLen = 32
 	DefaultReceiveMax   = 512 << 20
 	DefaultPath         = "config.yaml"
-	DefaultReposRoot    = "data/repos"
+	DefaultSiteName     = "Repo"
+	DefaultBranch       = "main"
 )
 
 type Config struct {
 	HTTPAddr          string   `yaml:"http_addr"`
 	DataDir           string   `yaml:"data_dir"`
-	DBPath            string   `yaml:"db_path"`
-	ReposRoot         string   `yaml:"repos_root"`
-	AvatarsDir        string   `yaml:"avatars_dir"`
+	SiteName          string   `yaml:"site_name"`
 	CookieSecure      bool     `yaml:"cookie_secure"`
 	SessionSecret     string   `yaml:"session_secret"`
 	AllowRegistration bool     `yaml:"allow_registration"`
@@ -34,9 +33,7 @@ func Default() Config {
 	return Config{
 		HTTPAddr:        ":8080",
 		DataDir:         "data",
-		DBPath:          "data/db.sqlite",
-		ReposRoot:       DefaultReposRoot,
-		AvatarsDir:      "data/avatars",
+		SiteName:        DefaultSiteName,
 		ReceiveMaxBytes: DefaultReceiveMax,
 	}
 }
@@ -64,16 +61,9 @@ func Load(path string) (Config, error) {
 		cfg.DataDir = "data"
 	}
 
-	if cfg.DBPath == "" {
-		cfg.DBPath = "data/db.sqlite"
-	}
-
-	if cfg.ReposRoot == "" {
-		cfg.ReposRoot = DefaultReposRoot
-	}
-
-	if cfg.AvatarsDir == "" {
-		cfg.AvatarsDir = "data/avatars"
+	cfg.SiteName = strings.TrimSpace(cfg.SiteName)
+	if cfg.SiteName == "" {
+		cfg.SiteName = DefaultSiteName
 	}
 
 	if cfg.ReceiveMaxBytes <= 0 {

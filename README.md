@@ -1,6 +1,6 @@
 # Repo
 
-Git. Simple and light.
+Lightweight Git hosting.
 
 ## Commands
 
@@ -8,8 +8,6 @@ Git. Simple and light.
 make build
 
 make test
-
-./build/repo
 
 ./build/repo serve
 

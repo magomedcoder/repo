@@ -8,8 +8,8 @@ import (
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
-		runServe()
-		return
+		printUsage()
+		os.Exit(2)
 	}
 
 	switch args[0] {
@@ -31,11 +31,11 @@ func main() {
 
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage:
-  repo                 start HTTP server (default)
   repo serve           start HTTP server
   repo user create     create a user
 
 Examples:
+  repo serve
   repo user create -username owner -email owner@localhost -password 'secret123'
 `)
 }

@@ -1,25 +1,27 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 var (
-	ErrIssueTitleRequired  = errors.New("issue_title_required")
-	ErrIssueNotFound       = errors.New("issue_not_found")
-	ErrIssueForbidden      = errors.New("issue_forbidden")
-	ErrInvalidIssueState   = errors.New("invalid_issue_state")
-	ErrCommentBodyRequired = errors.New("comment_body_required")
-	ErrCommentNotFound     = errors.New("comment_not_found")
-	ErrLabelNameRequired   = errors.New("label_name_required")
-	ErrLabelNotFound       = errors.New("label_not_found")
-	ErrLabelExists         = errors.New("label_already_exists")
-	ErrInvalidLabel        = errors.New("invalid_label")
+	ErrIssueTitleRequired  = NewError(KindValidation, "issue_title_required")
+	ErrIssueNotFound       = NewError(KindNotFound, "issue_not_found")
+	ErrIssueForbidden      = NewError(KindForbidden, "issue_forbidden")
+	ErrInvalidIssueState   = NewError(KindValidation, "invalid_issue_state")
+	ErrCommentBodyRequired = NewError(KindValidation, "comment_body_required")
+	ErrCommentNotFound     = NewError(KindNotFound, "comment_not_found")
+	ErrLabelNameRequired   = NewError(KindValidation, "label_name_required")
+	ErrLabelNotFound       = NewError(KindNotFound, "label_not_found")
+	ErrLabelExists         = NewError(KindConflict, "label_already_exists")
+	ErrInvalidLabel        = NewError(KindValidation, "invalid_label")
+	ErrIssuesDisabled      = NewError(KindNotFound, "issues_disabled")
 )
 
 type LabelItem struct {
@@ -77,7 +79,8 @@ func NewIssueUseCase(
 	}
 }
 
-func (uc *IssueUseCase) List(in ResolveRepositoryInput, state string, offset, limit int) ([]IssueItem, error) {
+func (uc *IssueUseCase) List(ctx context.Context, in ResolveRepositoryInput, state string, offset, limit int) ([]IssueItem, error) {
+	_ = ctx.Err()
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
@@ -103,7 +106,8 @@ func (uc *IssueUseCase) List(in ResolveRepositoryInput, state string, offset, li
 	return uc.mapIssues(issues)
 }
 
-func (uc *IssueUseCase) Get(in ResolveRepositoryInput, number int) (*IssueDetail, error) {
+func (uc *IssueUseCase) Get(ctx context.Context, in ResolveRepositoryInput, number int) (*IssueDetail, error) {
+	_ = ctx.Err()
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
@@ -135,7 +139,8 @@ func (uc *IssueUseCase) Get(in ResolveRepositoryInput, number int) (*IssueDetail
 	}, nil
 }
 
-func (uc *IssueUseCase) Create(in ResolveRepositoryInput, title, body string, labelIDs []uint) (*IssueItem, error) {
+func (uc *IssueUseCase) Create(ctx context.Context, in ResolveRepositoryInput, title, body string, labelIDs []uint) (*IssueItem, error) {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -176,7 +181,8 @@ func (uc *IssueUseCase) Create(in ResolveRepositoryInput, title, body string, la
 	return uc.mapIssue(issue)
 }
 
-func (uc *IssueUseCase) Update(in ResolveRepositoryInput, number int, title *string, body *string, state *string, labelIDs *[]uint) (*IssueItem, error) {
+func (uc *IssueUseCase) Update(ctx context.Context, in ResolveRepositoryInput, number int, title *string, body *string, state *string, labelIDs *[]uint) (*IssueItem, error) {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -240,7 +246,8 @@ func (uc *IssueUseCase) Update(in ResolveRepositoryInput, number int, title *str
 	return uc.mapIssue(issue)
 }
 
-func (uc *IssueUseCase) Delete(in ResolveRepositoryInput, number int) error {
+func (uc *IssueUseCase) Delete(ctx context.Context, in ResolveRepositoryInput, number int) error {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return ErrUnauthorized
 	}
@@ -266,7 +273,8 @@ func (uc *IssueUseCase) Delete(in ResolveRepositoryInput, number int) error {
 	return nil
 }
 
-func (uc *IssueUseCase) AddComment(in ResolveRepositoryInput, number int, body string) (*CommentItem, error) {
+func (uc *IssueUseCase) AddComment(ctx context.Context, in ResolveRepositoryInput, number int, body string) (*CommentItem, error) {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -294,7 +302,8 @@ func (uc *IssueUseCase) AddComment(in ResolveRepositoryInput, number int, body s
 	return uc.mapComment(comment)
 }
 
-func (uc *IssueUseCase) UpdateComment(in ResolveRepositoryInput, number, commentID int, body string) (*CommentItem, error) {
+func (uc *IssueUseCase) UpdateComment(ctx context.Context, in ResolveRepositoryInput, number, commentID int, body string) (*CommentItem, error) {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -331,7 +340,8 @@ func (uc *IssueUseCase) UpdateComment(in ResolveRepositoryInput, number, comment
 	return uc.mapComment(comment)
 }
 
-func (uc *IssueUseCase) DeleteComment(in ResolveRepositoryInput, number, commentID int) error {
+func (uc *IssueUseCase) DeleteComment(ctx context.Context, in ResolveRepositoryInput, number, commentID int) error {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return ErrUnauthorized
 	}
@@ -362,7 +372,8 @@ func (uc *IssueUseCase) DeleteComment(in ResolveRepositoryInput, number, comment
 	return nil
 }
 
-func (uc *IssueUseCase) ListLabels(in ResolveRepositoryInput) ([]LabelItem, error) {
+func (uc *IssueUseCase) ListLabels(ctx context.Context, in ResolveRepositoryInput) ([]LabelItem, error) {
+	_ = ctx.Err()
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
@@ -376,7 +387,8 @@ func (uc *IssueUseCase) ListLabels(in ResolveRepositoryInput) ([]LabelItem, erro
 	return mapLabels(labels), nil
 }
 
-func (uc *IssueUseCase) CreateLabel(in ResolveRepositoryInput, name, color string) (*LabelItem, error) {
+func (uc *IssueUseCase) CreateLabel(ctx context.Context, in ResolveRepositoryInput, name, color string) (*LabelItem, error) {
+	_ = ctx.Err()
 	repo, err := uc.ownerRepo(in)
 	if err != nil {
 		return nil, err
@@ -407,7 +419,8 @@ func (uc *IssueUseCase) CreateLabel(in ResolveRepositoryInput, name, color strin
 	return &item, nil
 }
 
-func (uc *IssueUseCase) UpdateLabel(in ResolveRepositoryInput, id uint, name, color *string) (*LabelItem, error) {
+func (uc *IssueUseCase) UpdateLabel(ctx context.Context, in ResolveRepositoryInput, id uint, name, color *string) (*LabelItem, error) {
+	_ = ctx.Err()
 	repo, err := uc.ownerRepo(in)
 	if err != nil {
 		return nil, err
@@ -445,7 +458,8 @@ func (uc *IssueUseCase) UpdateLabel(in ResolveRepositoryInput, id uint, name, co
 	return &item, nil
 }
 
-func (uc *IssueUseCase) DeleteLabel(in ResolveRepositoryInput, id uint) error {
+func (uc *IssueUseCase) DeleteLabel(ctx context.Context, in ResolveRepositoryInput, id uint) error {
+	_ = ctx.Err()
 	repo, err := uc.ownerRepo(in)
 	if err != nil {
 		return err
@@ -471,7 +485,16 @@ func (uc *IssueUseCase) DeleteLabel(in ResolveRepositoryInput, id uint) error {
 }
 
 func (uc *IssueUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	return ResolveReadable(uc.repos, uc.folders, uc.users, in)
+	repo, err := ResolveReadable(uc.repos, uc.folders, uc.users, in)
+	if err != nil {
+		return nil, err
+	}
+
+	if !repo.IssuesEnabled {
+		return nil, ErrIssuesDisabled
+	}
+
+	return repo, nil
 }
 
 func (uc *IssueUseCase) ownerRepo(in ResolveRepositoryInput) (*domain.Repository, error) {
@@ -664,5 +687,5 @@ func normalizeColor(raw string) string {
 }
 
 func isNotFound(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "record not found")
+	return errors.Is(err, domain.ErrNotFound)
 }

@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type repositoryModel struct {
@@ -21,6 +21,7 @@ type repositoryModel struct {
 	IsPrivate            bool   `gorm:"not null;default:false"`
 	ShowOnHome           bool   `gorm:"not null;default:false"`
 	ProtectDefaultBranch bool   `gorm:"not null;default:true"`
+	IssuesEnabled        bool   `gorm:"not null;default:true"`
 	DefaultBranch        string `gorm:"size:255;not null;default:main"`
 	Path                 string `gorm:"not null"`
 	RepoPath             string `gorm:"size:512;not null;default:''"`
@@ -47,6 +48,7 @@ func (m repositoryModel) toDomain() domain.Repository {
 		IsPrivate:            m.IsPrivate,
 		ShowOnHome:           m.ShowOnHome && !m.IsPrivate,
 		ProtectDefaultBranch: m.ProtectDefaultBranch,
+		IssuesEnabled:        m.IssuesEnabled,
 		DefaultBranch:        m.DefaultBranch,
 		Path:                 m.Path,
 		RepoPath:             m.RepoPath,
@@ -78,6 +80,7 @@ func fromDomain(repo *domain.Repository) *repositoryModel {
 		IsPrivate:            repo.IsPrivate,
 		ShowOnHome:           repo.ShowOnHome && !repo.IsPrivate,
 		ProtectDefaultBranch: repo.ProtectDefaultBranch,
+		IssuesEnabled:        repo.IssuesEnabled,
 		DefaultBranch:        repo.DefaultBranch,
 		Path:                 repo.Path,
 		RepoPath:             repo.RepoPath,

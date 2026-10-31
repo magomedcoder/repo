@@ -2,13 +2,13 @@ package i18n
 
 import (
 	"context"
-	"encoding/json"
+	json "encoding/json/v2"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 
-	"repo.magomedcoder.ru/repo/langs"
+	"magomedcoder.ru/repo/langs"
 )
 
 type Locale string

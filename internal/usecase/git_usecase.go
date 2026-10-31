@@ -1,12 +1,13 @@
 package usecase
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type GitService string
@@ -45,7 +46,8 @@ func NewGitUseCase(
 	}
 }
 
-func (uc *GitUseCase) ResolveClonePath(path string) (*domain.Repository, error) {
+func (uc *GitUseCase) ResolveClonePath(ctx context.Context, path string) (*domain.Repository, error) {
+	_ = ctx.Err()
 	path = strings.Trim(strings.TrimSpace(path), "/")
 	if path == "" {
 		return nil, ErrRepoNotFound
@@ -70,7 +72,8 @@ func (uc *GitUseCase) ResolveClonePath(path string) (*domain.Repository, error) 
 	return repo, nil
 }
 
-func (uc *GitUseCase) Authenticate(username, secret string) (*domain.User, error) {
+func (uc *GitUseCase) Authenticate(ctx context.Context, username, secret string) (*domain.User, error) {
+	_ = ctx.Err()
 	username = strings.ToLower(strings.TrimSpace(username))
 	secret = strings.TrimSpace(secret)
 
@@ -137,7 +140,8 @@ func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 	return sanitizeUser(user), nil
 }
 
-func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, service GitService) error {
+func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, viewer *domain.User, service GitService) error {
+	_ = ctx.Err()
 	switch service {
 	case GitUploadPack:
 		if !repo.IsPrivate {
@@ -168,23 +172,28 @@ func (uc *GitUseCase) Authorize(repo *domain.Repository, viewer *domain.User, se
 	}
 }
 
-func (uc *GitUseCase) AdvertiseRefs(repoPath string, service GitService, w io.Writer) error {
-	return uc.git.AdvertiseRefs(repoPath, string(service), w)
+func (uc *GitUseCase) AdvertiseRefs(ctx context.Context, repoPath string, service GitService, w io.Writer) error {
+	_ = ctx.Err()
+	return uc.git.AdvertiseRefs(ctx, repoPath, string(service), w)
 }
 
-func (uc *GitUseCase) ServePack(repoPath string, service GitService, stdin io.Reader, stdout io.Writer) error {
-	return uc.git.ServePack(repoPath, string(service), stdin, stdout)
+func (uc *GitUseCase) ServePack(ctx context.Context, repoPath string, service GitService, stdin io.Reader, stdout io.Writer) error {
+	_ = ctx.Err()
+	return uc.git.ServePack(ctx, repoPath, string(service), stdin, stdout)
 }
 
-func (uc *GitUseCase) EnsureDefaultBranch(repoPath, branch string) error {
+func (uc *GitUseCase) EnsureDefaultBranch(ctx context.Context, repoPath, branch string) error {
+	_ = ctx.Err()
 	return uc.git.EnsureDefaultBranch(repoPath, branch)
 }
 
-func (uc *GitUseCase) Ancestor(repoPath, oldRev, newRev string) (bool, error) {
+func (uc *GitUseCase) Ancestor(ctx context.Context, repoPath, oldRev, newRev string) (bool, error) {
+	_ = ctx.Err()
 	return uc.git.CanFastForward(repoPath, oldRev, newRev)
 }
 
-func (uc *GitUseCase) TouchActivity(repo *domain.Repository, actorID uint) error {
+func (uc *GitUseCase) TouchActivity(ctx context.Context, repo *domain.Repository, actorID uint) error {
+	_ = ctx.Err()
 	if repo == nil {
 		return nil
 	}

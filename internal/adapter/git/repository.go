@@ -11,7 +11,7 @@ import (
 	gogit "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/transport"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type Repository struct {
@@ -20,11 +20,16 @@ type Repository struct {
 	stats *statsCache
 }
 
-func NewRepository() *Repository {
+func NewRepository(dataDir string) *Repository {
 	return &Repository{
+		Root:  filepath.Join(dataDir, "repos"),
 		opens: newOpenCache(32),
 		stats: newStatsCache(),
 	}
+}
+
+func (r *Repository) GetReposRoot() string {
+	return r.Root
 }
 
 func (r *Repository) InitBare(path string, opts domain.BareInitOptions) error {
@@ -148,14 +153,16 @@ func (r *Repository) Move(oldPath, newPath string) error {
 	return nil
 }
 
-func (r *Repository) AdvertiseRefs(repoPath, service string, w io.Writer) error {
+func (r *Repository) AdvertiseRefs(ctx context.Context, repoPath, service string, w io.Writer) error {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return err
 	}
 
 	service = normalizeService(service)
-	ctx := context.Background()
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	empty := io.NopCloser(strings.NewReader(""))
 	out := nopCloser{w}
 	if strings.Contains(service, "receive") {
@@ -171,14 +178,16 @@ func (r *Repository) AdvertiseRefs(repoPath, service string, w io.Writer) error 
 	})
 }
 
-func (r *Repository) ServePack(repoPath, service string, stdin io.Reader, stdout io.Writer) error {
+func (r *Repository) ServePack(ctx context.Context, repoPath, service string, stdin io.Reader, stdout io.Writer) error {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return err
 	}
 
 	service = normalizeService(service)
-	ctx := context.Background()
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	in := io.NopCloser(stdin)
 	out := nopCloser{stdout}
 	if strings.Contains(service, "receive") {

@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 type schemaMeta struct {
 	ID      uint `gorm:"primaryKey"`
@@ -40,6 +40,20 @@ func applyVersionedMigrations(db *gorm.DB) error {
 			return fmt.Errorf("migrate v1 root paths: %w", err)
 		}
 		meta.Version = 1
+		if err := db.Save(&meta).Error; err != nil {
+			return err
+		}
+	}
+
+	if meta.Version < 2 {
+		if err := db.Exec(`
+			UPDATE repositories
+			SET issues_enabled = 1
+			WHERE deleted_at IS NULL
+		`).Error; err != nil {
+			return fmt.Errorf("migrate v2 issues_enabled: %w", err)
+		}
+		meta.Version = 2
 		if err := db.Save(&meta).Error; err != nil {
 			return err
 		}

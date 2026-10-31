@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type accessTokenModel struct {
@@ -73,7 +73,7 @@ func (s *AccessTokenStore) ListByUserID(userID uint) ([]domain.AccessToken, erro
 func (s *AccessTokenStore) FindByHash(hash string) (*domain.AccessToken, error) {
 	var model accessTokenModel
 	if err := s.db.Where("token_hash = ?", hash).First(&model).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	t := model.toDomain()
@@ -87,7 +87,7 @@ func (s *AccessTokenStore) DeleteByUserAndID(userID, id uint) error {
 	}
 
 	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 
 	return nil

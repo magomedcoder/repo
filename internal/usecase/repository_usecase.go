@@ -1,23 +1,25 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"magomedcoder.ru/repo/internal/config"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 var (
-	ErrNameRequired      = errors.New("repository_name_required")
-	ErrAlreadyExists     = errors.New("repository_already_exists")
-	ErrInvalidName       = errors.New("invalid_repository_name")
-	ErrRepoNotFound      = errors.New("repository_not_found")
-	ErrRepoForbidden     = errors.New("repository_access_denied")
-	ErrInvalidBranchName = errors.New("invalid_default_branch")
+	ErrNameRequired      = NewError(KindValidation, "repository_name_required")
+	ErrAlreadyExists     = NewError(KindConflict, "repository_already_exists")
+	ErrInvalidName       = NewError(KindValidation, "invalid_repository_name")
+	ErrRepoNotFound      = NewError(KindNotFound, "repository_not_found")
+	ErrRepoForbidden     = NewError(KindForbidden, "repository_access_denied")
+	ErrInvalidBranchName = NewError(KindValidation, "invalid_default_branch")
 )
 
 var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
@@ -32,7 +34,6 @@ type CreateRepositoryInput struct {
 	Private       bool
 	ShowOnHome    bool
 	DefaultBranch string
-	BasePath      string
 }
 
 type UpdateRepositoryInput struct {
@@ -45,7 +46,7 @@ type UpdateRepositoryInput struct {
 	ShowOnHome           *bool
 	DefaultBranch        *string
 	ProtectDefaultBranch *bool
-	BasePath             string
+	IssuesEnabled        *bool
 }
 
 type MoveRepositoryInput struct {
@@ -53,7 +54,6 @@ type MoveRepositoryInput struct {
 	FolderPath    string
 	Name          string
 	NewFolderPath string
-	BasePath      string
 }
 
 type ResolveRepositoryInput struct {
@@ -72,8 +72,9 @@ type RepositoryItem struct {
 	IsPrivate            bool       `json:"is_private"`
 	ShowOnHome           bool       `json:"show_on_home"`
 	ProtectDefaultBranch bool       `json:"protect_default_branch"`
+	IssuesEnabled        bool       `json:"issues_enabled"`
 	DefaultBranch        string     `json:"default_branch"`
-	LastActivityAt       *time.Time `json:"last_activity_at,omitempty"`
+	LastActivityAt       *time.Time `json:"last_activity_at,omitzero"`
 	RepoPath             string     `json:"repo_path"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
@@ -103,7 +104,8 @@ func NewRepositoryUseCase(
 	}
 }
 
-func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, error) {
+func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInput) (*RepositoryItem, error) {
+	_ = ctx.Err()
 	viewerID := in.ViewerID
 	if viewerID == 0 {
 		viewerID = in.OwnerID
@@ -202,18 +204,14 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, 
 
 	branch := strings.TrimSpace(in.DefaultBranch)
 	if branch == "" {
-		branch = DefaultBranch
+		branch = config.DefaultBranch
 	}
 
 	if err := validateBranchName(branch); err != nil {
 		return nil, err
 	}
 
-	basePath := in.BasePath
-	if basePath == "" {
-		basePath = DefaultReposRoot
-	}
-	repoPath := buildRepoDiskPath(basePath, ownerKind, ownerID, folderPath, name)
+	repoPath := buildRepoDiskPath(uc.git.GetReposRoot(), ownerKind, ownerID, folderPath, name)
 
 	if err := uc.git.InitBare(repoPath, domain.BareInitOptions{
 		DefaultBranch:        branch,
@@ -232,6 +230,7 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, 
 		IsPrivate:            in.Private,
 		ShowOnHome:           !in.Private && in.ShowOnHome,
 		ProtectDefaultBranch: true,
+		IssuesEnabled:        true,
 		DefaultBranch:        branch,
 		Path:                 repoPath,
 	}
@@ -253,7 +252,8 @@ func (uc *RepositoryUseCase) Create(in CreateRepositoryInput) (*RepositoryItem, 
 	return &item, nil
 }
 
-func (uc *RepositoryUseCase) ListOwn(ownerID uint, limit, offset int) ([]RepositoryItem, error) {
+func (uc *RepositoryUseCase) ListOwn(ctx context.Context, ownerID uint, limit, offset int) ([]RepositoryItem, error) {
+	_ = ctx.Err()
 	if ownerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -271,7 +271,8 @@ func (uc *RepositoryUseCase) ListOwn(ownerID uint, limit, offset int) ([]Reposit
 	return uc.mapRepos(repos, owner.Username)
 }
 
-func (uc *RepositoryUseCase) ListPublic(limit, offset int) ([]RepositoryItem, error) {
+func (uc *RepositoryUseCase) ListPublic(ctx context.Context, limit, offset int) ([]RepositoryItem, error) {
+	_ = ctx.Err()
 	offset, limit = NormalizePagination(offset, limit)
 	repos, err := uc.store.ListPublic(limit, offset)
 	if err != nil {
@@ -281,7 +282,8 @@ func (uc *RepositoryUseCase) ListPublic(limit, offset int) ([]RepositoryItem, er
 	return uc.mapReposWithOwners(repos)
 }
 
-func (uc *RepositoryUseCase) ListHome(limit, offset int) ([]RepositoryItem, error) {
+func (uc *RepositoryUseCase) ListHome(ctx context.Context, limit, offset int) ([]RepositoryItem, error) {
+	_ = ctx.Err()
 	offset, limit = NormalizePagination(offset, limit)
 	repos, err := uc.store.ListHome(limit, offset)
 	if err != nil {
@@ -291,7 +293,8 @@ func (uc *RepositoryUseCase) ListHome(limit, offset int) ([]RepositoryItem, erro
 	return uc.mapReposWithOwners(repos)
 }
 
-func (uc *RepositoryUseCase) Search(query string, ownerID uint, publicOnly bool, limit, offset int) ([]RepositoryItem, error) {
+func (uc *RepositoryUseCase) Search(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int) ([]RepositoryItem, error) {
+	_ = ctx.Err()
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return nil, nil
@@ -315,7 +318,8 @@ func (uc *RepositoryUseCase) Search(query string, ownerID uint, publicOnly bool,
 	return uc.mapRepos(repos, owner.Username)
 }
 
-func (uc *RepositoryUseCase) Get(in ResolveRepositoryInput) (*RepositoryItem, error) {
+func (uc *RepositoryUseCase) Get(ctx context.Context, in ResolveRepositoryInput) (*RepositoryItem, error) {
+	_ = ctx.Err()
 	repo, ownerSlug, folderPath, err := uc.resolve(in)
 	if err != nil {
 		if in.ViewerID == 0 && errors.Is(err, ErrRepoNotFound) {
@@ -332,7 +336,8 @@ func (uc *RepositoryUseCase) Get(in ResolveRepositoryInput) (*RepositoryItem, er
 	return &item, nil
 }
 
-func (uc *RepositoryUseCase) Update(in UpdateRepositoryInput) (*RepositoryItem, error) {
+func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInput) (*RepositoryItem, error) {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -398,6 +403,10 @@ func (uc *RepositoryUseCase) Update(in UpdateRepositoryInput) (*RepositoryItem, 
 		repo.ProtectDefaultBranch = *in.ProtectDefaultBranch
 	}
 
+	if in.IssuesEnabled != nil {
+		repo.IssuesEnabled = *in.IssuesEnabled
+	}
+
 	oldDisk := repo.Path
 	renamed := false
 	if in.NewName != nil {
@@ -429,12 +438,7 @@ func (uc *RepositoryUseCase) Update(in UpdateRepositoryInput) (*RepositoryItem, 
 				return nil, ErrAlreadyExists
 			}
 
-			basePath := in.BasePath
-			if basePath == "" {
-				basePath = DefaultReposRoot
-			}
-
-			newDisk := buildRepoDiskPath(basePath, repo.OwnerKind, repo.OwnerID, folderPath, newName)
+			newDisk := buildRepoDiskPath(uc.git.GetReposRoot(), repo.OwnerKind, repo.OwnerID, folderPath, newName)
 			if err := uc.git.Move(oldDisk, newDisk); err != nil {
 				return nil, fmt.Errorf("rename repository files: %w", err)
 			}
@@ -463,7 +467,8 @@ func (uc *RepositoryUseCase) Update(in UpdateRepositoryInput) (*RepositoryItem, 
 	return &item, nil
 }
 
-func (uc *RepositoryUseCase) Delete(in ResolveRepositoryInput) error {
+func (uc *RepositoryUseCase) Delete(ctx context.Context, in ResolveRepositoryInput) error {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return ErrUnauthorized
 	}
@@ -478,18 +483,19 @@ func (uc *RepositoryUseCase) Delete(in ResolveRepositoryInput) error {
 	}
 
 	diskPath := repo.Path
-	if err := uc.store.Delete(repo.ID); err != nil {
-		return fmt.Errorf("delete repository metadata: %w", err)
+	metaErr := uc.store.Delete(repo.ID)
+	diskErr := uc.git.Remove(diskPath)
+	if metaErr != nil {
+		metaErr = fmt.Errorf("delete repository metadata: %w", metaErr)
 	}
-
-	if err := uc.git.Remove(diskPath); err != nil {
-		return fmt.Errorf("delete repository files (metadata soft-deleted): %w", err)
+	if diskErr != nil {
+		diskErr = fmt.Errorf("delete repository files: %w", diskErr)
 	}
-
-	return nil
+	return errors.Join(metaErr, diskErr)
 }
 
-func (uc *RepositoryUseCase) Move(in MoveRepositoryInput) (*RepositoryItem, error) {
+func (uc *RepositoryUseCase) Move(ctx context.Context, in MoveRepositoryInput) (*RepositoryItem, error) {
+	_ = ctx.Err()
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -543,13 +549,8 @@ func (uc *RepositoryUseCase) Move(in MoveRepositoryInput) (*RepositoryItem, erro
 		return nil, ErrAlreadyExists
 	}
 
-	basePath := in.BasePath
-	if basePath == "" {
-		basePath = DefaultReposRoot
-	}
-
 	oldPath := repo.Path
-	newPath := buildRepoDiskPath(basePath, repo.OwnerKind, repo.OwnerID, newFolderPath, repo.Name)
+	newPath := buildRepoDiskPath(uc.git.GetReposRoot(), repo.OwnerKind, repo.OwnerID, newFolderPath, repo.Name)
 
 	if err := uc.git.Move(oldPath, newPath); err != nil {
 		return nil, fmt.Errorf("move repository files: %w", err)
@@ -767,6 +768,7 @@ func toRepositoryItem(repo *domain.Repository, ownerUsername, folderPath string)
 		IsPrivate:            repo.IsPrivate,
 		ShowOnHome:           repo.ShowOnHome && !repo.IsPrivate,
 		ProtectDefaultBranch: repo.ProtectDefaultBranch,
+		IssuesEnabled:        repo.IssuesEnabled,
 		DefaultBranch:        repo.DefaultBranch,
 		LastActivityAt:       repo.LastActivityAt,
 		RepoPath:             repo.RepoPath,

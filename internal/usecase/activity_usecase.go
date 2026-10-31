@@ -1,22 +1,26 @@
 package usecase
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
+	"maps"
+	"slices"
 	"strings"
+	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type ActivityItem struct {
-	ID        uint   `json:"id"`
-	Type      string `json:"type"`
-	Summary   string `json:"summary"`
-	Ref       string `json:"ref,omitempty"`
-	Actor     string `json:"actor"`
-	Owner     string `json:"owner"`
-	OwnerKind string `json:"owner_kind"`
-	CreatedAt any    `json:"created_at"`
+	ID        uint      `json:"id"`
+	Type      string    `json:"type"`
+	Summary   string    `json:"summary"`
+	Ref       string    `json:"ref,omitzero"`
+	Actor     string    `json:"actor"`
+	Owner     string    `json:"owner"`
+	OwnerKind string    `json:"owner_kind"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type ActivityUseCase struct {
@@ -37,7 +41,8 @@ func NewActivityUseCase(
 	}
 }
 
-func (uc *ActivityUseCase) ListOwner(ownerSlug string, viewerID uint, limit int) ([]ActivityItem, error) {
+func (uc *ActivityUseCase) ListOwner(ctx context.Context, ownerSlug string, viewerID uint, limit int) ([]ActivityItem, error) {
+	_ = ctx.Err()
 	slug := strings.ToLower(strings.TrimSpace(ownerSlug))
 	kind, id, err := uc.resolveOwner(slug)
 	if err != nil {
@@ -108,10 +113,7 @@ func (uc *ActivityUseCase) mapEvents(events []domain.ActivityEvent) ([]ActivityI
 		}
 	}
 
-	ids := make([]uint, 0, len(idSet))
-	for id := range idSet {
-		ids = append(ids, id)
-	}
+	ids := slices.Collect(maps.Keys(idSet))
 
 	usersByID, err := uc.users.FindByIDs(ids)
 	if err != nil {
@@ -151,7 +153,7 @@ func recordActivity(store domain.ActivityStore, ev *domain.ActivityEvent) {
 	}
 
 	if err := store.Create(ev); err != nil {
-		log.Printf("activity: create event: %v", err)
+		slog.Error("activity: create event", "err", err)
 	}
 }
 

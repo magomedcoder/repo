@@ -1,11 +1,10 @@
 package handler
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type PullRequestHandler struct {
@@ -28,71 +27,63 @@ type pullMergeRequest struct {
 	Strategy string `json:"strategy"`
 }
 
-func (h *PullRequestHandler) get(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
+func (h *PullRequestHandler) get(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "pulls":
-		offset, limit := usecase.ParseOffsetLimit(r.URL.Query().Get("offset"), r.URL.Query().Get("limit"))
-		items, err := h.pulls.List(in, r.URL.Query().Get("state"), offset, limit)
+		offset, limit := usecase.ParseOffsetLimit(c.Query("offset"), c.Query("limit"))
+		items, err := h.pulls.List(c.Ctx(), in, c.Query("state"), offset, limit)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"pulls": items})
+		return httpx.OK(c, pullsResponse{Pulls: items})
 	case "pull":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "pull_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "pull_not_found")
 		}
 
-		item, err := h.pulls.Get(in, number)
+		item, err := h.pulls.Get(c.Ctx(), in, number)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 	case "pull-diff":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "pull_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "pull_not_found")
 		}
 
-		item, err := h.pulls.Diff(in, number)
+		item, err := h.pulls.Diff(c.Ctx(), in, number)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 	case "pull-commits":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "pull_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "pull_not_found")
 		}
 
-		items, err := h.pulls.Commits(in, number)
+		items, err := h.pulls.Commits(c.Ctx(), in, number)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"commits": items})
+		return httpx.OK(c, commitsResponse{Commits: items})
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func (h *PullRequestHandler) post(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
+func (h *PullRequestHandler) post(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "pulls":
-		var req pullWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
+		req, err := httpx.BindJSON[pullWriteRequest](c)
+		if err != nil {
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
 
 		title, body, base, head := "", "", "", ""
@@ -112,133 +103,116 @@ func (h *PullRequestHandler) post(w http.ResponseWriter, r *http.Request, in use
 			head = *req.HeadBranch
 		}
 
-		item, err := h.pulls.Create(in, title, body, base, head)
+		item, err := h.pulls.Create(c.Ctx(), in, title, body, base, head)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusCreated, item)
+		return httpx.Created(c, item)
 	case "pull-comments":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "pull_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "pull_not_found")
 		}
 
-		var req commentWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
-		}
-
-		item, err := h.pulls.AddComment(in, number, req.Body)
+		req, err := httpx.BindJSON[commentWriteRequest](c)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
 
-		writeJSON(w, http.StatusCreated, item)
+		item, err := h.pulls.AddComment(c.Ctx(), in, number, req.Body)
+		if err != nil {
+			return mapError(c, err)
+		}
+
+		return httpx.Created(c, item)
 	case "pull-merge":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "pull_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "pull_not_found")
 		}
 
-		var req pullMergeRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		item, err := h.pulls.Merge(in, number, req.Strategy)
+		req, _ := httpx.BindJSON[pullMergeRequest](c)
+		item, err := h.pulls.Merge(c.Ctx(), in, number, req.Strategy)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func (h *PullRequestHandler) patch(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
+func (h *PullRequestHandler) patch(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "pull":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "pull_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "pull_not_found")
 		}
 
-		var req pullWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
-		}
-
-		item, err := h.pulls.Update(in, number, req.Title, req.Body, req.State, req.BaseBranch, req.HeadBranch)
+		req, err := httpx.BindJSON[pullWriteRequest](c)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		item, err := h.pulls.Update(c.Ctx(), in, number, req.Title, req.Body, req.State, req.BaseBranch, req.HeadBranch)
+		if err != nil {
+			return mapError(c, err)
+		}
+
+		return httpx.OK(c, item)
 	case "pull-comment":
 		number, ok := parsePositive(extra[0])
 		commentID, okID := parsePositive(extra[1])
 		if !ok || !okID {
-			writeError(w, r, http.StatusBadRequest, "comment_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "comment_not_found")
 		}
 
-		var req commentWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
-		}
-
-		item, err := h.pulls.UpdateComment(in, number, uint(commentID), req.Body)
+		req, err := httpx.BindJSON[commentWriteRequest](c)
 		if err != nil {
-			writePullError(w, r, err)
-			return
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		item, err := h.pulls.UpdateComment(c.Ctx(), in, number, uint(commentID), req.Body)
+		if err != nil {
+			return mapError(c, err)
+		}
+
+		return httpx.OK(c, item)
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func (h *PullRequestHandler) delete(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
+func (h *PullRequestHandler) delete(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "pull":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "pull_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "pull_not_found")
 		}
 
-		if err := h.pulls.Delete(in, number); err != nil {
-			writePullError(w, r, err)
-			return
+		if err := h.pulls.Delete(c.Ctx(), in, number); err != nil {
+			return mapError(c, err)
 		}
 
-		w.WriteHeader(http.StatusNoContent)
+		return c.NoContent()
 	case "pull-comment":
 		number, ok := parsePositive(extra[0])
 		commentID, okID := parsePositive(extra[1])
 		if !ok || !okID {
-			writeError(w, r, http.StatusBadRequest, "comment_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "comment_not_found")
 		}
 
-		if err := h.pulls.DeleteComment(in, number, uint(commentID)); err != nil {
-			writePullError(w, r, err)
-			return
+		if err := h.pulls.DeleteComment(c.Ctx(), in, number, uint(commentID)); err != nil {
+			return mapError(c, err)
 		}
 
-		w.WriteHeader(http.StatusNoContent)
+		return c.NoContent()
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
@@ -277,32 +251,4 @@ func splitPullPath(parts []string) (action string, repoParts, extra []string, ok
 	}
 
 	return "", nil, nil, false
-}
-
-func writePullError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrPullTitleRequired),
-		errors.Is(err, usecase.ErrInvalidPullState),
-		errors.Is(err, usecase.ErrSameBranch),
-		errors.Is(err, usecase.ErrInvalidMergeStrategy),
-		errors.Is(err, usecase.ErrCommentBodyRequired),
-		errors.Is(err, usecase.ErrPullNotOpen):
-		writeError(w, r, http.StatusBadRequest, err.Error())
-	case errors.Is(err, usecase.ErrBranchNotFound),
-		errors.Is(err, usecase.ErrPullNotFound),
-		errors.Is(err, usecase.ErrCommentNotFound),
-		errors.Is(err, usecase.ErrRepoNotFound),
-		errors.Is(err, usecase.ErrFolderNotFound):
-		writeError(w, r, http.StatusNotFound, err.Error())
-	case errors.Is(err, usecase.ErrMergeConflict),
-		errors.Is(err, usecase.ErrNotFastForward):
-		writeError(w, r, http.StatusConflict, err.Error())
-	case errors.Is(err, usecase.ErrPullForbidden),
-		errors.Is(err, usecase.ErrRepoForbidden):
-		writeError(w, r, http.StatusForbidden, err.Error())
-	case errors.Is(err, usecase.ErrUnauthorized):
-		writeError(w, r, http.StatusUnauthorized, err.Error())
-	default:
-		writeError(w, r, http.StatusInternalServerError, "internal_error")
-	}
 }

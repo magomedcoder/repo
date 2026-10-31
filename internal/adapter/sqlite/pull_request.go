@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type pullRequestModel struct {
@@ -96,7 +96,7 @@ func (s *PullRequestStore) Delete(id uint) error {
 func (s *PullRequestStore) FindByRepoNumber(repoID uint, number int) (*domain.PullRequest, error) {
 	var model pullRequestModel
 	if err := s.db.Where("repository_id = ? AND number = ?", repoID, number).First(&model).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	pr := model.toDomain()
@@ -163,7 +163,7 @@ func (s *PullRequestStore) DeleteComment(id uint) error {
 func (s *PullRequestStore) FindComment(id uint) (*domain.PullRequestComment, error) {
 	var model pullCommentModel
 	if err := s.db.First(&model, id).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	c := model.toDomain()

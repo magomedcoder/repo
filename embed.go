@@ -4,7 +4,7 @@ import (
 	"embed"
 	"net/http"
 
-	"repo.magomedcoder.ru/repo/pkg/spa"
+	"magomedcoder.ru/repo/pkg/spa"
 )
 
 //go:embed all:web/dist

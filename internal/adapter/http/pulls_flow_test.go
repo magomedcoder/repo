@@ -1,7 +1,7 @@
 package http_test
 
 import (
-	"encoding/json"
+	json "encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,13 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/git"
-	deliveryhttp "repo.magomedcoder.ru/repo/internal/adapter/http"
-	"repo.magomedcoder.ru/repo/internal/adapter/http/handler"
-	"repo.magomedcoder.ru/repo/internal/adapter/sqlite"
-	"repo.magomedcoder.ru/repo/internal/usecase"
-	"repo.magomedcoder.ru/repo/pkg/argon2id"
-	"repo.magomedcoder.ru/repo/pkg/token"
+	"magomedcoder.ru/repo/internal/adapter/git"
+	deliveryhttp "magomedcoder.ru/repo/internal/adapter/http"
+	"magomedcoder.ru/repo/internal/adapter/http/handler"
+	"magomedcoder.ru/repo/internal/adapter/sqlite"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/argon2id"
+	"magomedcoder.ru/repo/pkg/token"
 )
 
 func TestPullRequestFlow(t *testing.T) {
@@ -35,11 +35,13 @@ func TestPullRequestFlow(t *testing.T) {
 	}
 
 	t.Cleanup(func() { _ = os.Chdir(wd) })
-	if err := os.MkdirAll(filepath.Join(dir, "data"), 0o755); err != nil {
+
+	dataDir := filepath.Join(dir, "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	db, err := sqlite.NewDB(filepath.Join(dir, "data", "db.sqlite"))
+	db, err := sqlite.NewDB(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,25 +53,25 @@ func TestPullRequestFlow(t *testing.T) {
 	tokenStore := sqlite.NewAccessTokenStore(db)
 	issueStore := sqlite.NewIssueStore(db)
 	pullStore := sqlite.NewPullRequestStore(db)
-	gitRepo := git.NewRepository()
+	gitRepo := git.NewRepository(dataDir)
 	hasher := argon2id.NewHasher()
 	tokens := token.NewGenerator()
 
 	activityStore := sqlite.NewActivityStore(db)
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
 	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
-	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo, t.TempDir())
+	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
-	profileUC := usecase.NewProfileUseCase(userStore, filepath.Join(dir, "data", "avatars"))
+	profileUC := usecase.NewProfileUseCase(userStore, dataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 
 	router := deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),
-		handler.NewRepositoryHandler(repoUC, filepath.Join(dir, "data", "repos")),
+		handler.NewRepositoryHandler(repoUC),
 		handler.NewFolderHandler(folderUC),
 		handler.NewTokenHandler(tokenUC),
 		handler.NewGitHandler(gitUC),
@@ -77,13 +79,14 @@ func TestPullRequestFlow(t *testing.T) {
 		handler.NewPullRequestHandler(pullUC),
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
+		handler.NewSiteHandler("Repo"),
 		authUC,
 		false,
 	)
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
-	if _, err := authUC.CreateUser(usecase.RegisterInput{
+	if _, err := authUC.CreateUser(t.Context(), usecase.RegisterInput{
 		Username: "ada",
 		Email:    "ada@example.com",
 		Password: "password1",

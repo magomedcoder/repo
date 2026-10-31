@@ -1,12 +1,11 @@
 package handler
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
 
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type IssueHandler struct {
@@ -33,51 +32,46 @@ type labelWriteRequest struct {
 	Color *string `json:"color"`
 }
 
-func (h *IssueHandler) get(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
+func (h *IssueHandler) get(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "issues":
-		offset, limit := usecase.ParseOffsetLimit(r.URL.Query().Get("offset"), r.URL.Query().Get("limit"))
-		items, err := h.issues.List(in, r.URL.Query().Get("state"), offset, limit)
+		offset, limit := usecase.ParseOffsetLimit(c.Query("offset"), c.Query("limit"))
+		items, err := h.issues.List(c.Ctx(), in, c.Query("state"), offset, limit)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"issues": items})
+		return httpx.OK(c, issuesResponse{Issues: items})
 	case "issue":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "issue_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "issue_not_found")
 		}
 
-		item, err := h.issues.Get(in, number)
+		item, err := h.issues.Get(c.Ctx(), in, number)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 	case "labels":
-		items, err := h.issues.ListLabels(in)
+		items, err := h.issues.ListLabels(c.Ctx(), in)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"labels": items})
+		return httpx.OK(c, labelsResponse{Labels: items})
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func (h *IssueHandler) post(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
+func (h *IssueHandler) post(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "issues":
-		var req issueWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
+		req, err := httpx.BindJSON[issueWriteRequest](c)
+		if err != nil {
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
 
 		title := ""
@@ -95,36 +89,31 @@ func (h *IssueHandler) post(w http.ResponseWriter, r *http.Request, in usecase.R
 			labels = *req.LabelIDs
 		}
 
-		item, err := h.issues.Create(in, title, body, labels)
+		item, err := h.issues.Create(c.Ctx(), in, title, body, labels)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return mapError(c, err)
 		}
-		writeJSON(w, http.StatusCreated, item)
+		return httpx.Created(c, item)
 	case "issue-comments":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "issue_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "issue_not_found")
 		}
 
-		var req commentWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
-		}
-
-		item, err := h.issues.AddComment(in, number, req.Body)
+		req, err := httpx.BindJSON[commentWriteRequest](c)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
-		writeJSON(w, http.StatusCreated, item)
+
+		item, err := h.issues.AddComment(c.Ctx(), in, number, req.Body)
+		if err != nil {
+			return mapError(c, err)
+		}
+		return httpx.Created(c, item)
 	case "labels":
-		var req labelWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
+		req, err := httpx.BindJSON[labelWriteRequest](c)
+		if err != nil {
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
 
 		name, color := "", ""
@@ -136,123 +125,107 @@ func (h *IssueHandler) post(w http.ResponseWriter, r *http.Request, in usecase.R
 			color = *req.Color
 		}
 
-		item, err := h.issues.CreateLabel(in, name, color)
+		item, err := h.issues.CreateLabel(c.Ctx(), in, name, color)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return mapError(c, err)
 		}
-		writeJSON(w, http.StatusCreated, item)
+		return httpx.Created(c, item)
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func (h *IssueHandler) patch(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
+func (h *IssueHandler) patch(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "issue":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "issue_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "issue_not_found")
 		}
 
-		var req issueWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
-		}
-
-		item, err := h.issues.Update(in, number, req.Title, req.Body, req.State, req.LabelIDs)
+		req, err := httpx.BindJSON[issueWriteRequest](c)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
-		writeJSON(w, http.StatusOK, item)
+
+		item, err := h.issues.Update(c.Ctx(), in, number, req.Title, req.Body, req.State, req.LabelIDs)
+		if err != nil {
+			return mapError(c, err)
+		}
+		return httpx.OK(c, item)
 	case "issue-comment":
 		number, ok := parsePositive(extra[0])
 		commentID, okID := parsePositive(extra[1])
 		if !ok || !okID {
-			writeError(w, r, http.StatusBadRequest, "comment_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "comment_not_found")
 		}
 
-		var req commentWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
-		}
-
-		item, err := h.issues.UpdateComment(in, number, commentID, req.Body)
+		req, err := httpx.BindJSON[commentWriteRequest](c)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
-		writeJSON(w, http.StatusOK, item)
+
+		item, err := h.issues.UpdateComment(c.Ctx(), in, number, commentID, req.Body)
+		if err != nil {
+			return mapError(c, err)
+		}
+		return httpx.OK(c, item)
 	case "label":
 		id, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "label_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "label_not_found")
 		}
 
-		var req labelWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_json")
-			return
-		}
-
-		item, err := h.issues.UpdateLabel(in, uint(id), req.Name, req.Color)
+		req, err := httpx.BindJSON[labelWriteRequest](c)
 		if err != nil {
-			writeIssueError(w, r, err)
-			return
+			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
-		writeJSON(w, http.StatusOK, item)
+
+		item, err := h.issues.UpdateLabel(c.Ctx(), in, uint(id), req.Name, req.Color)
+		if err != nil {
+			return mapError(c, err)
+		}
+		return httpx.OK(c, item)
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func (h *IssueHandler) delete(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
+func (h *IssueHandler) delete(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "issue":
 		number, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "issue_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "issue_not_found")
 		}
 
-		if err := h.issues.Delete(in, number); err != nil {
-			writeIssueError(w, r, err)
-			return
+		if err := h.issues.Delete(c.Ctx(), in, number); err != nil {
+			return mapError(c, err)
 		}
-		w.WriteHeader(http.StatusNoContent)
+		return c.NoContent()
 	case "issue-comment":
 		number, ok := parsePositive(extra[0])
 		commentID, okID := parsePositive(extra[1])
 		if !ok || !okID {
-			writeError(w, r, http.StatusBadRequest, "comment_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "comment_not_found")
 		}
 
-		if err := h.issues.DeleteComment(in, number, commentID); err != nil {
-			writeIssueError(w, r, err)
-			return
+		if err := h.issues.DeleteComment(c.Ctx(), in, number, commentID); err != nil {
+			return mapError(c, err)
 		}
-		w.WriteHeader(http.StatusNoContent)
+		return c.NoContent()
 	case "label":
 		id, ok := parsePositive(extra[0])
 		if !ok {
-			writeError(w, r, http.StatusBadRequest, "label_not_found")
-			return
+			return c.Error(http.StatusBadRequest, "label_not_found")
 		}
 
-		if err := h.issues.DeleteLabel(in, uint(id)); err != nil {
-			writeIssueError(w, r, err)
-			return
+		if err := h.issues.DeleteLabel(c.Ctx(), in, uint(id)); err != nil {
+			return mapError(c, err)
 		}
-		w.WriteHeader(http.StatusNoContent)
+		return c.NoContent()
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
@@ -295,31 +268,4 @@ func parsePositive(raw string) (int, bool) {
 	}
 
 	return n, true
-}
-
-func writeIssueError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrIssueTitleRequired),
-		errors.Is(err, usecase.ErrCommentBodyRequired),
-		errors.Is(err, usecase.ErrLabelNameRequired),
-		errors.Is(err, usecase.ErrInvalidIssueState),
-		errors.Is(err, usecase.ErrInvalidLabel),
-		errors.Is(err, usecase.ErrInvalidName):
-		writeError(w, r, http.StatusBadRequest, err.Error())
-	case errors.Is(err, usecase.ErrLabelExists):
-		writeError(w, r, http.StatusConflict, err.Error())
-	case errors.Is(err, usecase.ErrIssueNotFound),
-		errors.Is(err, usecase.ErrCommentNotFound),
-		errors.Is(err, usecase.ErrLabelNotFound),
-		errors.Is(err, usecase.ErrRepoNotFound),
-		errors.Is(err, usecase.ErrFolderNotFound):
-		writeError(w, r, http.StatusNotFound, err.Error())
-	case errors.Is(err, usecase.ErrIssueForbidden),
-		errors.Is(err, usecase.ErrRepoForbidden):
-		writeError(w, r, http.StatusForbidden, err.Error())
-	case errors.Is(err, usecase.ErrUnauthorized):
-		writeError(w, r, http.StatusUnauthorized, err.Error())
-	default:
-		writeError(w, r, http.StatusInternalServerError, "internal_error")
-	}
 }

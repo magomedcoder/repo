@@ -1,8 +1,12 @@
 package usecase
 
-import "repo.magomedcoder.ru/repo/internal/domain"
+import (
+	"context"
+	"magomedcoder.ru/repo/internal/domain"
+)
 
-func (uc *RepositoryUseCase) ResolveRepository(in ResolveRepositoryInput) (*domain.Repository, string, string, error) {
+func (uc *RepositoryUseCase) ResolveRepository(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, string, string, error) {
+	_ = ctx.Err()
 	return uc.resolve(in)
 }
 

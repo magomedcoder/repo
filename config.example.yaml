@@ -1,8 +1,6 @@
 http_addr: ":8080"
 data_dir: "data"
-db_path: "data/db.sqlite"
-repos_root: "data/repos"
-avatars_dir: "data/avatars"
+site_name: "Repo"
 session_secret: "" # openssl rand -hex 32
 cookie_secure: false
 allow_registration: false

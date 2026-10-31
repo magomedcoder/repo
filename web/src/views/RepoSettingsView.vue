@@ -24,6 +24,7 @@ const description = ref('')
 const isPrivate = ref(false)
 const showOnHome = ref(false)
 const protectBranch = ref(true)
+const issuesEnabled = ref(true)
 const defaultBranch = ref('main')
 const branches = ref<RefInfo[]>([])
 const folderPathKey = ref('')
@@ -67,6 +68,7 @@ function syncFormFromRepo() {
   isPrivate.value = repo.value.is_private
   showOnHome.value = !!repo.value.show_on_home && !repo.value.is_private
   protectBranch.value = repo.value.protect_default_branch !== false
+  issuesEnabled.value = repo.value.issues_enabled !== false
   defaultBranch.value = repo.value.default_branch
   folderPathKey.value = normalizeRepoPath(repo.value.folder_path || '')
 }
@@ -123,6 +125,7 @@ async function save() {
       show_on_home: !isPrivate.value && showOnHome.value,
       default_branch: defaultBranch.value,
       protect_default_branch: protectBranch.value,
+      issues_enabled: issuesEnabled.value,
     })
 
     let currentPath = repoFullPath(updated.folder_path || '', updated.name)
@@ -222,6 +225,11 @@ watch([() => props.repoPath, repo], load, { immediate: true })
             <input v-model="protectBranch" type="checkbox" class="accent-ink" />
             {{ $t('settings.protectBranch') }}
           </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="issuesEnabled" type="checkbox" class="accent-ink" />
+            {{ $t('settings.issues') }}
+          </label>
+          <p class="text-xs text-ink-muted">{{ $t('settings.issuesHint') }}</p>
           <label class="block text-sm">
             <span class="mb-1 block font-semibold">{{ $t('settings.folder') }}</span>
             <select v-model="folderPathKey" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">

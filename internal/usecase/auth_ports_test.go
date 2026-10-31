@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type memUsers struct {
@@ -199,17 +199,19 @@ func testAuth(users *memUsers, sessions domain.SessionStore) *AuthUseCase {
 }
 
 func TestRegisterClosed(t *testing.T) {
+	t.Parallel()
 	uc := testAuth(&memUsers{}, &memSessions{})
-	_, err := uc.Register(RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
+	_, err := uc.Register(t.Context(), RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
 	if !errors.Is(err, ErrRegistrationClosed) {
 		t.Fatalf("got %v", err)
 	}
 }
 
 func TestCreateUser(t *testing.T) {
+	t.Parallel()
 	users := &memUsers{}
 	uc := testAuth(users, &memSessions{})
-	user, err := uc.CreateUser(RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
+	user, err := uc.CreateUser(t.Context(), RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,17 +220,18 @@ func TestCreateUser(t *testing.T) {
 		t.Fatalf("%+v", user)
 	}
 
-	_, err = uc.CreateUser(RegisterInput{Username: "ada", Email: "other@example.com", Password: "password1"})
+	_, err = uc.CreateUser(t.Context(), RegisterInput{Username: "ada", Email: "other@example.com", Password: "password1"})
 	if !errors.Is(err, ErrUsernameTaken) {
 		t.Fatalf("got %v", err)
 	}
 }
 
 func TestChangePasswordRevokesOtherSessions(t *testing.T) {
+	t.Parallel()
 	users := &memUsers{}
 	sessions := &memSessions{}
 	uc := testAuth(users, sessions)
-	user, err := uc.CreateUser(RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
+	user, err := uc.CreateUser(t.Context(), RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +246,7 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := uc.ChangePassword(ChangePasswordInput{
+	if err := uc.ChangePassword(t.Context(), ChangePasswordInput{
 		UserID:    user.ID,
 		Current:   "password1",
 		Next:      "password2",
@@ -262,6 +265,7 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 }
 
 func TestAttemptLockExpires(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	m := &memoryAttempts{
 		fails:   map[string]*attemptState{},

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"io"
 	"time"
 )
@@ -17,6 +18,7 @@ type Repository struct {
 	IsPrivate            bool
 	ShowOnHome           bool
 	ProtectDefaultBranch bool
+	IssuesEnabled        bool
 	DefaultBranch        string
 	Path                 string
 	RepoPath             string
@@ -83,8 +85,8 @@ type BlobContent struct {
 	Path     string `json:"path"`
 	Size     int64  `json:"size"`
 	IsBinary bool   `json:"is_binary"`
-	Content  string `json:"content,omitempty"`
-	Encoding string `json:"encoding,omitempty"` // utf-8 | base64
+	Content  string `json:"content,omitzero"`
+	Encoding string `json:"encoding,omitzero"` // utf-8 | base64
 }
 
 type BlameLine struct {
@@ -110,7 +112,7 @@ type CommitDiff struct {
 type FileDiff struct {
 	Path    string `json:"path"`
 	Status  string `json:"status"`
-	OldPath string `json:"old_path,omitempty"`
+	OldPath string `json:"old_path,omitzero"`
 	Patch   string `json:"patch"`
 }
 
@@ -121,6 +123,8 @@ type RepoStats struct {
 }
 
 type GitRepository interface {
+	GetReposRoot() string
+
 	InitBare(path string, opts BareInitOptions) error
 
 	SetReceiveDenyNonFastForwards(path string, deny bool) error
@@ -129,9 +133,9 @@ type GitRepository interface {
 
 	Move(oldPath, newPath string) error
 
-	AdvertiseRefs(repoPath, service string, w io.Writer) error
+	AdvertiseRefs(ctx context.Context, repoPath, service string, w io.Writer) error
 
-	ServePack(repoPath, service string, stdin io.Reader, stdout io.Writer) error
+	ServePack(ctx context.Context, repoPath, service string, stdin io.Reader, stdout io.Writer) error
 
 	EnsureDefaultBranch(repoPath, branch string) error
 

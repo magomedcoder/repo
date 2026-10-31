@@ -4,14 +4,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 func TestMigrateFreshDatabase(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "db.sqlite")
 
-	db, err := NewDB(path)
+	db, err := NewDB(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,14 +28,15 @@ func TestMigrateFreshDatabase(t *testing.T) {
 		t.Fatal("expected missing repository")
 	}
 
-	if _, err := NewDB(path); err != nil {
+	if _, err := NewDB(dir); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSoftDeleteAllowsNameReuse(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
-	db, err := NewDB(filepath.Join(dir, "db.sqlite"))
+	db, err := NewDB(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

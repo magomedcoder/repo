@@ -8,6 +8,7 @@ import (
 )
 
 func TestReadReceiveCommandsFlushZero(t *testing.T) {
+	t.Parallel()
 	old := strings.Repeat("0", 40)
 	newHash := strings.Repeat("a", 40)
 	line := old + " " + newHash + " refs/heads/main\x00report-status"
@@ -28,6 +29,7 @@ func TestReadReceiveCommandsFlushZero(t *testing.T) {
 }
 
 func TestReadReceiveCommandsEmptyFlush(t *testing.T) {
+	t.Parallel()
 	cmds, err := readReceiveCommands(bytes.NewReader([]byte("0000PACK")))
 	if err != nil {
 		t.Fatal(err)

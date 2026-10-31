@@ -8,8 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type GitHandler struct {
@@ -65,7 +66,7 @@ func (h *GitHandler) infoRefs(w http.ResponseWriter, r *http.Request, repoPath s
 
 	w.Header().Set("Content-Type", "application/x-"+string(service)+"-advertisement")
 	w.Header().Set("Cache-Control", "no-cache")
-	if err := h.git.AdvertiseRefs(repo.Path, service, w); err != nil {
+	if err := h.git.AdvertiseRefs(r.Context(), repo.Path, service, w); err != nil {
 		http.Error(w, "git error", http.StatusInternalServerError)
 	}
 }
@@ -98,30 +99,36 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 				http.Error(w, "bad request", http.StatusBadRequest)
 				return
 			}
+
 			if n > limit {
 				http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
 				return
 			}
+
 			if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
 			}
+
 			cmds, err := readReceiveCommands(tmp)
 			if err != nil {
 				http.Error(w, "bad request", http.StatusBadRequest)
 				return
 			}
+
 			for _, cmd := range cmds {
 				ancestor := true
 				if !domain.IsZeroHash(cmd[0]) && !domain.IsZeroHash(cmd[1]) {
-					ok, err := h.git.Ancestor(repo.Path, cmd[0], cmd[1])
+					ok, err := h.git.Ancestor(r.Context(), repo.Path, cmd[0], cmd[1])
 					if err != nil || !ok {
 						ancestor = false
 					}
 				}
+
 				if err := domain.CheckRefUpdate(true, repo.DefaultBranch, cmd[2], cmd[0], cmd[1], ancestor); err != nil {
 					if errors.Is(err, domain.ErrBranchProtected) {
-						writeError(w, r, http.StatusForbidden, domain.ErrBranchProtected.Error())
+						c := &httpx.Context{W: w, R: r}
+						_ = c.Error(http.StatusForbidden, domain.ErrBranchProtected.Error())
 						return
 					}
 					http.Error(w, "forbidden", http.StatusForbidden)
@@ -141,7 +148,7 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 
 	w.Header().Set("Content-Type", "application/x-"+string(service)+"-result")
 	w.Header().Set("Cache-Control", "no-cache")
-	if err := h.git.ServePack(repo.Path, service, body, w); err != nil {
+	if err := h.git.ServePack(r.Context(), repo.Path, service, body, w); err != nil {
 		http.Error(w, "git error", http.StatusInternalServerError)
 		return
 	}
@@ -151,13 +158,13 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		if viewer != nil {
 			actorID = viewer.ID
 		}
-		_ = h.git.TouchActivity(repo, actorID)
-		_ = h.git.EnsureDefaultBranch(repo.Path, repo.DefaultBranch)
+		_ = h.git.TouchActivity(r.Context(), repo, actorID)
+		_ = h.git.EnsureDefaultBranch(r.Context(), repo.Path, repo.DefaultBranch)
 	}
 }
 
 func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repoPath string, service usecase.GitService) (*domain.Repository, *domain.User, error) {
-	repo, err := h.git.ResolveClonePath(repoPath)
+	repo, err := h.git.ResolveClonePath(r.Context(), repoPath)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return nil, nil, err
@@ -170,6 +177,7 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 			http.Error(w, "too many attempts", http.StatusTooManyRequests)
 			return nil, nil, authErr
 		}
+
 		w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return nil, nil, authErr
@@ -179,7 +187,7 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 		viewer = nil
 	}
 
-	if err := h.git.Authorize(repo, viewer, service); err != nil {
+	if err := h.git.Authorize(r.Context(), repo, viewer, service); err != nil {
 		if errors.Is(err, usecase.ErrUnauthorized) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -195,7 +203,7 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 
 func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) {
 	if user, pass, ok := r.BasicAuth(); ok {
-		u, err := h.git.Authenticate(user, pass)
+		u, err := h.git.Authenticate(r.Context(), user, pass)
 		if errors.Is(err, usecase.ErrTooManyAttempts) {
 			return nil, err
 		}
@@ -204,7 +212,7 @@ func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) 
 
 	auth := r.Header.Get("Authorization")
 	if len(auth) > 7 && strings.EqualFold(auth[:7], "bearer ") {
-		return h.git.Authenticate("", strings.TrimSpace(auth[7:]))
+		return h.git.Authenticate(r.Context(), "", strings.TrimSpace(auth[7:]))
 	}
 
 	return nil, usecase.ErrUnauthorized

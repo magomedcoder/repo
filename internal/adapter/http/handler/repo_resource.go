@@ -11,7 +11,7 @@ func ParseRepoResource(rest string) (action string, repoParts, extra []string, o
 	if a, rp, ex, ok := splitPullPath(parts); ok {
 		return a, rp, ex, true
 	}
-	
+
 	if a, rp, ex, ok := splitIssuePath(parts); ok {
 		return a, rp, ex, true
 	}

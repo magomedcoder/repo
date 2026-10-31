@@ -18,6 +18,9 @@
     "name": "Repo",
     "title": "Repo"
   },
+  "footer": {
+    "poweredBy": "Работает на"
+  },
   "auth": {
     "loginTitle": "Вход",
     "usernameOrEmail": "Имя пользователя или email",
@@ -44,7 +47,7 @@
     "pulls": "Слияния",
     "profile": "Профиль",
     "accessTokens": "Токены доступа",
-    "tagline": "Git. Просто и легко.",
+    "tagline": "Лёгкий Git-хостинг",
     "refs": "ссылки",
     "langEn": "en",
     "langRu": "ru"
@@ -135,6 +138,8 @@
     "showOnHome": "Показывать на главной",
     "showOnHomeHint": "На главной для всех, включая гостей, отображаются только публичные репозитории.",
     "protectBranch": "Защитить ветку по умолчанию от принудительной перезаписи и удаления",
+    "issues": "Задачи",
+    "issuesHint": "Если выключить, вкладка «Задачи» скроется, а API задач станет недоступен.",
     "folder": "Папка",
     "saving": "Сохранение...",
     "save": "Сохранить",
@@ -227,6 +232,7 @@
       "token_not_found": "Токен не найден",
       "invalid_repo_move_path": "Используйте POST /api/repos/{owner}/.../{name}/move",
       "issue_title_required": "Укажите заголовок задачи",
+      "issues_disabled": "Задачи отключены для этого репозитория",
       "issue_not_found": "Задача не найдена",
       "issue_forbidden": "Недостаточно прав для изменения этой задачи",
       "invalid_issue_state": "Состояние должно быть open или closed",

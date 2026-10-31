@@ -8,7 +8,7 @@ build:
 	go build -o build/repo-server ./cmd/repo
 
 run:
-	go run ./cmd/repo
+	go run ./cmd/repo serve
 
 test:
 	cd web && yarn type-check

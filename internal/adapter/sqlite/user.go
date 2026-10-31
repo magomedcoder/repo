@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type userModel struct {
@@ -91,7 +91,7 @@ func (s *UserStore) Create(user *domain.User) error {
 func (s *UserStore) FindByID(id uint) (*domain.User, error) {
 	var model userModel
 	if err := s.db.First(&model, id).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	return model.toDomain(), nil
@@ -119,7 +119,7 @@ func (s *UserStore) FindByIDs(ids []uint) (map[uint]*domain.User, error) {
 func (s *UserStore) FindByUsername(username string) (*domain.User, error) {
 	var model userModel
 	if err := s.db.Where("username = ?", username).First(&model).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	return model.toDomain(), nil
@@ -128,7 +128,7 @@ func (s *UserStore) FindByUsername(username string) (*domain.User, error) {
 func (s *UserStore) FindByEmail(email string) (*domain.User, error) {
 	var model userModel
 	if err := s.db.Where("email = ?", email).First(&model).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	return model.toDomain(), nil
@@ -187,7 +187,7 @@ func (s *SessionStore) Create(session *domain.Session) error {
 func (s *SessionStore) FindByToken(token string) (*domain.Session, error) {
 	var model sessionModel
 	if err := s.db.Where("token = ?", token).First(&model).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 	return model.toDomain(), nil
 }

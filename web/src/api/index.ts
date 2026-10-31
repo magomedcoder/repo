@@ -2,6 +2,12 @@ import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
 import type { AccessToken, ActivityEvent, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
 
+export const siteApi = {
+  get() {
+    return api<{ name: string }>('/api/site')
+  },
+}
+
 export const authApi = {
   registration() {
     return api<{ allow_registration: boolean }>('/api/auth/registration')
@@ -201,6 +207,7 @@ export const reposApi = {
       show_on_home?: boolean
       default_branch?: string
       protect_default_branch?: boolean
+      issues_enabled?: boolean
     },
   ) {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}`, {

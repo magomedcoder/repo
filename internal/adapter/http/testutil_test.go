@@ -10,13 +10,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/git"
-	deliveryhttp "repo.magomedcoder.ru/repo/internal/adapter/http"
-	"repo.magomedcoder.ru/repo/internal/adapter/http/handler"
-	"repo.magomedcoder.ru/repo/internal/adapter/sqlite"
-	"repo.magomedcoder.ru/repo/internal/usecase"
-	"repo.magomedcoder.ru/repo/pkg/argon2id"
-	"repo.magomedcoder.ru/repo/pkg/token"
+	"magomedcoder.ru/repo/internal/adapter/git"
+	deliveryhttp "magomedcoder.ru/repo/internal/adapter/http"
+	"magomedcoder.ru/repo/internal/adapter/http/handler"
+	"magomedcoder.ru/repo/internal/adapter/sqlite"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/argon2id"
+	"magomedcoder.ru/repo/pkg/token"
 )
 
 type testEnv struct {
@@ -27,7 +27,31 @@ type testEnv struct {
 
 func newTestServer(t *testing.T) testEnv {
 	t.Helper()
-	dir := t.TempDir()
+	dir, authUC, router := buildTestApp(t)
+	srv := httptest.NewTestServer(t, router)
+	t.Cleanup(srv.Close)
+	return testEnv{
+		Server: srv,
+		Dir:    dir,
+		Auth:   authUC,
+	}
+}
+
+func newLoopbackTestServer(t *testing.T) testEnv {
+	t.Helper()
+	dir, authUC, router := buildTestApp(t)
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+	return testEnv{
+		Server: srv,
+		Dir:    dir,
+		Auth:   authUC,
+	}
+}
+
+func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router http.Handler) {
+	t.Helper()
+	dir = t.TempDir()
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -38,11 +62,13 @@ func newTestServer(t *testing.T) testEnv {
 	}
 
 	t.Cleanup(func() { _ = os.Chdir(wd) })
-	if err := os.MkdirAll(filepath.Join(dir, "data"), 0o755); err != nil {
+
+	dataDir := filepath.Join(dir, "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	db, err := sqlite.NewDB(filepath.Join(dir, "data", "db.sqlite"))
+	db, err := sqlite.NewDB(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,26 +81,24 @@ func newTestServer(t *testing.T) testEnv {
 	issueStore := sqlite.NewIssueStore(db)
 	pullStore := sqlite.NewPullRequestStore(db)
 	activityStore := sqlite.NewActivityStore(db)
-	gitRepo := git.NewRepository()
+	gitRepo := git.NewRepository(dataDir)
 	hasher := argon2id.NewHasher()
 	tokens := token.NewGenerator()
-	avatarsDir := filepath.Join(dir, "data", "avatars")
-	reposRoot := filepath.Join(dir, "data", "repos")
 
-	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
+	authUC = usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
 	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
-	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo, t.TempDir())
+	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
-	profileUC := usecase.NewProfileUseCase(userStore, avatarsDir)
+	profileUC := usecase.NewProfileUseCase(userStore, dataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 
-	router := deliveryhttp.NewRouter(
+	router = deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),
-		handler.NewRepositoryHandler(repoUC, reposRoot),
+		handler.NewRepositoryHandler(repoUC),
 		handler.NewFolderHandler(folderUC),
 		handler.NewTokenHandler(tokenUC),
 		handler.NewGitHandler(gitUC),
@@ -82,17 +106,16 @@ func newTestServer(t *testing.T) testEnv {
 		handler.NewPullRequestHandler(pullUC),
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
+		handler.NewSiteHandler("Repo"),
 		authUC,
 		false,
 	)
-	srv := httptest.NewServer(router)
-	t.Cleanup(srv.Close)
-	return testEnv{Server: srv, Dir: dir, Auth: authUC}
+	return dir, authUC, router
 }
 
 func loginUser(t *testing.T, env testEnv, username, email, password string) []*http.Cookie {
 	t.Helper()
-	if _, err := env.Auth.CreateUser(usecase.RegisterInput{
+	if _, err := env.Auth.CreateUser(t.Context(), usecase.RegisterInput{
 		Username: username,
 		Email:    email,
 		Password: password,
@@ -121,7 +144,8 @@ func doJSON(t *testing.T, srv *httptest.Server, method, path, body string, cooki
 		reader = bytes.NewReader([]byte(body))
 	}
 
-	req, err := http.NewRequest(method, srv.URL+path, reader)
+	client := srv.Client()
+	req, err := http.NewRequestWithContext(t.Context(), method, srv.URL+path, reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +161,7 @@ func doJSON(t *testing.T, srv *httptest.Server, method, path, body string, cooki
 		}
 	}
 
-	res, err := srv.Client().Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

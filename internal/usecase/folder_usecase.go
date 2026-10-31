@@ -1,15 +1,17 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 const (
@@ -18,11 +20,11 @@ const (
 )
 
 var (
-	ErrFolderNameRequired = errors.New("folder_name_required")
-	ErrInvalidFolderName  = errors.New("invalid_folder_name")
-	ErrFolderExists       = errors.New("folder_already_exists")
-	ErrFolderNotFound     = errors.New("folder_not_found")
-	ErrFolderNotEmpty     = errors.New("folder_not_empty")
+	ErrFolderNameRequired = NewError(KindValidation, "folder_name_required")
+	ErrInvalidFolderName  = NewError(KindValidation, "invalid_folder_name")
+	ErrFolderExists       = NewError(KindConflict, "folder_already_exists")
+	ErrFolderNotFound     = NewError(KindNotFound, "folder_not_found")
+	ErrFolderNotEmpty     = NewError(KindConflict, "folder_not_empty")
 )
 
 var nonSlugChars = regexp.MustCompile(`[^a-z0-9_-]+`)
@@ -37,7 +39,7 @@ type FolderItem struct {
 }
 
 type FolderContents struct {
-	Folder *FolderItem             `json:"folder,omitempty"`
+	Folder *FolderItem             `json:"folder,omitzero"`
 	Repos  []RepositorySummaryItem `json:"repos"`
 }
 
@@ -48,7 +50,7 @@ type RepositorySummaryItem struct {
 	IsPrivate     bool      `json:"is_private"`
 	DefaultBranch string    `json:"default_branch"`
 	RepoPath      string    `json:"repo_path"`
-	FolderPath    string    `json:"folder_path,omitempty"`
+	FolderPath    string    `json:"folder_path,omitzero"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -67,21 +69,16 @@ type RenameFolderInput struct {
 }
 
 type FolderUseCase struct {
-	folders   domain.FolderStore
-	repos     domain.RepositoryStore
-	git       domain.GitRepository
-	reposRoot string
+	folders domain.FolderStore
+	repos   domain.RepositoryStore
+	git     domain.GitRepository
 }
 
-func NewFolderUseCase(folders domain.FolderStore, repos domain.RepositoryStore, git domain.GitRepository, reposRoot string) *FolderUseCase {
-	if reposRoot == "" {
-		reposRoot = DefaultReposRoot
-	}
+func NewFolderUseCase(folders domain.FolderStore, repos domain.RepositoryStore, git domain.GitRepository) *FolderUseCase {
 	return &FolderUseCase{
-		folders:   folders,
-		repos:     repos,
-		git:       git,
-		reposRoot: reposRoot,
+		folders: folders,
+		repos:   repos,
+		git:     git,
 	}
 }
 
@@ -97,7 +94,8 @@ func (uc *FolderUseCase) resolveOwner(viewerID, ownerID uint, write bool) (kind 
 	return domain.OwnerKindUser, ownerID, nil
 }
 
-func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
+func (uc *FolderUseCase) Create(ctx context.Context, in CreateFolderInput) (*FolderItem, error) {
+	_ = ctx.Err()
 	viewerID := in.ViewerID
 	if viewerID == 0 {
 		viewerID = in.OwnerID
@@ -141,7 +139,8 @@ func (uc *FolderUseCase) Create(in CreateFolderInput) (*FolderItem, error) {
 	return &item, nil
 }
 
-func (uc *FolderUseCase) List(viewerID, ownerID uint) ([]FolderItem, error) {
+func (uc *FolderUseCase) List(ctx context.Context, viewerID, ownerID uint) ([]FolderItem, error) {
+	_ = ctx.Err()
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
 	if err != nil {
 		return nil, err
@@ -164,7 +163,8 @@ func (uc *FolderUseCase) List(viewerID, ownerID uint) ([]FolderItem, error) {
 	return items, nil
 }
 
-func (uc *FolderUseCase) GetContents(viewerID, ownerID uint, path string) (*FolderContents, error) {
+func (uc *FolderUseCase) GetContents(ctx context.Context, viewerID, ownerID uint, path string) (*FolderContents, error) {
+	_ = ctx.Err()
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
 	if err != nil {
 		return nil, err
@@ -207,7 +207,8 @@ func (uc *FolderUseCase) folderContents(ownerKind string, ownerID uint, folder *
 	return out, nil
 }
 
-func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
+func (uc *FolderUseCase) Rename(ctx context.Context, in RenameFolderInput) (*FolderItem, error) {
+	_ = ctx.Err()
 	viewerID := in.ViewerID
 	if viewerID == 0 {
 		viewerID = in.OwnerID
@@ -264,7 +265,7 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 			oldDisk := repo.Path
 			oldLogic := repo.RepoPath
 			newLogical := slug + "/" + repo.Name + ".git"
-			newDisk := buildRepoDiskPath(uc.reposRoot, repo.OwnerKind, repo.OwnerID, slug, repo.Name)
+			newDisk := buildRepoDiskPath(uc.git.GetReposRoot(), repo.OwnerKind, repo.OwnerID, slug, repo.Name)
 			if uc.git != nil && repo.Path != "" && repo.Path != newDisk {
 				if err := uc.git.Move(repo.Path, newDisk); err != nil {
 					uc.rollbackFolderMoves(moved)
@@ -291,7 +292,8 @@ func (uc *FolderUseCase) Rename(in RenameFolderInput) (*FolderItem, error) {
 	return &item, nil
 }
 
-func (uc *FolderUseCase) Delete(viewerID, ownerID uint, path string) error {
+func (uc *FolderUseCase) Delete(ctx context.Context, viewerID, ownerID uint, path string) error {
+	_ = ctx.Err()
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, true)
 	if err != nil {
 		return err
@@ -376,15 +378,22 @@ type folderMovedRepo struct {
 }
 
 func (uc *FolderUseCase) rollbackFolderMoves(moved []folderMovedRepo) {
+	var errs []error
 	for _, m := range slices.Backward(moved) {
-
 		if uc.git != nil && m.repo.Path != "" && m.oldDisk != "" && m.repo.Path != m.oldDisk {
-			_ = uc.git.Move(m.repo.Path, m.oldDisk)
+			if err := uc.git.Move(m.repo.Path, m.oldDisk); err != nil {
+				errs = append(errs, fmt.Errorf("rollback git move %s: %w", m.repo.Path, err))
+			}
 		}
 
 		m.repo.Path = m.oldDisk
 		m.repo.RepoPath = m.oldLogic
-		_ = uc.repos.Update(m.repo)
+		if err := uc.repos.Update(m.repo); err != nil {
+			errs = append(errs, fmt.Errorf("rollback repo metadata %d: %w", m.repo.ID, err))
+		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		slog.Error("folder rollback", "err", err)
 	}
 }
 

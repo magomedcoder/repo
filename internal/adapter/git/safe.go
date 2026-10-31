@@ -42,6 +42,7 @@ func SafePath(root, path string) (string, error) {
 			if os.IsNotExist(err) {
 				break
 			}
+
 			return "", err
 		}
 

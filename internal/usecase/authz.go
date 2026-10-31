@@ -1,6 +1,6 @@
 package usecase
 
-import "repo.magomedcoder.ru/repo/internal/domain"
+import "magomedcoder.ru/repo/internal/domain"
 
 func CanReadRepo(repo *domain.Repository, viewerID uint) error {
 	if repo == nil {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type memActivity struct {
@@ -97,6 +97,7 @@ func (s *memRepos) TouchLastActivity(uint, time.Time) error {
 }
 
 func TestListOwnerHidesPrivateActivity(t *testing.T) {
+	t.Parallel()
 	privID := uint(1)
 	pubID := uint(2)
 	repos := &memRepos{items: []domain.Repository{
@@ -144,7 +145,7 @@ func TestListOwnerHidesPrivateActivity(t *testing.T) {
 	}
 	uc := NewActivityUseCase(events, users, repos)
 
-	anon, err := uc.ListOwner("ada", 0, 30)
+	anon, err := uc.ListOwner(t.Context(), "ada", 0, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestListOwnerHidesPrivateActivity(t *testing.T) {
 		t.Fatalf("anon=%+v", anon)
 	}
 
-	owner, err := uc.ListOwner("ada", 1, 30)
+	owner, err := uc.ListOwner(t.Context(), "ada", 1, 30)
 	if err != nil {
 		t.Fatal(err)
 	}

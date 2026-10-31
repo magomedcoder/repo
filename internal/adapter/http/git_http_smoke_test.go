@@ -13,7 +13,7 @@ func TestGitHTTPSmoke(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git required")
 	}
-	env := newTestServer(t)
+	env := newLoopbackTestServer(t)
 	srv, dir := env.Server, env.Dir
 	cookies := loginUser(t, env, "utest2", "utest2@example.com", "password1")
 
@@ -51,7 +51,7 @@ func TestGitHTTPSmoke(t *testing.T) {
 		t.Fatalf("cloned file missing: %v", err)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/hello.git/info/refs?service=git-upload-pack", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/hello.git/info/refs?service=git-upload-pack", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,9 +3,10 @@ package http
 import (
 	"net/http"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/http/handler"
-	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"repo.magomedcoder.ru/repo/pkg/i18n"
+	"magomedcoder.ru/repo/internal/adapter/http/handler"
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/pkg/httpx"
+	"magomedcoder.ru/repo/pkg/i18n"
 )
 
 func NewRouter(
@@ -18,63 +19,70 @@ func NewRouter(
 	pullHandler *handler.PullRequestHandler,
 	profileHandler *handler.ProfileHandler,
 	activityHandler *handler.ActivityHandler,
+	siteHandler *handler.SiteHandler,
 	auth middleware.Authenticator,
 	cookieSecure bool,
 ) http.Handler {
-	mux := http.NewServeMux()
+	r := httpx.New()
+	api := r.Group("/api")
 
-	mux.HandleFunc("GET /api/auth/registration", authHandler.Registration)
-	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
-	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
-	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
-	mux.HandleFunc("GET /api/auth/me", authHandler.Me)
+	api.GET("/site", siteHandler.Get)
+	api.GET("/auth/registration", authHandler.Registration)
+	api.POST("/auth/register", authHandler.Register)
+	api.POST("/auth/login", authHandler.Login)
+	api.POST("/auth/logout", authHandler.Logout)
+	api.GET("/auth/me", authHandler.Me)
+	api.GET("/users/{username}/avatar", profileHandler.ServeAvatar)
 
-	requireAuth := middleware.RequireAuth(auth)
-	optionalAuth := middleware.OptionalAuth(auth)
-	mux.Handle("POST /api/auth/password", requireAuth(http.HandlerFunc(authHandler.Password)))
+	require := httpx.HTTPMiddleware(middleware.RequireAuth(auth))
+	optional := httpx.HTTPMiddleware(middleware.OptionalAuth(auth))
+	authed := api.Group("", require)
+	pub := api.Group("", optional)
 
-	mux.Handle("GET /api/users/{username}", optionalAuth(http.HandlerFunc(profileHandler.Get)))
-	mux.Handle("GET /api/users/{username}/avatar", http.HandlerFunc(profileHandler.ServeAvatar))
-	mux.Handle("PATCH /api/users/me", requireAuth(http.HandlerFunc(profileHandler.UpdateMe)))
-	mux.Handle("POST /api/users/me/avatar", requireAuth(http.HandlerFunc(profileHandler.UploadAvatar)))
-	mux.Handle("DELETE /api/users/me/avatar", requireAuth(http.HandlerFunc(profileHandler.DeleteAvatar)))
+	authed.POST("/auth/password", authHandler.Password)
 
-	mux.Handle("POST /api/repos", requireAuth(http.HandlerFunc(repoHandler.Create)))
-	mux.Handle("GET /api/repos", optionalAuth(http.HandlerFunc(repoHandler.List)))
+	pub.GET("/users/{username}", profileHandler.Get)
+	authed.PATCH("/users/me", profileHandler.UpdateMe)
+	authed.POST("/users/me/avatar", profileHandler.UploadAvatar)
+	authed.DELETE("/users/me/avatar", profileHandler.DeleteAvatar)
+
+	authed.POST("/repos", repoHandler.Create)
+	pub.GET("/repos", repoHandler.List)
+
 	repoAPI := &handler.RepoDispatcher{
 		Repos:  repoHandler,
 		Issues: issueHandler,
 		Pulls:  pullHandler,
 	}
-	mux.Handle("GET /api/repos/{path...}", optionalAuth(http.HandlerFunc(repoAPI.DispatchGet)))
-	mux.Handle("PATCH /api/repos/{path...}", requireAuth(http.HandlerFunc(repoAPI.DispatchPatch)))
-	mux.Handle("DELETE /api/repos/{path...}", requireAuth(http.HandlerFunc(repoAPI.DispatchDelete)))
-	mux.Handle("POST /api/repos/{path...}", requireAuth(http.HandlerFunc(repoAPI.DispatchPost)))
+	pub.GET("/repos/{path...}", repoAPI.DispatchGet)
+	authed.PATCH("/repos/{path...}", repoAPI.DispatchPatch)
+	authed.DELETE("/repos/{path...}", repoAPI.DispatchDelete)
+	authed.POST("/repos/{path...}", repoAPI.DispatchPost)
 
-	mux.Handle("GET /api/activity/{owner}", optionalAuth(http.HandlerFunc(activityHandler.ListOwner)))
+	pub.GET("/activity/{owner}", activityHandler.ListOwner)
 
-	mux.Handle("POST /api/folders", requireAuth(http.HandlerFunc(folderHandler.Create)))
-	mux.Handle("GET /api/folders", requireAuth(http.HandlerFunc(folderHandler.List)))
-	mux.Handle("GET /api/folders/{path...}", requireAuth(http.HandlerFunc(folderHandler.Get)))
-	mux.Handle("PATCH /api/folders/{path...}", requireAuth(http.HandlerFunc(folderHandler.Rename)))
-	mux.Handle("DELETE /api/folders/{path...}", requireAuth(http.HandlerFunc(folderHandler.Delete)))
+	authed.POST("/folders", folderHandler.Create)
+	authed.GET("/folders", folderHandler.List)
+	authed.GET("/folders/{path...}", folderHandler.Get)
+	authed.PATCH("/folders/{path...}", folderHandler.Rename)
+	authed.DELETE("/folders/{path...}", folderHandler.Delete)
 
-	mux.Handle("POST /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.Create)))
-	mux.Handle("GET /api/tokens", requireAuth(http.HandlerFunc(tokenHandler.List)))
-	mux.Handle("DELETE /api/tokens/{id}", requireAuth(http.HandlerFunc(tokenHandler.Revoke)))
+	authed.POST("/tokens", tokenHandler.Create)
+	authed.GET("/tokens", tokenHandler.List)
+	authed.DELETE("/tokens/{id}", tokenHandler.Revoke)
 
 	apiLimiter := middleware.NewRateLimiter(180, 60)
 	authLimiter := middleware.NewRateLimiter(30, 10)
 	gitLimiter := middleware.NewRateLimiter(60, 20)
-	api := middleware.SecurityHeaders(middleware.CSRF(cookieSecure)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(mux))))))
+	apiHandler := middleware.SecurityHeaders(middleware.CSRF(cookieSecure)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(r.Handler()))))))
 	gitHTTP := middleware.SecurityHeaders(middleware.RateLimitIP(gitLimiter)(middleware.Logger(gitHandler)))
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if handler.IsGitHTTPPath(r.URL.Path) {
-			gitHTTP.ServeHTTP(w, r)
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if handler.IsGitHTTPPath(req.URL.Path) {
+			gitHTTP.ServeHTTP(w, req)
 			return
 		}
 
-		api.ServeHTTP(w, r)
+		apiHandler.ServeHTTP(w, req)
 	})
 }

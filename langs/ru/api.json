@@ -33,6 +33,7 @@
   "token_not_found": "Токен не найден",
   "invalid_repo_move_path": "Используйте POST /api/repos/{owner}/.../{name}/move",
   "issue_title_required": "Укажите заголовок задачи",
+  "issues_disabled": "Задачи отключены для этого репозитория",
   "issue_not_found": "Задача не найдена",
   "issue_forbidden": "Недостаточно прав для изменения этой задачи",
   "invalid_issue_state": "Состояние должно быть open или closed",

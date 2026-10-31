@@ -1,12 +1,11 @@
 package handler
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type TokenHandler struct {
@@ -21,71 +20,50 @@ type createTokenRequest struct {
 	Name string `json:"name"`
 }
 
-func (h *TokenHandler) Create(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *TokenHandler) Create(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	var req createTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
-	}
-
-	out, err := h.tokens.Create(usecase.CreateTokenInput{UserID: user.ID, Name: req.Name})
+	req, err := httpx.BindJSON[createTokenRequest](c)
 	if err != nil {
-		writeTokenError(w, r, err)
-		return
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
-	writeJSON(w, http.StatusCreated, out)
+
+	out, err := h.tokens.Create(c.Ctx(), usecase.CreateTokenInput{UserID: user.ID, Name: req.Name})
+	if err != nil {
+		return mapError(c, err)
+	}
+	return httpx.Created(c, out)
 }
 
-func (h *TokenHandler) List(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *TokenHandler) List(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	items, err := h.tokens.List(user.ID)
+	items, err := h.tokens.List(c.Ctx(), user.ID)
 	if err != nil {
-		writeTokenError(w, r, err)
-		return
+		return mapError(c, err)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tokens": items})
+	return httpx.OK(c, tokensResponse{Tokens: items})
 }
 
-func (h *TokenHandler) Revoke(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *TokenHandler) Revoke(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	id, err := parseID(r.PathValue("id"))
+	id, err := parseID(c.Param("id"))
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_token_id")
-		return
+		return c.Error(http.StatusBadRequest, "invalid_token_id")
 	}
 
-	if err := h.tokens.Revoke(user.ID, id); err != nil {
-		writeTokenError(w, r, err)
-		return
+	if err := h.tokens.Revoke(c.Ctx(), user.ID, id); err != nil {
+		return mapError(c, err)
 	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func writeTokenError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrTokenNameRequired):
-		writeError(w, r, http.StatusBadRequest, err.Error())
-	case errors.Is(err, usecase.ErrTokenNotFound):
-		writeError(w, r, http.StatusNotFound, err.Error())
-	case errors.Is(err, usecase.ErrUnauthorized):
-		writeError(w, r, http.StatusUnauthorized, err.Error())
-	default:
-		writeError(w, r, http.StatusInternalServerError, "internal_error")
-	}
+	return c.NoContent()
 }

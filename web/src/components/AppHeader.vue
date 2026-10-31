@@ -2,8 +2,10 @@
 import { computed, inject, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useSite } from '@/composables/useSite'
 
 const auth = useAuth()
+const { name: siteName } = useSite()
 const route = useRoute()
 const router = useRouter()
 const searchQ = ref(typeof route.query.q === 'string' ? route.query.q : '')
@@ -41,7 +43,7 @@ async function onLogout() {
         to="/"
         class="text-[1.35rem] font-medium leading-none tracking-tight text-ink no-underline hover:no-underline"
       >
-        {{ $t('brand.name') }}
+        {{ siteName }}
       </RouterLink>
       <span class="hidden truncate text-[85%] text-ink-muted md:inline">{{ $t('nav.tagline') }}</span>
     </div>

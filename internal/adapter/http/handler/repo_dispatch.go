@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type RepoDispatcher struct {
@@ -14,120 +15,110 @@ type RepoDispatcher struct {
 	Pulls  *PullRequestHandler
 }
 
-func (d *RepoDispatcher) DispatchGet(w http.ResponseWriter, r *http.Request) {
-	rest := strings.Trim(r.PathValue("path"), "/")
+func (d *RepoDispatcher) DispatchGet(c *httpx.Context) error {
+	rest := strings.Trim(c.Param("path"), "/")
 	if rest == "" {
-		writeError(w, r, http.StatusBadRequest, "invalid_repository_path")
-		return
+		return c.Error(http.StatusBadRequest, "invalid_repository_path")
 	}
 
 	action, repoParts, extra, ok := ParseRepoResource(rest)
 	if !ok {
-		d.Repos.Get(w, r)
-		return
+		return d.Repos.Get(c)
 	}
 
-	in, err := repoInputFromParts(r, repoParts)
+	in, err := repoInputFromParts(c, repoParts)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
+		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
 	switch {
 	case isPullAction(action):
-		d.Pulls.get(w, r, in, action, extra)
+		return d.Pulls.get(c, in, action, extra)
 	case isIssueAction(action):
-		d.Issues.get(w, r, in, action, extra)
+		return d.Issues.get(c, in, action, extra)
 	default:
-		d.Repos.serveBrowseGet(w, r, in, action, extra)
+		return d.Repos.serveBrowseGet(c, in, action, extra)
 	}
 }
 
-func (d *RepoDispatcher) DispatchPatch(w http.ResponseWriter, r *http.Request) {
-	rest := strings.Trim(r.PathValue("path"), "/")
+func (d *RepoDispatcher) DispatchPatch(c *httpx.Context) error {
+	rest := strings.Trim(c.Param("path"), "/")
 	action, repoParts, extra, ok := ParseRepoResource(rest)
 	if !ok {
-		d.Repos.Update(w, r)
-		return
+		return d.Repos.Update(c)
 	}
 
-	in, err := repoInputFromParts(r, repoParts)
+	in, err := repoInputFromParts(c, repoParts)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
+		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
 	switch {
 	case isPullAction(action):
-		d.Pulls.patch(w, r, in, action, extra)
+		return d.Pulls.patch(c, in, action, extra)
 	case isIssueAction(action):
-		d.Issues.patch(w, r, in, action, extra)
+		return d.Issues.patch(c, in, action, extra)
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func (d *RepoDispatcher) DispatchDelete(w http.ResponseWriter, r *http.Request) {
-	rest := strings.Trim(r.PathValue("path"), "/")
+func (d *RepoDispatcher) DispatchDelete(c *httpx.Context) error {
+	rest := strings.Trim(c.Param("path"), "/")
 	action, repoParts, extra, ok := ParseRepoResource(rest)
 	if !ok {
-		d.Repos.Delete(w, r)
-		return
+		return d.Repos.Delete(c)
 	}
 
-	in, err := repoInputFromParts(r, repoParts)
+	in, err := repoInputFromParts(c, repoParts)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
+		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
 	switch {
 	case isPullAction(action):
-		d.Pulls.delete(w, r, in, action, extra)
+		return d.Pulls.delete(c, in, action, extra)
 	case isIssueAction(action):
-		d.Issues.delete(w, r, in, action, extra)
+		return d.Issues.delete(c, in, action, extra)
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func (d *RepoDispatcher) DispatchPost(w http.ResponseWriter, r *http.Request) {
-	rest := strings.Trim(r.PathValue("path"), "/")
+func (d *RepoDispatcher) DispatchPost(c *httpx.Context) error {
+	rest := strings.Trim(c.Param("path"), "/")
 	action, repoParts, extra, ok := ParseRepoResource(rest)
 	if !ok {
-		writeError(w, r, http.StatusNotFound, "not_found")
-		return
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 
 	if action == "move" {
-		d.Repos.MoveWithParts(w, r, repoParts)
-		return
+		return d.Repos.MoveWithParts(c, repoParts)
 	}
 
-	in, err := repoInputFromParts(r, repoParts)
+	in, err := repoInputFromParts(c, repoParts)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
+		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
 	switch {
 	case isPullAction(action):
-		d.Pulls.post(w, r, in, action, extra)
+		return d.Pulls.post(c, in, action, extra)
 	case isIssueAction(action):
-		d.Issues.post(w, r, in, action, extra)
+		return d.Issues.post(c, in, action, extra)
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 
-func repoInputFromParts(r *http.Request, repoParts []string) (usecase.ResolveRepositoryInput, error) {
+func repoInputFromParts(c *httpx.Context, repoParts []string) (usecase.ResolveRepositoryInput, error) {
 	folderPath, name, err := folderAndName(repoParts)
 	if err != nil {
 		return usecase.ResolveRepositoryInput{}, err
 	}
 
 	var viewerID uint
-	if user, loggedIn := middleware.UserFromContext(r.Context()); loggedIn {
+	if user, loggedIn := middleware.UserFromContext(c.Ctx()); loggedIn {
 		viewerID = user.ID
 	}
 

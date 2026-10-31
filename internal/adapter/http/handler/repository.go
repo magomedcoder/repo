@@ -1,30 +1,22 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
 	"strings"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type RepositoryHandler struct {
-	repos     *usecase.RepositoryUseCase
-	reposRoot string
+	repos *usecase.RepositoryUseCase
 }
 
-func NewRepositoryHandler(repos *usecase.RepositoryUseCase, reposRoot string) *RepositoryHandler {
-	if reposRoot == "" {
-		reposRoot = usecase.DefaultReposRoot
-	}
-
-	return &RepositoryHandler{
-		repos:     repos,
-		reposRoot: reposRoot,
-	}
+func NewRepositoryHandler(repos *usecase.RepositoryUseCase) *RepositoryHandler {
+	return &RepositoryHandler{repos: repos}
 }
 
 type createRepoRequest struct {
@@ -44,26 +36,25 @@ type updateRepoRequest struct {
 	ShowOnHome           *bool   `json:"show_on_home"`
 	DefaultBranch        *string `json:"default_branch"`
 	ProtectDefaultBranch *bool   `json:"protect_default_branch"`
+	IssuesEnabled        *bool   `json:"issues_enabled"`
 }
 
 type moveRepoRequest struct {
 	FolderPath string `json:"folder_path"`
 }
 
-func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *RepositoryHandler) Create(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	var req createRepoRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
+	req, err := httpx.BindJSON[createRepoRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.repos.Create(usecase.CreateRepositoryInput{
+	out, err := h.repos.Create(c.Ctx(), usecase.CreateRepositoryInput{
 		Name:          req.Name,
 		Path:          req.Path,
 		Description:   req.Description,
@@ -73,19 +64,17 @@ func (h *RepositoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Private:       req.Private,
 		ShowOnHome:    req.ShowOnHome,
 		DefaultBranch: req.DefaultBranch,
-		BasePath:      h.reposRoot,
 	})
 	if err != nil {
-		writeRepoError(w, r, err)
-		return
+		return mapError(c, err)
 	}
-	writeJSON(w, http.StatusCreated, out)
+	return httpx.Created(c, out)
 }
 
-func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
-	scope := r.URL.Query().Get("scope")
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	user, loggedIn := middleware.UserFromContext(r.Context())
+func (h *RepositoryHandler) List(c *httpx.Context) error {
+	scope := c.Query("scope")
+	q := strings.TrimSpace(c.Query("q"))
+	user, loggedIn := middleware.UserFromContext(c.Ctx())
 	publicOnly := scope == "public" || scope == "home" || !loggedIn
 
 	var ownerID uint
@@ -93,8 +82,8 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 		ownerID = user.ID
 	}
 
-	offset, limit := usecase.ParseOffsetLimit(r.URL.Query().Get("offset"), r.URL.Query().Get("limit"))
-	sortKey := r.URL.Query().Get("sort")
+	offset, limit := usecase.ParseOffsetLimit(c.Query("offset"), c.Query("limit"))
+	sortKey := c.Query("sort")
 
 	sqlPage := sortKey == ""
 	fetchOff, fetchLim := 0, 0
@@ -104,63 +93,52 @@ func (h *RepositoryHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	if q != "" {
 		searchPublic := scope == "public" || scope == "home" || !loggedIn
-		items, err := h.repos.Search(q, ownerID, searchPublic, fetchLim, fetchOff)
+		items, err := h.repos.Search(c.Ctx(), q, ownerID, searchPublic, fetchLim, fetchOff)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
 		sortRepoItems(items, sortKey)
 		if sqlPage {
-			writeJSON(w, http.StatusOK, map[string]any{"repos": items})
-			return
+			return httpx.OK(c, reposResponse{Repos: items})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
-		return
+		return httpx.OK(c, reposResponse{Repos: paginateRepoItems(items, offset, limit)})
 	}
 
 	if scope == "home" || (!loggedIn && scope != "public") {
-		items, err := h.repos.ListHome(fetchLim, fetchOff)
+		items, err := h.repos.ListHome(c.Ctx(), fetchLim, fetchOff)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
 		sortRepoItems(items, sortKey)
 		if sqlPage {
-			writeJSON(w, http.StatusOK, map[string]any{"repos": items})
-			return
+			return httpx.OK(c, reposResponse{Repos: items})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
-		return
+		return httpx.OK(c, reposResponse{Repos: paginateRepoItems(items, offset, limit)})
 	}
 
 	if publicOnly {
-		items, err := h.repos.ListPublic(fetchLim, fetchOff)
+		items, err := h.repos.ListPublic(c.Ctx(), fetchLim, fetchOff)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 		sortRepoItems(items, sortKey)
 		if sqlPage {
-			writeJSON(w, http.StatusOK, map[string]any{"repos": items})
-			return
+			return httpx.OK(c, reposResponse{Repos: items})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
-		return
+		return httpx.OK(c, reposResponse{Repos: paginateRepoItems(items, offset, limit)})
 	}
 
-	items, err := h.repos.ListOwn(user.ID, fetchLim, fetchOff)
+	items, err := h.repos.ListOwn(c.Ctx(), user.ID, fetchLim, fetchOff)
 	if err != nil {
-		writeRepoError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 	sortRepoItems(items, sortKey)
 	if sqlPage {
-		writeJSON(w, http.StatusOK, map[string]any{"repos": items})
-		return
+		return httpx.OK(c, reposResponse{Repos: items})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"repos": paginateRepoItems(items, offset, limit)})
+	return httpx.OK(c, reposResponse{Repos: paginateRepoItems(items, offset, limit)})
 }
 
 func paginateRepoItems(items []usecase.RepositoryItem, offset, limit int) []usecase.RepositoryItem {
@@ -214,55 +192,49 @@ func sortRepoItems(items []usecase.RepositoryItem, key string) {
 	}
 }
 
-func (h *RepositoryHandler) Get(w http.ResponseWriter, r *http.Request) {
-	folderPath, name, err := parseRepoPath(r)
+func (h *RepositoryHandler) Get(c *httpx.Context) error {
+	folderPath, name, err := parseRepoPath(c)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
+		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
 	var viewerID uint
-	if user, ok := middleware.UserFromContext(r.Context()); ok {
+	if user, ok := middleware.UserFromContext(c.Ctx()); ok {
 		viewerID = user.ID
 	}
 
-	out, err := h.repos.Get(usecase.ResolveRepositoryInput{
+	out, err := h.repos.Get(c.Ctx(), usecase.ResolveRepositoryInput{
 		FolderPath: folderPath,
 		Name:       name,
 		ViewerID:   viewerID,
 	})
 	if err != nil {
 		if viewerID == 0 && (errors.Is(err, usecase.ErrRepoNotFound) || errors.Is(err, usecase.ErrUnauthorized) || errors.Is(err, usecase.ErrRepoForbidden)) {
-			writeError(w, r, http.StatusUnauthorized, "unauthorized")
-			return
+			return c.Error(http.StatusUnauthorized, "unauthorized")
 		}
-		writeRepoError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusOK, out)
+	return httpx.OK(c, out)
 }
 
-func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *RepositoryHandler) Update(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	folderPath, name, err := parseRepoPath(r)
+	folderPath, name, err := parseRepoPath(c)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
+		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
-	var req updateRepoRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
+	req, err := httpx.BindJSON[updateRepoRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.repos.Update(usecase.UpdateRepositoryInput{
+	out, err := h.repos.Update(c.Ctx(), usecase.UpdateRepositoryInput{
 		ViewerID:             user.ID,
 		FolderPath:           folderPath,
 		Name:                 name,
@@ -272,107 +244,75 @@ func (h *RepositoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		ShowOnHome:           req.ShowOnHome,
 		DefaultBranch:        req.DefaultBranch,
 		ProtectDefaultBranch: req.ProtectDefaultBranch,
-		BasePath:             h.reposRoot,
+		IssuesEnabled:        req.IssuesEnabled,
 	})
 	if err != nil {
-		writeRepoError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusOK, out)
+	return httpx.OK(c, out)
 }
 
-func (h *RepositoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *RepositoryHandler) Delete(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	folderPath, name, err := parseRepoPath(r)
+	folderPath, name, err := parseRepoPath(c)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
+		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
-	err = h.repos.Delete(usecase.ResolveRepositoryInput{
+	err = h.repos.Delete(c.Ctx(), usecase.ResolveRepositoryInput{
 		FolderPath: folderPath,
 		Name:       name,
 		ViewerID:   user.ID,
 	})
 	if err != nil {
-		writeRepoError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent()
 }
 
-func (h *RepositoryHandler) MoveWithParts(w http.ResponseWriter, r *http.Request, repoParts []string) {
+func (h *RepositoryHandler) MoveWithParts(c *httpx.Context, repoParts []string) error {
 	folderPath, name, err := folderAndName(repoParts)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, err.Error())
-		return
+		return c.Error(http.StatusBadRequest, err.Error())
 	}
-	h.move(w, r, folderPath, name)
+	return h.move(c, folderPath, name)
 }
 
-func (h *RepositoryHandler) move(w http.ResponseWriter, r *http.Request, folderPath, name string) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *RepositoryHandler) move(c *httpx.Context, folderPath, name string) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	var req moveRepoRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
+	req, err := httpx.BindJSON[moveRepoRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.repos.Move(usecase.MoveRepositoryInput{
+	out, err := h.repos.Move(c.Ctx(), usecase.MoveRepositoryInput{
 		ViewerID:      user.ID,
 		FolderPath:    folderPath,
 		Name:          name,
 		NewFolderPath: req.FolderPath,
-		BasePath:      h.reposRoot,
 	})
 	if err != nil {
-		writeRepoError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusOK, out)
+	return httpx.OK(c, out)
 }
 
-func parseRepoPath(r *http.Request) (folderPath, name string, err error) {
-	rest := strings.Trim(r.PathValue("path"), "/")
+func parseRepoPath(c *httpx.Context) (folderPath, name string, err error) {
+	rest := strings.Trim(c.Param("path"), "/")
 	if rest == "" {
 		return "", "", errors.New("invalid_repository_path")
 	}
-	return folderAndName(strings.Split(rest, "/"))
-}
 
-func writeRepoError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrNameRequired),
-		errors.Is(err, usecase.ErrInvalidName),
-		errors.Is(err, usecase.ErrInvalidBranchName),
-		errors.Is(err, usecase.ErrReservedSlug):
-		writeError(w, r, http.StatusBadRequest, err.Error())
-	case errors.Is(err, usecase.ErrAlreadyExists):
-		writeError(w, r, http.StatusConflict, err.Error())
-	case errors.Is(err, usecase.ErrRepoNotFound),
-		errors.Is(err, usecase.ErrFolderNotFound),
-		errors.Is(err, usecase.ErrRefNotFound),
-		errors.Is(err, usecase.ErrPathNotFound),
-		errors.Is(err, usecase.ErrEmptyRepo):
-		writeError(w, r, http.StatusNotFound, err.Error())
-	case errors.Is(err, usecase.ErrRepoForbidden):
-		writeError(w, r, http.StatusForbidden, err.Error())
-	case errors.Is(err, usecase.ErrUnauthorized):
-		writeError(w, r, http.StatusUnauthorized, err.Error())
-	default:
-		writeError(w, r, http.StatusInternalServerError, "internal_error")
-	}
+	return folderAndName(strings.Split(rest, "/"))
 }

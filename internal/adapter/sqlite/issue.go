@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type issueModel struct {
@@ -118,7 +118,7 @@ func (s *IssueStore) Delete(id uint) error {
 func (s *IssueStore) FindByRepoNumber(repoID uint, number int) (*domain.Issue, error) {
 	var model issueModel
 	if err := s.db.Where("repository_id = ? AND number = ?", repoID, number).First(&model).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	issue := model.toDomain()
@@ -184,7 +184,7 @@ func (s *IssueStore) DeleteComment(id uint) error {
 func (s *IssueStore) FindComment(id uint) (*domain.IssueComment, error) {
 	var model issueCommentModel
 	if err := s.db.First(&model, id).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	c := model.toDomain()
@@ -238,7 +238,7 @@ func (s *IssueStore) DeleteLabel(id uint) error {
 func (s *IssueStore) FindLabel(id uint) (*domain.Label, error) {
 	var model labelModel
 	if err := s.db.First(&model, id).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	l := model.toDomain()
@@ -257,7 +257,7 @@ func (s *IssueStore) ListLabels(repoID uint) ([]domain.Label, error) {
 func (s *IssueStore) FindLabelByRepoName(repoID uint, name string) (*domain.Label, error) {
 	var model labelModel
 	if err := s.db.Where("repository_id = ? AND name = ?", repoID, name).First(&model).Error; err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	l := model.toDomain()

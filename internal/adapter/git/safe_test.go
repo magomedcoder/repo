@@ -6,6 +6,7 @@ import (
 )
 
 func TestSafePathAllowsDotDotInName(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	path := filepath.Join(root, "a..b")
 	got, err := SafePath(root, path)
@@ -19,6 +20,7 @@ func TestSafePathAllowsDotDotInName(t *testing.T) {
 }
 
 func TestSafePathRejectsParentSegment(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	_, err := SafePath(root, filepath.Join(root, "..", "outside"))
 	if err == nil {

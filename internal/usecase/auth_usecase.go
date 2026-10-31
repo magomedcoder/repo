@@ -1,33 +1,33 @@
 package usecase
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 var (
-	ErrUsernameRequired   = errors.New("username_required")
-	ErrEmailRequired      = errors.New("email_required")
-	ErrPasswordRequired   = errors.New("password_required")
-	ErrInvalidUsername    = errors.New("invalid_username")
-	ErrInvalidEmail       = errors.New("invalid_email")
-	ErrPasswordTooShort   = errors.New("password_too_short")
-	ErrUsernameTaken      = errors.New("username_taken")
-	ErrEmailTaken         = errors.New("email_taken")
-	ErrInvalidCredentials = errors.New("invalid_credentials")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrSessionExpired     = errors.New("session_expired")
-	ErrRegistrationClosed = errors.New("registration_closed")
-	ErrTooManyAttempts    = errors.New("too_many_attempts")
-	ErrReservedSlug       = errors.New("reserved_slug")
+	ErrUsernameRequired   = NewError(KindValidation, "username_required")
+	ErrEmailRequired      = NewError(KindValidation, "email_required")
+	ErrPasswordRequired   = NewError(KindValidation, "password_required")
+	ErrInvalidUsername    = NewError(KindValidation, "invalid_username")
+	ErrInvalidEmail       = NewError(KindValidation, "invalid_email")
+	ErrPasswordTooShort   = NewError(KindValidation, "password_too_short")
+	ErrUsernameTaken      = NewError(KindConflict, "username_taken")
+	ErrEmailTaken         = NewError(KindConflict, "email_taken")
+	ErrInvalidCredentials = NewError(KindUnauthorized, "invalid_credentials")
+	ErrUnauthorized       = NewError(KindUnauthorized, "unauthorized")
+	ErrSessionExpired     = NewError(KindUnauthorized, "session_expired")
+	ErrRegistrationClosed = NewError(KindForbidden, "registration_closed")
+	ErrTooManyAttempts    = NewError(KindRateLimited, "too_many_attempts")
+	ErrReservedSlug       = NewError(KindValidation, "reserved_slug")
 )
 
 var reservedSlugs = map[string]struct{}{
@@ -129,12 +129,13 @@ func (uc *AuthUseCase) SetAllowRegistration(allow bool) {
 	uc.allowRegistration = allow
 }
 
-func (uc *AuthUseCase) Register(in RegisterInput) (*AuthOutput, error) {
+func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (*AuthOutput, error) {
+	_ = ctx.Err()
 	if !uc.allowRegistration {
 		return nil, ErrRegistrationClosed
 	}
 
-	user, err := uc.CreateUser(in)
+	user, err := uc.CreateUser(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +148,8 @@ func (uc *AuthUseCase) Register(in RegisterInput) (*AuthOutput, error) {
 	return &AuthOutput{User: user, Token: token}, nil
 }
 
-func (uc *AuthUseCase) CreateUser(in RegisterInput) (*domain.User, error) {
+func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domain.User, error) {
+	_ = ctx.Err()
 	username := strings.ToLower(strings.TrimSpace(in.Username))
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	password := in.Password
@@ -209,7 +211,8 @@ func (uc *AuthUseCase) CreateUser(in RegisterInput) (*domain.User, error) {
 	return sanitizeUser(user), nil
 }
 
-func (uc *AuthUseCase) Login(in LoginInput) (*AuthOutput, error) {
+func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, error) {
+	_ = ctx.Err()
 	login := strings.ToLower(strings.TrimSpace(in.Login))
 	if login == "" || in.Password == "" {
 		return nil, ErrInvalidCredentials
@@ -254,7 +257,8 @@ func (uc *AuthUseCase) Login(in LoginInput) (*AuthOutput, error) {
 	return &AuthOutput{User: sanitizeUser(user), Token: token}, nil
 }
 
-func (uc *AuthUseCase) ChangePassword(in ChangePasswordInput) error {
+func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInput) error {
+	_ = ctx.Err()
 	if in.UserID == 0 {
 		return ErrUnauthorized
 	}
@@ -289,7 +293,8 @@ func (uc *AuthUseCase) ChangePassword(in ChangePasswordInput) error {
 	return nil
 }
 
-func (uc *AuthUseCase) Logout(token string) error {
+func (uc *AuthUseCase) Logout(ctx context.Context, token string) error {
+	_ = ctx.Err()
 	if token == "" {
 		return nil
 	}
@@ -297,12 +302,14 @@ func (uc *AuthUseCase) Logout(token string) error {
 	return uc.sessions.DeleteByToken(token)
 }
 
-func (uc *AuthUseCase) Me(token string) (*domain.User, error) {
-	user, _, err := uc.Authenticate(token)
+func (uc *AuthUseCase) Me(ctx context.Context, token string) (*domain.User, error) {
+	_ = ctx.Err()
+	user, _, err := uc.Authenticate(ctx, token)
 	return user, err
 }
 
-func (uc *AuthUseCase) Authenticate(token string) (*domain.User, *domain.Session, error) {
+func (uc *AuthUseCase) Authenticate(ctx context.Context, token string) (*domain.User, *domain.Session, error) {
+	_ = ctx.Err()
 	if token == "" {
 		return nil, nil, ErrUnauthorized
 	}

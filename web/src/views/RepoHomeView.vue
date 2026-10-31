@@ -86,6 +86,10 @@ watch([() => props.repoPath, repo], loadData, { immediate: true })
   >
     <PageState :loading="dataLoading" :error="error">
       <div class="mb-4 space-y-1 font-mono text-[90%] leading-[1.55]">
+        <div v-if="repo?.description" class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+          <span class="shrink-0 text-ink-muted">{{ $t('index.description') }}</span>
+          <span class="min-w-0 font-sans text-ink">{{ repo.description }}</span>
+        </div>
         <div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
           <span class="shrink-0 text-ink-muted">{{ $t('repo.clone') }}</span>
           <span class="min-w-0 break-all text-ink">{{ cloneUrl(repoPath) }}</span>

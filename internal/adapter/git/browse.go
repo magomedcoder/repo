@@ -2,6 +2,7 @@ package git
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -16,7 +17,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	"github.com/go-git/go-git/v6/plumbing/object"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 func (r *Repository) open(repoPath string) (*gogit.Repository, error) {
@@ -150,7 +151,7 @@ func (r *Repository) GetCommit(repoPath, sha string) (*domain.CommitInfo, error)
 
 	c, err := repo.CommitObject(plumbing.NewHash(sha))
 	if err != nil {
-		return nil, fmt.Errorf("commit not found: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrCommitNotFound, err)
 	}
 
 	info := commitToInfo(c)
@@ -177,11 +178,11 @@ func (r *Repository) ListTree(repoPath, ref, dirPath string) ([]domain.TreeEntry
 	if dirPath != "" {
 		entry, err := tree.FindEntry(dirPath)
 		if err != nil {
-			return nil, fmt.Errorf("path not found: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrPathNotFound, err)
 		}
 
 		if entry.Mode != filemode.Dir {
-			return nil, fmt.Errorf("path is not a directory")
+			return nil, ErrNotDirectory
 		}
 
 		tree, err = repo.TreeObject(entry.Hash)
@@ -237,7 +238,7 @@ func (r *Repository) GetBlob(repoPath, ref, filePath string) (*domain.BlobConten
 
 	file, err := commit.File(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("file not found: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrFileNotFound, err)
 	}
 
 	reader, err := file.Reader()
@@ -269,7 +270,10 @@ func (r *Repository) GetBlob(repoPath, ref, filePath string) (*domain.BlobConten
 }
 
 func (r *Repository) GetBlame(repoPath, ref, filePath string) (*domain.BlameResult, error) {
-	return withGitTimeout(func() (*domain.BlameResult, error) {
+	return r.withTimeout(context.Background(), func(ctx context.Context) (*domain.BlameResult, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		return r.getBlame(repoPath, ref, filePath)
 	})
 }
@@ -318,7 +322,10 @@ func (r *Repository) getBlame(repoPath, ref, filePath string) (*domain.BlameResu
 }
 
 func (r *Repository) GetCommitDiff(repoPath, sha string) (*domain.CommitDiff, error) {
-	return withGitTimeout(func() (*domain.CommitDiff, error) {
+	return r.withTimeout(context.Background(), func(ctx context.Context) (*domain.CommitDiff, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		return r.getCommitDiff(repoPath, sha)
 	})
 }
@@ -331,7 +338,7 @@ func (r *Repository) getCommitDiff(repoPath, sha string) (*domain.CommitDiff, er
 
 	commit, err := repo.CommitObject(plumbing.NewHash(sha))
 	if err != nil {
-		return nil, fmt.Errorf("commit not found: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrCommitNotFound, err)
 	}
 
 	diff := &domain.CommitDiff{
@@ -480,7 +487,7 @@ func (r *Repository) FindReadme(repoPath, ref string) (*domain.BlobContent, erro
 		}
 	}
 
-	return nil, fmt.Errorf("readme not found")
+	return nil, ErrReadmeNotFound
 }
 
 func (r *Repository) resolveHash(repo *gogit.Repository, ref string) (plumbing.Hash, error) {
@@ -488,7 +495,7 @@ func (r *Repository) resolveHash(repo *gogit.Repository, ref string) (plumbing.H
 	if ref == "" {
 		head, err := repo.Head()
 		if err != nil {
-			return plumbing.ZeroHash, fmt.Errorf("empty repository")
+			return plumbing.ZeroHash, ErrEmptyRepository
 		}
 
 		return head.Hash(), nil
@@ -506,7 +513,7 @@ func (r *Repository) resolveHash(repo *gogit.Repository, ref string) (plumbing.H
 		}
 	}
 
-	return plumbing.ZeroHash, fmt.Errorf("ref not found: %s", ref)
+	return plumbing.ZeroHash, fmt.Errorf("%w: %s", ErrRefNotFound, ref)
 }
 
 func (r *Repository) commitFromRef(repo *gogit.Repository, ref string) (*object.Commit, error) {
@@ -520,7 +527,7 @@ func (r *Repository) commitFromRef(repo *gogit.Repository, ref string) (*object.
 
 func commitToInfo(c *object.Commit) domain.CommitInfo {
 	parents := make([]string, 0, c.NumParents())
-	for i := 0; i < c.NumParents(); i++ {
+	for i := range c.NumParents() {
 		parents = append(parents, c.ParentHashes[i].String())
 	}
 

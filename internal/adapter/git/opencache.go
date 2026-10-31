@@ -1,10 +1,11 @@
 package git
 
 import (
+	"maps"
 	"sync"
 
 	gogit "github.com/go-git/go-git/v6"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type openCache struct {
@@ -29,6 +30,7 @@ func (c *openCache) get(path string) (*gogit.Repository, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	repo, ok := c.entries[path]
+
 	return repo, ok
 }
 
@@ -89,10 +91,7 @@ func (c *statsCache) put(key string, stats *domain.RepoStats) {
 	defer c.mu.Unlock()
 	cp := *stats
 	if stats.Languages != nil {
-		cp.Languages = make(map[string]int64, len(stats.Languages))
-		for k, v := range stats.Languages {
-			cp.Languages[k] = v
-		}
+		cp.Languages = maps.Clone(stats.Languages)
 	}
 	c.entries[key] = &cp
 }

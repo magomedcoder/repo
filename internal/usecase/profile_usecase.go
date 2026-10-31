@@ -1,7 +1,7 @@
 package usecase
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 var (
-	ErrUserNotFound   = errors.New("user_not_found")
-	ErrInvalidAvatar  = errors.New("invalid_avatar")
-	ErrAvatarTooLarge = errors.New("avatar_too_large")
-	ErrAvatarNotFound = errors.New("avatar_not_found")
+	ErrUserNotFound   = NewError(KindNotFound, "user_not_found")
+	ErrInvalidAvatar  = NewError(KindValidation, "invalid_avatar")
+	ErrAvatarTooLarge = NewError(KindValidation, "avatar_too_large")
+	ErrAvatarNotFound = NewError(KindNotFound, "avatar_not_found")
 )
 
 const maxAvatarBytes = 1 << 20 // 1 MiB
@@ -24,7 +24,7 @@ const maxAvatarBytes = 1 << 20 // 1 MiB
 type ProfileItem struct {
 	ID        uint      `json:"id"`
 	Username  string    `json:"username"`
-	Email     string    `json:"email,omitempty"`
+	Email     string    `json:"email,omitzero"`
 	HasAvatar bool      `json:"has_avatar"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -34,11 +34,15 @@ type ProfileUseCase struct {
 	avatarDir string
 }
 
-func NewProfileUseCase(users domain.UserStore, avatarDir string) *ProfileUseCase {
-	return &ProfileUseCase{users: users, avatarDir: avatarDir}
+func NewProfileUseCase(users domain.UserStore, dataDir string) *ProfileUseCase {
+	return &ProfileUseCase{
+		users:     users,
+		avatarDir: filepath.Join(dataDir, "avatars"),
+	}
 }
 
-func (uc *ProfileUseCase) GetByUsername(username string, viewerID uint) (*ProfileItem, error) {
+func (uc *ProfileUseCase) GetByUsername(ctx context.Context, username string, viewerID uint) (*ProfileItem, error) {
+	_ = ctx.Err()
 	user, err := uc.users.FindByUsername(strings.TrimSpace(username))
 	if err != nil {
 		return nil, ErrUserNotFound
@@ -47,7 +51,8 @@ func (uc *ProfileUseCase) GetByUsername(username string, viewerID uint) (*Profil
 	return toProfileItem(user, viewerID == user.ID), nil
 }
 
-func (uc *ProfileUseCase) UpdateEmail(userID uint, email string) (*ProfileItem, error) {
+func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email string) (*ProfileItem, error) {
+	_ = ctx.Err()
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" {
 		return nil, ErrEmailRequired
@@ -81,7 +86,8 @@ func (uc *ProfileUseCase) UpdateEmail(userID uint, email string) (*ProfileItem, 
 	return toProfileItem(user, true), nil
 }
 
-func (uc *ProfileUseCase) SetAvatar(userID uint, r io.Reader, contentType string, size int64) (*ProfileItem, error) {
+func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reader, contentType string, size int64) (*ProfileItem, error) {
+	_ = ctx.Err()
 	if size > maxAvatarBytes {
 		return nil, ErrAvatarTooLarge
 	}
@@ -142,7 +148,8 @@ func (uc *ProfileUseCase) SetAvatar(userID uint, r io.Reader, contentType string
 	return toProfileItem(user, true), nil
 }
 
-func (uc *ProfileUseCase) ClearAvatar(userID uint) (*ProfileItem, error) {
+func (uc *ProfileUseCase) ClearAvatar(ctx context.Context, userID uint) (*ProfileItem, error) {
+	_ = ctx.Err()
 	user, err := uc.users.FindByID(userID)
 	if err != nil {
 		return nil, ErrUnauthorized
@@ -159,7 +166,8 @@ func (uc *ProfileUseCase) ClearAvatar(userID uint) (*ProfileItem, error) {
 	return toProfileItem(user, true), nil
 }
 
-func (uc *ProfileUseCase) OpenAvatar(username string) (io.ReadCloser, string, error) {
+func (uc *ProfileUseCase) OpenAvatar(ctx context.Context, username string) (io.ReadCloser, string, error) {
+	_ = ctx.Err()
 	user, err := uc.users.FindByUsername(strings.TrimSpace(username))
 	if err != nil || user.AvatarPath == "" {
 		return nil, "", ErrAvatarNotFound

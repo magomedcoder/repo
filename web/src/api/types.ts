@@ -45,6 +45,7 @@ export interface Repository {
   is_private: boolean
   show_on_home?: boolean
   protect_default_branch?: boolean
+  issues_enabled?: boolean
   default_branch: string
   last_activity_at?: string
   created_at: string

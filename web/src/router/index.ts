@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useRegistration } from '@/composables/useRegistration'
+import { useSite } from '@/composables/useSite'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -151,6 +152,11 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  const site = useSite()
+  if (!site.ready.value) {
+    await site.fetchSite()
+  }
+
   const auth = useAuth()
   if (!auth.ready.value) {
     await auth.fetchMe()

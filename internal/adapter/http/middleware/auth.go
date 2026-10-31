@@ -2,12 +2,12 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type contextKey string
@@ -18,7 +18,7 @@ const (
 )
 
 type Authenticator interface {
-	Authenticate(token string) (*domain.User, *domain.Session, error)
+	Authenticate(ctx context.Context, token string) (*domain.User, *domain.Session, error)
 }
 
 func UserFromContext(ctx context.Context) (*domain.User, bool) {
@@ -38,16 +38,14 @@ func SessionToken(r *http.Request) string {
 func RequireAuth(auth Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, _, err := auth.Authenticate(SessionToken(r))
+			user, _, err := auth.Authenticate(r.Context(), SessionToken(r))
 			if err != nil {
 				msg := "unauthorized"
 				if errors.Is(err, usecase.ErrSessionExpired) {
 					msg = err.Error()
 				}
-
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+				c := &httpx.Context{W: w, R: r}
+				_ = c.ErrorPlain(http.StatusUnauthorized, msg)
 				return
 			}
 
@@ -61,7 +59,7 @@ func OptionalAuth(auth Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if token := SessionToken(r); token != "" {
-				if user, _, err := auth.Authenticate(token); err == nil {
+				if user, _, err := auth.Authenticate(r.Context(), token); err == nil {
 					ctx := context.WithValue(r.Context(), userContextKey, user)
 					r = r.WithContext(ctx)
 				}

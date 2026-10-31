@@ -7,108 +7,96 @@ import (
 	"strconv"
 	"strings"
 
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
-func (h *RepositoryHandler) serveBrowseGet(w http.ResponseWriter, r *http.Request, in usecase.ResolveRepositoryInput, action string, extra []string) {
-	ref := r.URL.Query().Get("ref")
-	path := r.URL.Query().Get("path")
+func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
+	ref := c.Query("ref")
+	path := c.Query("path")
 
 	switch action {
 	case "branches":
-		items, err := h.repos.ListBranches(in)
+		items, err := h.repos.ListBranches(c.Ctx(), in)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"branches": items})
+		return httpx.OK(c, branchesResponse{Branches: items})
 
 	case "tags":
-		items, err := h.repos.ListTags(in)
+		items, err := h.repos.ListTags(c.Ctx(), in)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"tags": items})
+		return httpx.OK(c, tagsResponse{Tags: items})
 
 	case "commits":
 		if len(extra) == 0 {
-			offset, limit := usecase.ParseOffsetLimit(r.URL.Query().Get("offset"), r.URL.Query().Get("limit"))
+			offset, limit := usecase.ParseOffsetLimit(c.Query("offset"), c.Query("limit"))
 			if limit <= 0 {
 				limit = 30
 			}
 			if limit > 100 {
 				limit = 100
 			}
-			items, err := h.repos.ListCommits(in, ref, offset, limit)
+			items, err := h.repos.ListCommits(c.Ctx(), in, ref, offset, limit)
 			if err != nil {
-				writeRepoError(w, r, err)
-				return
+				return mapError(c, err)
 			}
 
-			writeJSON(w, http.StatusOK, map[string]any{"commits": items})
-			return
+			return httpx.OK(c, commitsResponse{Commits: items})
 		}
 		sha := extra[0]
 		if len(extra) == 1 {
-			item, err := h.repos.GetCommit(in, sha)
+			item, err := h.repos.GetCommit(c.Ctx(), in, sha)
 			if err != nil {
-				writeRepoError(w, r, err)
-				return
+				return mapError(c, err)
 			}
 
-			writeJSON(w, http.StatusOK, item)
-			return
+			return httpx.OK(c, item)
 		}
 		if len(extra) == 2 && extra[1] == "diff" {
-			item, err := h.repos.GetCommitDiff(in, sha)
+			item, err := h.repos.GetCommitDiff(c.Ctx(), in, sha)
 			if err != nil {
-				writeRepoError(w, r, err)
-				return
+				return mapError(c, err)
 			}
 
-			writeJSON(w, http.StatusOK, item)
-			return
+			return httpx.OK(c, item)
 		}
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 
 	case "tree":
-		items, err := h.repos.ListTree(in, ref, path)
+		items, err := h.repos.ListTree(c.Ctx(), in, ref, path)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ref": ref, "path": path, "tree": items})
+		return httpx.OK(c, treeResponse{Ref: ref, Path: path, Tree: items})
 
 	case "blob":
-		item, err := h.repos.GetBlob(in, ref, path)
+		item, err := h.repos.GetBlob(c.Ctx(), in, ref, path)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 
 	case "blame":
-		item, err := h.repos.GetBlame(in, ref, path)
+		item, err := h.repos.GetBlame(c.Ctx(), in, ref, path)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 
 	case "raw":
-		item, err := h.repos.GetBlob(in, ref, path)
+		item, err := h.repos.GetBlob(c.Ctx(), in, ref, path)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 		var data []byte
 		if item.Encoding == "base64" {
 			decoded, err := base64.StdEncoding.DecodeString(item.Content)
 			if err != nil {
-				writeError(w, r, http.StatusInternalServerError, "internal_error")
-				return
+				return c.Error(http.StatusInternalServerError, "internal_error")
 			}
 			data = decoded
 		} else {
@@ -116,44 +104,42 @@ func (h *RepositoryHandler) serveBrowseGet(w http.ResponseWriter, r *http.Reques
 		}
 
 		if item.IsBinary {
-			w.Header().Set("Content-Type", "application/octet-stream")
+			c.W.Header().Set("Content-Type", "application/octet-stream")
 		} else {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			c.W.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		}
 
-		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(data)
+		c.W.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		c.W.WriteHeader(http.StatusOK)
+		_, _ = c.W.Write(data)
+		return nil
 
 	case "readme":
-		item, err := h.repos.GetReadme(in, ref)
+		item, err := h.repos.GetReadme(c.Ctx(), in, ref)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 
 	case "stats":
-		item, err := h.repos.GetStats(in, ref)
+		item, err := h.repos.GetStats(c.Ctx(), in, ref)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 
 	case "summary":
-		item, err := h.repos.GetSummary(in, ref)
+		item, err := h.repos.GetSummary(c.Ctx(), in, ref)
 		if err != nil {
-			writeRepoError(w, r, err)
-			return
+			return mapError(c, err)
 		}
 
-		writeJSON(w, http.StatusOK, item)
+		return httpx.OK(c, item)
 
 	default:
-		writeError(w, r, http.StatusNotFound, "not_found")
+		return c.Error(http.StatusNotFound, "not_found")
 	}
 }
 

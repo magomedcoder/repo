@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type folderModel struct {
@@ -102,7 +102,7 @@ func (s *FolderStore) FindByOwnerAndID(ownerKind string, ownerID, id uint) (*dom
 	var model folderModel
 	err := s.db.Where("owner_kind = ? AND owner_id = ? AND id = ?", ownerKind, ownerID, id).First(&model).Error
 	if err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	f := model.toDomain()
@@ -117,7 +117,7 @@ func (s *FolderStore) FindByOwnerAndPath(ownerKind string, ownerID uint, path st
 	var model folderModel
 	err := s.db.Where("owner_kind = ? AND owner_id = ? AND path = ?", ownerKind, ownerID, path).First(&model).Error
 	if err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	f := model.toDomain()

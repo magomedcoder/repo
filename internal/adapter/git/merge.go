@@ -1,9 +1,11 @@
 package git
 
 import (
+	"cmp"
+	"context"
 	"fmt"
 	"maps"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -11,11 +13,15 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	"github.com/go-git/go-git/v6/plumbing/object"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 func (r *Repository) Compare(repoPath, base, head string) (*domain.CompareResult, error) {
-	return withGitTimeout(func() (*domain.CompareResult, error) {
+	return r.withTimeout(context.Background(), func(ctx context.Context) (*domain.CompareResult, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		return r.compare(repoPath, base, head)
 	})
 }
@@ -28,12 +34,12 @@ func (r *Repository) compare(repoPath, base, head string) (*domain.CompareResult
 
 	baseCommit, err := r.commitFromRef(repo, base)
 	if err != nil {
-		return nil, fmt.Errorf("base ref not found: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrRefNotFound, err)
 	}
 
 	headCommit, err := r.commitFromRef(repo, head)
 	if err != nil {
-		return nil, fmt.Errorf("head ref not found: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrRefNotFound, err)
 	}
 
 	out := &domain.CompareResult{
@@ -142,7 +148,10 @@ func (r *Repository) CanFastForward(repoPath, base, head string) (bool, error) {
 }
 
 func (r *Repository) Merge(repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
-	return withGitTimeout(func() (string, error) {
+	return r.withTimeout(context.Background(), func(ctx context.Context) (string, error) {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		return r.merge(repoPath, base, head, strategy, authorName, authorEmail, message)
 	})
 }
@@ -186,7 +195,7 @@ func (r *Repository) merge(repoPath, base, head, strategy, authorName, authorEma
 
 	if strategy == "ff-only" {
 		if !ff {
-			return "", fmt.Errorf("not fast-forward")
+			return "", ErrNotFastForward
 		}
 
 		return r.fastForward(repoPath, base, head)
@@ -284,7 +293,7 @@ func (r *Repository) mergeTrees(repoPath, base, head, authorName, authorEmail, m
 		case sameEntry(a, aok, h, hok):
 			continue
 		default:
-			return "", fmt.Errorf("merge conflict")
+			return "", ErrMergeConflict
 		}
 	}
 
@@ -428,18 +437,24 @@ func writeTree(repo *gogit.Repository, files map[string]object.TreeEntry) (plumb
 
 	root := &dir{files: map[string]object.TreeEntry{}, dirs: map[string]*dir{}}
 	for path, entry := range files {
-		parts := strings.Split(path, "/")
+		dirPath, name, ok := strings.CutLast(path, "/")
+		if !ok {
+			name = path
+			dirPath = ""
+		}
 		cur := root
-		for _, part := range parts[:len(parts)-1] {
-			next, ok := cur.dirs[part]
-			if !ok {
-				next = &dir{files: map[string]object.TreeEntry{}, dirs: map[string]*dir{}}
-				cur.dirs[part] = next
+		if dirPath != "" {
+			for _, part := range strings.Split(dirPath, "/") {
+				next, found := cur.dirs[part]
+				if !found {
+					next = &dir{files: map[string]object.TreeEntry{}, dirs: map[string]*dir{}}
+					cur.dirs[part] = next
+				}
+				cur = next
 			}
-			cur = next
 		}
 
-		entry.Name = parts[len(parts)-1]
+		entry.Name = name
 		cur.files[entry.Name] = entry
 	}
 
@@ -463,8 +478,8 @@ func writeTree(repo *gogit.Repository, files map[string]object.TreeEntry) (plumb
 			})
 		}
 
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].Name < entries[j].Name
+		slices.SortFunc(entries, func(a, b object.TreeEntry) int {
+			return cmp.Compare(a.Name, b.Name)
 		})
 		tree := &object.Tree{Entries: entries}
 		obj := repo.Storer.NewEncodedObject()

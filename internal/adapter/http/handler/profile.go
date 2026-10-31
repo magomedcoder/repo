@@ -2,13 +2,12 @@ package handler
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type ProfileHandler struct {
@@ -25,60 +24,53 @@ type updateProfileRequest struct {
 	Email string `json:"email"`
 }
 
-func (h *ProfileHandler) Get(w http.ResponseWriter, r *http.Request) {
-	username := r.PathValue("username")
+func (h *ProfileHandler) Get(c *httpx.Context) error {
+	username := c.Param("username")
 	var viewerID uint
-	if user, ok := middleware.UserFromContext(r.Context()); ok {
+	if user, ok := middleware.UserFromContext(c.Ctx()); ok {
 		viewerID = user.ID
 	}
 
-	out, err := h.profiles.GetByUsername(username, viewerID)
+	out, err := h.profiles.GetByUsername(c.Ctx(), username, viewerID)
 	if err != nil {
-		writeProfileError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusOK, out)
+	return httpx.OK(c, out)
 }
 
-func (h *ProfileHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *ProfileHandler) UpdateMe(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	var req updateProfileRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
-	}
-
-	out, err := h.profiles.UpdateEmail(user.ID, req.Email)
+	req, err := httpx.BindJSON[updateProfileRequest](c)
 	if err != nil {
-		writeProfileError(w, r, err)
-		return
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	writeJSON(w, http.StatusOK, out)
+	out, err := h.profiles.UpdateEmail(c.Ctx(), user.ID, req.Email)
+	if err != nil {
+		return mapError(c, err)
+	}
+
+	return httpx.OK(c, out)
 }
 
-func (h *ProfileHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *ProfileHandler) UploadAvatar(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if err := r.ParseMultipartForm(2 << 20); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_avatar")
-		return
+	if err := c.R.ParseMultipartForm(2 << 20); err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_avatar")
 	}
 
-	file, header, err := r.FormFile("avatar")
+	file, header, err := c.R.FormFile("avatar")
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_avatar")
-		return
+		return c.Error(http.StatusBadRequest, "invalid_avatar")
 	}
 	defer file.Close()
 
@@ -87,58 +79,37 @@ func (h *ProfileHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	contentType := http.DetectContentType(buf[:n])
 	reader := io.MultiReader(bytes.NewReader(buf[:n]), file)
 
-	out, err := h.profiles.SetAvatar(user.ID, reader, contentType, header.Size)
+	out, err := h.profiles.SetAvatar(c.Ctx(), user.ID, reader, contentType, header.Size)
 	if err != nil {
-		writeProfileError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusOK, out)
+	return httpx.OK(c, out)
 }
 
-func (h *ProfileHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *ProfileHandler) DeleteAvatar(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	out, err := h.profiles.ClearAvatar(user.ID)
+	out, err := h.profiles.ClearAvatar(c.Ctx(), user.ID)
 	if err != nil {
-		writeProfileError(w, r, err)
-		return
+		return mapError(c, err)
 	}
-	writeJSON(w, http.StatusOK, out)
+	return httpx.OK(c, out)
 }
 
-func (h *ProfileHandler) ServeAvatar(w http.ResponseWriter, r *http.Request) {
-	username := r.PathValue("username")
-	f, contentType, err := h.profiles.OpenAvatar(username)
+func (h *ProfileHandler) ServeAvatar(c *httpx.Context) error {
+	username := c.Param("username")
+	f, contentType, err := h.profiles.OpenAvatar(c.Ctx(), username)
 	if err != nil {
-		writeProfileError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
 	defer f.Close()
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	_, _ = io.Copy(w, f)
-}
-
-func writeProfileError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrUserNotFound), errors.Is(err, usecase.ErrAvatarNotFound):
-		writeError(w, r, http.StatusNotFound, err.Error())
-	case errors.Is(err, usecase.ErrInvalidAvatar),
-		errors.Is(err, usecase.ErrAvatarTooLarge),
-		errors.Is(err, usecase.ErrEmailRequired),
-		errors.Is(err, usecase.ErrInvalidEmail):
-		writeError(w, r, http.StatusBadRequest, err.Error())
-	case errors.Is(err, usecase.ErrEmailTaken):
-		writeError(w, r, http.StatusConflict, err.Error())
-	case errors.Is(err, usecase.ErrUnauthorized):
-		writeError(w, r, http.StatusUnauthorized, err.Error())
-	default:
-		writeError(w, r, http.StatusInternalServerError, "internal_error")
-	}
+	c.W.Header().Set("Content-Type", contentType)
+	c.W.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = io.Copy(c.W, f)
+	return nil
 }

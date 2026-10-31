@@ -1,13 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type FolderHandler struct {
@@ -26,79 +25,70 @@ type renameFolderRequest struct {
 	Name string `json:"name"`
 }
 
-func (h *FolderHandler) Create(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *FolderHandler) Create(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	var req createFolderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
+	req, err := httpx.BindJSON[createFolderRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.folders.Create(usecase.CreateFolderInput{
+	out, err := h.folders.Create(c.Ctx(), usecase.CreateFolderInput{
 		ViewerID: user.ID,
 		OwnerID:  user.ID,
 		Name:     req.Name,
 	})
 	if err != nil {
-		writeFolderError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusCreated, out)
+	return httpx.Created(c, out)
 }
 
-func (h *FolderHandler) List(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *FolderHandler) List(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	out, err := h.folders.List(user.ID, user.ID)
+	out, err := h.folders.List(c.Ctx(), user.ID, user.ID)
 	if err != nil {
-		writeFolderError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"folders": out})
+	return httpx.OK(c, foldersResponse{Folders: out})
 }
 
-func (h *FolderHandler) Get(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *FolderHandler) Get(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	path := strings.Trim(r.PathValue("path"), "/")
-	out, err := h.folders.GetContents(user.ID, user.ID, path)
+	path := strings.Trim(c.Param("path"), "/")
+	out, err := h.folders.GetContents(c.Ctx(), user.ID, user.ID, path)
 	if err != nil {
-		writeFolderError(w, r, err)
-		return
+		return mapError(c, err)
 	}
-	writeJSON(w, http.StatusOK, out)
+	return httpx.OK(c, out)
 }
 
-func (h *FolderHandler) Rename(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *FolderHandler) Rename(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	path := strings.Trim(r.PathValue("path"), "/")
-	var req renameFolderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
+	path := strings.Trim(c.Param("path"), "/")
+	req, err := httpx.BindJSON[renameFolderRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.folders.Rename(usecase.RenameFolderInput{
+	out, err := h.folders.Rename(c.Ctx(), usecase.RenameFolderInput{
 		ViewerID: user.ID,
 		OwnerID:  user.ID,
 		Path:     path,
@@ -106,44 +96,22 @@ func (h *FolderHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		writeFolderError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusOK, out)
+	return httpx.OK(c, out)
 }
 
-func (h *FolderHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *FolderHandler) Delete(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	path := strings.Trim(r.PathValue("path"), "/")
-	if err := h.folders.Delete(user.ID, user.ID, path); err != nil {
-		writeFolderError(w, r, err)
-		return
+	path := strings.Trim(c.Param("path"), "/")
+	if err := h.folders.Delete(c.Ctx(), user.ID, user.ID, path); err != nil {
+		return mapError(c, err)
 	}
 
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func writeFolderError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrFolderNameRequired),
-		errors.Is(err, usecase.ErrInvalidFolderName),
-		errors.Is(err, usecase.ErrReservedSlug):
-		writeError(w, r, http.StatusBadRequest, err.Error())
-	case errors.Is(err, usecase.ErrFolderExists):
-		writeError(w, r, http.StatusConflict, err.Error())
-	case errors.Is(err, usecase.ErrFolderNotFound):
-		writeError(w, r, http.StatusNotFound, err.Error())
-	case errors.Is(err, usecase.ErrFolderNotEmpty):
-		writeError(w, r, http.StatusConflict, err.Error())
-	case errors.Is(err, usecase.ErrUnauthorized):
-		writeError(w, r, http.StatusUnauthorized, err.Error())
-	default:
-		writeError(w, r, http.StatusInternalServerError, "internal_error")
-	}
+	return c.NoContent()
 }

@@ -3,6 +3,7 @@ package handler
 import "testing"
 
 func TestIsGitHTTPPathSuffixOnly(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		path string
 		ok   bool

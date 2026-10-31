@@ -1,14 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/sqlite"
-	"repo.magomedcoder.ru/repo/internal/config"
-	"repo.magomedcoder.ru/repo/internal/usecase"
-	"repo.magomedcoder.ru/repo/pkg/argon2id"
-	"repo.magomedcoder.ru/repo/pkg/token"
+	"magomedcoder.ru/repo/internal/adapter/sqlite"
+	"magomedcoder.ru/repo/internal/config"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/argon2id"
+	"magomedcoder.ru/repo/pkg/token"
 )
 
 func runUser(args []string) error {
@@ -43,7 +44,7 @@ func runUserCreate(args []string) error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	db, err := sqlite.NewDB(cfg.DBPath)
+	db, err := sqlite.NewDB(cfg.DataDir)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
@@ -56,7 +57,7 @@ func runUserCreate(args []string) error {
 	)
 	authUC.SetSessionSecret(cfg.SessionSecret)
 
-	user, err := authUC.CreateUser(usecase.RegisterInput{
+	user, err := authUC.CreateUser(context.Background(), usecase.RegisterInput{
 		Username: *username,
 		Email:    *email,
 		Password: *password,

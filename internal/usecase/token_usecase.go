@@ -1,19 +1,19 @@
 package usecase
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 var (
-	ErrTokenNameRequired = errors.New("token_name_required")
-	ErrTokenNotFound     = errors.New("token_not_found")
+	ErrTokenNameRequired = NewError(KindValidation, "token_name_required")
+	ErrTokenNotFound     = NewError(KindNotFound, "token_not_found")
 )
 
 type CreateTokenInput struct {
@@ -26,7 +26,7 @@ type TokenItem struct {
 	Name       string     `json:"name"`
 	Prefix     string     `json:"prefix"`
 	CreatedAt  time.Time  `json:"created_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	LastUsedAt *time.Time `json:"last_used_at,omitzero"`
 }
 
 type CreateTokenOutput struct {
@@ -46,7 +46,8 @@ func NewTokenUseCase(tokens domain.AccessTokenStore, gen domain.TokenGenerator) 
 	}
 }
 
-func (uc *TokenUseCase) Create(in CreateTokenInput) (*CreateTokenOutput, error) {
+func (uc *TokenUseCase) Create(ctx context.Context, in CreateTokenInput) (*CreateTokenOutput, error) {
+	_ = ctx.Err()
 	if in.UserID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -79,7 +80,8 @@ func (uc *TokenUseCase) Create(in CreateTokenInput) (*CreateTokenOutput, error) 
 	}, nil
 }
 
-func (uc *TokenUseCase) List(userID uint) ([]TokenItem, error) {
+func (uc *TokenUseCase) List(ctx context.Context, userID uint) ([]TokenItem, error) {
+	_ = ctx.Err()
 	if userID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -97,7 +99,8 @@ func (uc *TokenUseCase) List(userID uint) ([]TokenItem, error) {
 	return items, nil
 }
 
-func (uc *TokenUseCase) Revoke(userID, tokenID uint) error {
+func (uc *TokenUseCase) Revoke(ctx context.Context, userID, tokenID uint) error {
+	_ = ctx.Err()
 	if userID == 0 {
 		return ErrUnauthorized
 	}

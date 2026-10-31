@@ -1,21 +1,25 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"golang.org/x/sync/errgroup"
+	gitadapter "magomedcoder.ru/repo/internal/adapter/git"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 var (
-	ErrRefNotFound  = errors.New("ref_not_found")
-	ErrPathNotFound = errors.New("path_not_found")
-	ErrEmptyRepo    = errors.New("empty_repository")
+	ErrRefNotFound  = NewError(KindNotFound, "ref_not_found")
+	ErrPathNotFound = NewError(KindNotFound, "path_not_found")
+	ErrEmptyRepo    = NewError(KindNotFound, "empty_repository")
 )
 
-func (uc *RepositoryUseCase) ListBranches(in ResolveRepositoryInput) ([]domain.RefInfo, error) {
+func (uc *RepositoryUseCase) ListBranches(ctx context.Context, in ResolveRepositoryInput) ([]domain.RefInfo, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -33,7 +37,8 @@ func (uc *RepositoryUseCase) ListBranches(in ResolveRepositoryInput) ([]domain.R
 	return refs, nil
 }
 
-func (uc *RepositoryUseCase) ListTags(in ResolveRepositoryInput) ([]domain.RefInfo, error) {
+func (uc *RepositoryUseCase) ListTags(ctx context.Context, in ResolveRepositoryInput) ([]domain.RefInfo, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -51,7 +56,8 @@ func (uc *RepositoryUseCase) ListTags(in ResolveRepositoryInput) ([]domain.RefIn
 	return refs, nil
 }
 
-func (uc *RepositoryUseCase) ListCommits(in ResolveRepositoryInput, ref string, offset, limit int) ([]domain.CommitInfo, error) {
+func (uc *RepositoryUseCase) ListCommits(ctx context.Context, in ResolveRepositoryInput, ref string, offset, limit int) ([]domain.CommitInfo, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -89,7 +95,8 @@ func (uc *RepositoryUseCase) ListCommits(in ResolveRepositoryInput, ref string, 
 	return commits, nil
 }
 
-func (uc *RepositoryUseCase) GetCommit(in ResolveRepositoryInput, sha string) (*domain.CommitInfo, error) {
+func (uc *RepositoryUseCase) GetCommit(ctx context.Context, in ResolveRepositoryInput, sha string) (*domain.CommitInfo, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -108,7 +115,8 @@ func (uc *RepositoryUseCase) GetCommit(in ResolveRepositoryInput, sha string) (*
 	return commit, nil
 }
 
-func (uc *RepositoryUseCase) ListTree(in ResolveRepositoryInput, ref, path string) ([]domain.TreeEntry, error) {
+func (uc *RepositoryUseCase) ListTree(ctx context.Context, in ResolveRepositoryInput, ref, path string) ([]domain.TreeEntry, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -134,7 +142,8 @@ func (uc *RepositoryUseCase) ListTree(in ResolveRepositoryInput, ref, path strin
 	return entries, nil
 }
 
-func (uc *RepositoryUseCase) GetBlob(in ResolveRepositoryInput, ref, path string) (*domain.BlobContent, error) {
+func (uc *RepositoryUseCase) GetBlob(ctx context.Context, in ResolveRepositoryInput, ref, path string) (*domain.BlobContent, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -152,7 +161,8 @@ func (uc *RepositoryUseCase) GetBlob(in ResolveRepositoryInput, ref, path string
 	return blob, nil
 }
 
-func (uc *RepositoryUseCase) GetBlame(in ResolveRepositoryInput, ref, path string) (*domain.BlameResult, error) {
+func (uc *RepositoryUseCase) GetBlame(ctx context.Context, in ResolveRepositoryInput, ref, path string) (*domain.BlameResult, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -170,7 +180,8 @@ func (uc *RepositoryUseCase) GetBlame(in ResolveRepositoryInput, ref, path strin
 	return blame, nil
 }
 
-func (uc *RepositoryUseCase) GetReadme(in ResolveRepositoryInput, ref string) (*domain.BlobContent, error) {
+func (uc *RepositoryUseCase) GetReadme(ctx context.Context, in ResolveRepositoryInput, ref string) (*domain.BlobContent, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -188,7 +199,8 @@ func (uc *RepositoryUseCase) GetReadme(in ResolveRepositoryInput, ref string) (*
 	return blob, nil
 }
 
-func (uc *RepositoryUseCase) GetCommitDiff(in ResolveRepositoryInput, sha string) (*domain.CommitDiff, error) {
+func (uc *RepositoryUseCase) GetCommitDiff(ctx context.Context, in ResolveRepositoryInput, sha string) (*domain.CommitDiff, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -214,7 +226,8 @@ func (uc *RepositoryUseCase) GetCommitDiff(in ResolveRepositoryInput, sha string
 	return diff, nil
 }
 
-func (uc *RepositoryUseCase) GetStats(in ResolveRepositoryInput, ref string) (*domain.RepoStats, error) {
+func (uc *RepositoryUseCase) GetStats(ctx context.Context, in ResolveRepositoryInput, ref string) (*domain.RepoStats, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -249,19 +262,16 @@ func mapGitBrowseErr(err error) error {
 	if err == nil {
 		return nil
 	}
-
-	msg := strings.ToLower(err.Error())
 	switch {
-	case strings.Contains(msg, "empty repository"):
+	case errors.Is(err, gitadapter.ErrEmptyRepository):
 		return ErrEmptyRepo
-	case strings.Contains(msg, "ref not found"),
-		strings.Contains(msg, "reference not found"):
+	case errors.Is(err, gitadapter.ErrRefNotFound):
 		return ErrRefNotFound
-	case strings.Contains(msg, "commit not found"),
-		strings.Contains(msg, "file not found"),
-		strings.Contains(msg, "path not found"),
-		strings.Contains(msg, "readme not found"),
-		strings.Contains(msg, "path is not a directory"):
+	case errors.Is(err, gitadapter.ErrCommitNotFound),
+		errors.Is(err, gitadapter.ErrFileNotFound),
+		errors.Is(err, gitadapter.ErrPathNotFound),
+		errors.Is(err, gitadapter.ErrReadmeNotFound),
+		errors.Is(err, gitadapter.ErrNotDirectory):
 		return ErrPathNotFound
 	default:
 		return err
@@ -298,11 +308,12 @@ func NormalizePagination(offset, limit int) (int, int) {
 type RepositorySummary struct {
 	Branches []domain.RefInfo    `json:"branches"`
 	Tree     []domain.TreeEntry  `json:"tree"`
-	Stats    *domain.RepoStats   `json:"stats,omitempty"`
-	Readme   *domain.BlobContent `json:"readme,omitempty"`
+	Stats    *domain.RepoStats   `json:"stats,omitzero"`
+	Readme   *domain.BlobContent `json:"readme,omitzero"`
 }
 
-func (uc *RepositoryUseCase) GetSummary(in ResolveRepositoryInput, ref string) (*RepositorySummary, error) {
+func (uc *RepositoryUseCase) GetSummary(ctx context.Context, in ResolveRepositoryInput, ref string) (*RepositorySummary, error) {
+	_ = ctx.Err()
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -312,18 +323,38 @@ func (uc *RepositoryUseCase) GetSummary(in ResolveRepositoryInput, ref string) (
 		ref = repo.DefaultBranch
 	}
 
-	branches, err := uc.git.ListBranches(repo.Path)
-	if err != nil {
-		branches = []domain.RefInfo{}
-	}
-
-	tree, err := uc.git.ListTree(repo.Path, ref, "")
-	if err != nil {
-		tree = []domain.TreeEntry{}
-	}
-
-	stats, _ := uc.git.GetStats(repo.Path, ref)
-	readme, _ := uc.git.FindReadme(repo.Path, ref)
+	var (
+		branches []domain.RefInfo
+		tree     []domain.TreeEntry
+		stats    *domain.RepoStats
+		readme   *domain.BlobContent
+	)
+	g, _ := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		var e error
+		branches, e = uc.git.ListBranches(repo.Path)
+		if e != nil {
+			branches = []domain.RefInfo{}
+		}
+		return nil
+	})
+	g.Go(func() error {
+		var e error
+		tree, e = uc.git.ListTree(repo.Path, ref, "")
+		if e != nil {
+			tree = []domain.TreeEntry{}
+		}
+		return nil
+	})
+	g.Go(func() error {
+		stats, _ = uc.git.GetStats(repo.Path, ref)
+		return nil
+	})
+	g.Go(func() error {
+		readme, _ = uc.git.FindReadme(repo.Path, ref)
+		return nil
+	})
+	_ = g.Wait()
 
 	return &RepositorySummary{
 		Branches: branches,

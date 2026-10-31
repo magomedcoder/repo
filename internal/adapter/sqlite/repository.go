@@ -9,18 +9,16 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"repo.magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/internal/domain"
 )
 
 type RepositoryStore struct {
 	db *gorm.DB
 }
 
-func NewDB(dsn string) (*gorm.DB, error) {
-	file := dsn
-	if i := strings.Index(file, "?"); i >= 0 {
-		file = file[:i]
-	}
+func NewDB(dataDir string) (*gorm.DB, error) {
+	dsn := filepath.Join(dataDir, "db.sqlite")
+	file, _, _ := strings.Cut(dsn, "?")
 
 	if dir := filepath.Dir(file); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -45,6 +43,7 @@ func NewDB(dsn string) (*gorm.DB, error) {
 		if sqlDB, dbErr := db.DB(); dbErr == nil {
 			_ = sqlDB.Close()
 		}
+
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
@@ -87,7 +86,7 @@ func (s *RepositoryStore) FindByRepoPath(repoPath string) (*domain.Repository, e
 	var model repositoryModel
 	err := s.db.Where("repo_path = ?", repoPath).First(&model).Error
 	if err != nil {
-		return nil, err
+		return nil, mapDBErr(err)
 	}
 
 	repo := model.toDomain()

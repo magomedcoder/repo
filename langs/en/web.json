@@ -18,6 +18,9 @@
     "name": "Repo",
     "title": "Repo"
   },
+  "footer": {
+    "poweredBy": "Powered by"
+  },
   "auth": {
     "loginTitle": "Sign in",
     "usernameOrEmail": "Username or email",
@@ -44,7 +47,7 @@
     "pulls": "Merges",
     "profile": "Profile",
     "accessTokens": "Access tokens",
-    "tagline": "Git. Simple and light.",
+    "tagline": "Lightweight Git hosting",
     "refs": "refs",
     "langEn": "en",
     "langRu": "ru"
@@ -135,6 +138,8 @@
     "showOnHome": "Show on the home page",
     "showOnHomeHint": "Only public repositories can appear on the home page for everyone, including guests.",
     "protectBranch": "Protect the default branch from force-push and deletion",
+    "issues": "Issues",
+    "issuesHint": "When off, the Issues tab is hidden and the issues API is unavailable.",
     "folder": "Folder",
     "saving": "Saving...",
     "save": "Save",
@@ -227,6 +232,7 @@
       "token_not_found": "Token not found",
       "invalid_repo_move_path": "Use POST /api/repos/{owner}/.../{name}/move",
       "issue_title_required": "Enter an issue title",
+      "issues_disabled": "Issues are disabled for this repository",
       "issue_not_found": "Issue not found",
       "issue_forbidden": "You do not have permission to change this issue",
       "invalid_issue_state": "State must be open or closed",

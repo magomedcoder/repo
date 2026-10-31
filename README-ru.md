@@ -1,6 +1,6 @@
 # Repo
 
-Git. Просто и легко.
+Лёгкий Git-хостинг.
 
 ## Команды
 
@@ -8,8 +8,6 @@ Git. Просто и легко.
 make build
 
 make test
-
-./build/repo
 
 ./build/repo serve
 

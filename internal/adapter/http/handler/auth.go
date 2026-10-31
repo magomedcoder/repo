@@ -1,15 +1,13 @@
 package handler
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"time"
 
-	"repo.magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"repo.magomedcoder.ru/repo/internal/domain"
-	"repo.magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/internal/usecase"
+	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type AuthHandler struct {
@@ -20,7 +18,10 @@ type AuthHandler struct {
 }
 
 func NewAuthHandler(auth *usecase.AuthUseCase) *AuthHandler {
-	return &AuthHandler{auth: auth, sameSite: http.SameSiteLaxMode}
+	return &AuthHandler{
+		auth:     auth,
+		sameSite: http.SameSiteLaxMode,
+	}
 }
 
 func (h *AuthHandler) SetCookiePolicy(secure bool, sameSite http.SameSite) {
@@ -34,10 +35,8 @@ func (h *AuthHandler) SetAllowRegistration(allow bool) {
 	h.allowRegistration = allow
 }
 
-func (h *AuthHandler) Registration(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"allow_registration": h.allowRegistration,
-	})
+func (h *AuthHandler) Registration(c *httpx.Context) error {
+	return httpx.OK(c, registrationResponse{AllowRegistration: h.allowRegistration})
 }
 
 type registerRequest struct {
@@ -51,119 +50,82 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var req registerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
+func (h *AuthHandler) Register(c *httpx.Context) error {
+	req, err := httpx.BindJSON[registerRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.auth.Register(usecase.RegisterInput{
+	out, err := h.auth.Register(c.Ctx(), usecase.RegisterInput{
 		Username: req.Username,
 		Email:    req.Email,
 		Password: req.Password,
 	})
 	if err != nil {
-		writeAuthError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	h.setSessionCookie(w, out.Token)
-	writeJSON(w, http.StatusCreated, userResponse(out.User))
+	h.setSessionCookie(c.W, out.Token)
+	return httpx.Created(c, userResponse(out.User))
 }
 
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
+func (h *AuthHandler) Login(c *httpx.Context) error {
+	req, err := httpx.BindJSON[loginRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.auth.Login(usecase.LoginInput{
+	out, err := h.auth.Login(c.Ctx(), usecase.LoginInput{
 		Login:    req.Login,
 		Password: req.Password,
-		Key:      middleware.ClientIP(r) + "\n" + strings.ToLower(strings.TrimSpace(req.Login)),
+		Key:      middleware.ClientIP(c.R) + "\n" + strings.ToLower(strings.TrimSpace(req.Login)),
 	})
 	if err != nil {
-		writeAuthError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	h.setSessionCookie(w, out.Token)
-	writeJSON(w, http.StatusOK, userResponse(out.User))
+	h.setSessionCookie(c.W, out.Token)
+
+	return httpx.OK(c, userResponse(out.User))
 }
 
-func (h *AuthHandler) Password(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.UserFromContext(r.Context())
+func (h *AuthHandler) Password(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
 	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized")
-		return
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	var req struct {
-		Current string `json:"current"`
-		Next    string `json:"next"`
+	req, err := httpx.BindJSON[passwordChangeRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_json")
-		return
-	}
-
-	if err := h.auth.ChangePassword(usecase.ChangePasswordInput{
+	if err := h.auth.ChangePassword(c.Ctx(), usecase.ChangePasswordInput{
 		UserID:    user.ID,
 		Current:   req.Current,
 		Next:      req.Next,
-		KeepToken: middleware.SessionToken(r),
+		KeepToken: middleware.SessionToken(c.R),
 	}); err != nil {
-		writeAuthError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent()
 }
 
-func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	token := middleware.SessionToken(r)
-	_ = h.auth.Logout(token)
-	h.clearSessionCookie(w)
-	w.WriteHeader(http.StatusNoContent)
+func (h *AuthHandler) Logout(c *httpx.Context) error {
+	token := middleware.SessionToken(c.R)
+	_ = h.auth.Logout(c.Ctx(), token)
+	h.clearSessionCookie(c.W)
+	return c.NoContent()
 }
 
-func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	user, err := h.auth.Me(middleware.SessionToken(r))
+func (h *AuthHandler) Me(c *httpx.Context) error {
+	user, err := h.auth.Me(c.Ctx(), middleware.SessionToken(c.R))
 	if err != nil {
-		writeAuthError(w, r, err)
-		return
+		return mapError(c, err)
 	}
 
-	writeJSON(w, http.StatusOK, userResponse(user))
-}
-
-func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrUsernameRequired),
-		errors.Is(err, usecase.ErrEmailRequired),
-		errors.Is(err, usecase.ErrPasswordRequired),
-		errors.Is(err, usecase.ErrInvalidUsername),
-		errors.Is(err, usecase.ErrInvalidEmail),
-		errors.Is(err, usecase.ErrPasswordTooShort),
-		errors.Is(err, usecase.ErrReservedSlug):
-		writeError(w, r, http.StatusBadRequest, err.Error())
-	case errors.Is(err, usecase.ErrUsernameTaken),
-		errors.Is(err, usecase.ErrEmailTaken):
-		writeError(w, r, http.StatusConflict, err.Error())
-	case errors.Is(err, usecase.ErrInvalidCredentials),
-		errors.Is(err, usecase.ErrUnauthorized),
-		errors.Is(err, usecase.ErrSessionExpired):
-		writeError(w, r, http.StatusUnauthorized, err.Error())
-	case errors.Is(err, usecase.ErrRegistrationClosed):
-		writeError(w, r, http.StatusForbidden, err.Error())
-	case errors.Is(err, usecase.ErrTooManyAttempts):
-		writeError(w, r, http.StatusTooManyRequests, err.Error())
-	default:
-		writeError(w, r, http.StatusInternalServerError, "internal_error")
-	}
+	return httpx.OK(c, userResponse(user))
 }
 
 func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, token string) {
@@ -189,14 +151,4 @@ func (h *AuthHandler) clearSessionCookie(w http.ResponseWriter) {
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),
 	})
-}
-
-func userResponse(user *domain.User) map[string]any {
-	return map[string]any{
-		"id":         user.ID,
-		"username":   user.Username,
-		"email":      user.Email,
-		"has_avatar": user.AvatarPath != "",
-		"created_at": user.CreatedAt,
-	}
 }
