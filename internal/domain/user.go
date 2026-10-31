@@ -1,6 +1,14 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
+
+const (
+	RoleUser  = "user"
+	RoleAdmin = "admin"
+)
 
 type User struct {
 	ID           uint
@@ -8,8 +16,24 @@ type User struct {
 	Email        string
 	PasswordHash string
 	AvatarPath   string
+	Role         string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+func NormalizeRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case RoleAdmin:
+		return RoleAdmin
+	case RoleUser, "":
+		return RoleUser
+	default:
+		return ""
+	}
+}
+
+func (u *User) IsAdmin() bool {
+	return u != nil && u.Role == RoleAdmin
 }
 
 type Session struct {
@@ -19,6 +43,12 @@ type Session struct {
 	ExpiresAt  time.Time
 	LastSeenAt time.Time
 	CreatedAt  time.Time
+}
+
+type UserListFilter struct {
+	Query  string
+	Limit  int
+	Offset int
 }
 
 type UserStore interface {
@@ -37,6 +67,12 @@ type UserStore interface {
 	ExistsByEmail(email string) (bool, error)
 
 	Update(user *User) error
+
+	Delete(id uint) error
+
+	List(filter UserListFilter) ([]User, int, error)
+
+	CountByRole(role string) (int64, error)
 }
 
 type SessionStore interface {
@@ -49,6 +85,8 @@ type SessionStore interface {
 	DeleteByToken(token string) error
 
 	DeleteByUserIDExcept(userID uint, keepToken string) error
+
+	DeleteByUserID(userID uint) error
 }
 
 type PasswordHasher interface {

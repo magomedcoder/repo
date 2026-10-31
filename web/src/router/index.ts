@@ -43,6 +43,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/ProfileView.vue'),
       },
       {
+        path: 'settings/users',
+        name: 'users',
+        meta: { requiresAdmin: true },
+        component: () => import('@/views/UsersView.vue'),
+      },
+      {
         path: 'search',
         name: 'search',
         meta: { publicRead: true },
@@ -171,6 +177,11 @@ router.beforeEach(async (to) => {
         redirect: to.fullPath
       }
     }
+  }
+
+  const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin)
+  if (requiresAdmin && !auth.isAdmin.value) {
+    return { name: 'not-found' }
   }
 
   if (to.meta.guest && auth.isAuthenticated.value) {

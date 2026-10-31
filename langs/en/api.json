@@ -62,5 +62,9 @@
   "registration_closed": "Registration is closed",
   "too_many_attempts": "Too many attempts",
   "invalid_path": "Invalid path",
-  "branch_protected": "Branch is protected"
+  "branch_protected": "Branch is protected",
+  "invalid_role": "Role must be user or admin",
+  "last_admin": "Cannot remove or demote the last admin",
+  "admin_required": "Administrator access required",
+  "invalid_user_id": "Invalid user id"
 }

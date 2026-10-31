@@ -69,3 +69,23 @@ func OptionalAuth(auth Authenticator) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+func RequireAdmin() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := UserFromContext(r.Context())
+			c := &httpx.Context{W: w, R: r}
+			if !ok || user == nil {
+				_ = c.Error(http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			if !user.IsAdmin() {
+				_ = c.Error(http.StatusForbidden, "admin_required")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}

@@ -62,5 +62,9 @@
   "registration_closed": "Регистрация закрыта",
   "too_many_attempts": "Слишком много попыток",
   "invalid_path": "Некорректный путь",
-  "branch_protected": "Ветка защищена"
+  "branch_protected": "Ветка защищена",
+  "invalid_role": "Роль должна быть user или admin",
+  "last_admin": "Нельзя удалить или понизить последнего администратора",
+  "admin_required": "Требуются права администратора",
+  "invalid_user_id": "Некорректный id пользователя"
 }

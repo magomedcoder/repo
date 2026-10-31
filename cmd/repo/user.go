@@ -7,6 +7,7 @@ import (
 
 	"magomedcoder.ru/repo/internal/adapter/sqlite"
 	"magomedcoder.ru/repo/internal/config"
+	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/argon2id"
 	"magomedcoder.ru/repo/pkg/token"
@@ -14,7 +15,7 @@ import (
 
 func runUser(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: repo user create -username ... -email ... -password ... ")
+		return fmt.Errorf("usage: repo user create ...")
 	}
 
 	switch args[0] {
@@ -30,6 +31,7 @@ func runUserCreate(args []string) error {
 	username := fs.String("username", "", "username")
 	email := fs.String("email", "", "email")
 	password := fs.String("password", "", "password (min 8)")
+	role := fs.String("role", domain.RoleUser, "role: user|admin")
 	configPath := fs.String("config", config.DefaultPath, "path to config.yaml")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -37,6 +39,11 @@ func runUserCreate(args []string) error {
 
 	if *username == "" || *email == "" || *password == "" {
 		return fmt.Errorf("required: -username -email -password")
+	}
+
+	normalized := domain.NormalizeRole(*role)
+	if normalized == "" {
+		return fmt.Errorf("invalid -role %q (want user|admin)", *role)
 	}
 
 	cfg, err := config.Load(*configPath)
@@ -61,12 +68,12 @@ func runUserCreate(args []string) error {
 		Username: *username,
 		Email:    *email,
 		Password: *password,
+		Role:     normalized,
 	})
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("created user %s (id=%d)\n", user.Username, user.ID)
-
+	fmt.Printf("created user %s (id=%d role=%s)\n", user.Username, user.ID, user.Role)
 	return nil
 }

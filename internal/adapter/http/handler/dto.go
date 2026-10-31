@@ -15,6 +15,7 @@ type userJSON struct {
 	ID        uint      `json:"id"`
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
+	Role      string    `json:"role"`
 	HasAvatar bool      `json:"has_avatar"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -75,10 +76,16 @@ type treeResponse struct {
 }
 
 func userResponse(user *domain.User) userJSON {
+	role := domain.NormalizeRole(user.Role)
+	if role == "" {
+		role = domain.RoleUser
+	}
+
 	return userJSON{
 		ID:        user.ID,
 		Username:  user.Username,
 		Email:     user.Email,
+		Role:      role,
 		HasAvatar: user.AvatarPath != "",
 		CreatedAt: user.CreatedAt,
 	}

@@ -1,7 +1,10 @@
+export type UserRole = 'user' | 'admin'
+
 export interface User {
   id: number
   username: string
   email: string
+  role: UserRole
   has_avatar?: boolean
   created_at: string
 }
@@ -10,6 +13,16 @@ export interface Profile {
   id: number
   username: string
   email?: string
+  role?: UserRole
+  has_avatar: boolean
+  created_at: string
+}
+
+export interface AdminUser {
+  id: number
+  username: string
+  email: string
+  role: UserRole
   has_avatar: boolean
   created_at: string
 }

@@ -95,6 +95,7 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
 	profileUC := usecase.NewProfileUseCase(userStore, dataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
+	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, authUC, hasher)
 
 	router = deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),
@@ -107,6 +108,7 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
 		handler.NewSiteHandler("Repo"),
+		handler.NewAdminHandler(adminUC),
 		authUC,
 		false,
 	)

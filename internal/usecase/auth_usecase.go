@@ -28,9 +28,13 @@ var (
 	ErrRegistrationClosed = NewError(KindForbidden, "registration_closed")
 	ErrTooManyAttempts    = NewError(KindRateLimited, "too_many_attempts")
 	ErrReservedSlug       = NewError(KindValidation, "reserved_slug")
+	ErrInvalidRole        = NewError(KindValidation, "invalid_role")
+	ErrLastAdmin          = NewError(KindConflict, "last_admin")
+	ErrAdminRequired      = NewError(KindForbidden, "admin_required")
 )
 
 var reservedSlugs = map[string]struct{}{
+	"admin":    {},
 	"api":      {},
 	"data":     {},
 	"login":    {},
@@ -79,6 +83,7 @@ type RegisterInput struct {
 	Username string
 	Email    string
 	Password string
+	Role     string
 }
 
 type LoginInput struct {
@@ -135,6 +140,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (*AuthOut
 		return nil, ErrRegistrationClosed
 	}
 
+	in.Role = domain.RoleUser
 	user, err := uc.CreateUser(ctx, in)
 	if err != nil {
 		return nil, err
@@ -194,6 +200,11 @@ func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domai
 		return nil, ErrEmailTaken
 	}
 
+	role := domain.NormalizeRole(in.Role)
+	if role == "" {
+		return nil, ErrInvalidRole
+	}
+
 	hash, err := uc.hasher.Hash(password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
@@ -203,6 +214,7 @@ func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domai
 		Username:     username,
 		Email:        email,
 		PasswordHash: hash,
+		Role:         role,
 	}
 	if err := uc.users.Create(user); err != nil {
 		return nil, fmt.Errorf("create user: %w", err)

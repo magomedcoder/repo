@@ -104,6 +104,55 @@ func (s *memUsers) Update(user *domain.User) error {
 	return errors.New("not found")
 }
 
+func (s *memUsers) Delete(id uint) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, u := range s.items {
+		if u.ID == id {
+			s.items = append(s.items[:i], s.items[i+1:]...)
+			return nil
+		}
+	}
+
+	return errors.New("not found")
+}
+
+func (s *memUsers) List(filter domain.UserListFilter) ([]domain.User, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make([]domain.User, 0, len(s.items))
+	for _, u := range s.items {
+		out = append(out, *u)
+	}
+
+	total := len(out)
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	offset := min(filter.Offset, total)
+
+	end := min(offset+limit, total)
+
+	return out[offset:end], total, nil
+}
+
+func (s *memUsers) CountByRole(role string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var n int64
+	for _, u := range s.items {
+		if domain.NormalizeRole(u.Role) == domain.NormalizeRole(role) || (u.Role == "" && domain.NormalizeRole(role) == domain.RoleUser) {
+			n++
+		}
+	}
+
+	return n, nil
+}
+
 type memSessions struct {
 	mu    sync.Mutex
 	items []*domain.Session
@@ -166,6 +215,23 @@ func (s *memSessions) DeleteByUserIDExcept(userID uint, keepToken string) error 
 		out = append(out, item)
 	}
 	s.items = out
+	return nil
+}
+
+func (s *memSessions) DeleteByUserID(userID uint) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := s.items[:0]
+	for _, item := range s.items {
+		if item.UserID == userID {
+			continue
+		}
+
+		out = append(out, item)
+	}
+	s.items = out
+
 	return nil
 }
 

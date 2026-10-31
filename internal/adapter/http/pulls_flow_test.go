@@ -68,6 +68,7 @@ func TestPullRequestFlow(t *testing.T) {
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
 	profileUC := usecase.NewProfileUseCase(userStore, dataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
+	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, authUC, hasher)
 
 	router := deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),
@@ -80,6 +81,7 @@ func TestPullRequestFlow(t *testing.T) {
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
 		handler.NewSiteHandler("Repo"),
+		handler.NewAdminHandler(adminUC),
 		authUC,
 		false,
 	)

@@ -46,6 +46,7 @@
     "issues": "Issues",
     "pulls": "Merges",
     "profile": "Profile",
+    "users": "Users",
     "accessTokens": "Access tokens",
     "tagline": "Lightweight Git hosting",
     "refs": "refs",
@@ -261,7 +262,11 @@
       "registration_closed": "Registration is closed",
       "too_many_attempts": "Too many attempts",
       "invalid_path": "Invalid path",
-      "branch_protected": "Branch is protected"
+      "branch_protected": "Branch is protected",
+      "invalid_role": "Role must be user or admin",
+      "last_admin": "Cannot remove or demote the last admin",
+      "admin_required": "Administrator access required",
+      "invalid_user_id": "Invalid user id"
     },
     "loginFailed": "Could not sign in",
     "registerFailed": "Could not register",
@@ -293,6 +298,9 @@
     "searchFailed": "Search failed",
     "loadTokens": "Could not load tokens",
     "createToken": "Could not create token",
+    "loadUsers": "Could not load users",
+    "createUser": "Could not create user",
+    "saveUser": "Could not save user",
     "loadActivity": "Could not load activity",
     "loadBlame": "Could not load authorship details",
     "notFound": "Page not found",
@@ -371,5 +379,27 @@
     "editComment": "Edit",
     "saveComment": "Save",
     "confirmDelete": "Delete issue #{n}?"
+  },
+  "users": {
+    "title": "Users",
+    "add": "New user",
+    "empty": "No users yet.",
+    "search": "Search users",
+    "username": "Username",
+    "email": "Email",
+    "role": "Role",
+    "roleUser": "User",
+    "roleAdmin": "Admin",
+    "password": "Password",
+    "newPassword": "New password",
+    "create": "Create",
+    "creating": "Creating...",
+    "save": "Save",
+    "saving": "Saving...",
+    "delete": "Delete",
+    "confirmDelete": "Delete user “{username}”? This cannot be undone.",
+    "edit": "Edit",
+    "created": "Created",
+    "loadMore": "Load more"
   }
 }

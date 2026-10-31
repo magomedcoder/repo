@@ -77,6 +77,7 @@ func runServe() {
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
 	profileUC := usecase.NewProfileUseCase(userStore, cfg.DataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
+	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, authUC, hasher)
 
 	authHandler := handler.NewAuthHandler(authUC)
 	authHandler.SetCookiePolicy(cfg.CookieSecure, http.SameSiteLaxMode)
@@ -91,8 +92,9 @@ func runServe() {
 	profileHandler := handler.NewProfileHandler(profileUC)
 	activityHandler := handler.NewActivityHandler(activityUC)
 	siteHandler := handler.NewSiteHandler(cfg.SiteName)
+	adminHandler := handler.NewAdminHandler(adminUC)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, authUC, cfg.CookieSecure)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, authUC, cfg.CookieSecure)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

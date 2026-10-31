@@ -14,6 +14,7 @@ const state = reactive<{
 export function useAuth() {
   const user = computed(() => state.user)
   const isAuthenticated = computed(() => !!state.user)
+  const isAdmin = computed(() => state.user?.role === 'admin')
   const ready = computed(() => state.ready)
 
   async function fetchMe() {
@@ -55,6 +56,7 @@ export function useAuth() {
   return {
     user,
     isAuthenticated,
+    isAdmin,
     ready,
     fetchMe,
     login,

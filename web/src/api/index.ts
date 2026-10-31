@@ -1,6 +1,6 @@
 import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
-import type { AccessToken, ActivityEvent, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User } from './types'
+import type { AccessToken, ActivityEvent, AdminUser, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User, UserRole } from './types'
 
 export const siteApi = {
   get() {
@@ -386,6 +386,37 @@ export const pullsApi = {
   },
   removeComment(path: string, number: number, id: number) {
     return api<void>(`/api/repos/${encodeRepoPath(path)}/pulls/${number}/comments/${id}`, { method: 'DELETE' })
+  },
+}
+
+export const adminUsersApi = {
+  list(params?: { q?: string; limit?: number; offset?: number }) {
+    const q = new URLSearchParams()
+    if (params?.q) q.set('q', params.q)
+    if (params?.limit != null) q.set('limit', String(params.limit))
+    if (params?.offset != null) q.set('offset', String(params.offset))
+    const qs = q.toString()
+    return api<{ users: AdminUser[]; total: number; limit: number; offset: number }>(
+      `/api/admin/users${qs ? `?${qs}` : ''}`,
+    )
+  },
+  get(id: number) {
+    return api<AdminUser>(`/api/admin/users/${id}`)
+  },
+  create(body: { username: string; email: string; password: string; role: UserRole }) {
+    return api<AdminUser>('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  update(id: number, body: { email?: string; role?: UserRole; password?: string }) {
+    return api<AdminUser>(`/api/admin/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+  remove(id: number) {
+    return api<void>(`/api/admin/users/${id}`, { method: 'DELETE' })
   },
 }
 

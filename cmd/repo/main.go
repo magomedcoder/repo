@@ -32,10 +32,10 @@ func main() {
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   repo serve           start HTTP server
-  repo user create     create a user
+  repo user create     create a user (-role user|admin)
 
 Examples:
   repo serve
-  repo user create -username owner -email owner@localhost -password 'secret123'
+  repo user create -username owner -email owner@localhost -password 'secret123' -role admin
 `)
 }

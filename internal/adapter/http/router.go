@@ -20,6 +20,7 @@ func NewRouter(
 	profileHandler *handler.ProfileHandler,
 	activityHandler *handler.ActivityHandler,
 	siteHandler *handler.SiteHandler,
+	adminHandler *handler.AdminHandler,
 	auth middleware.Authenticator,
 	cookieSecure bool,
 ) http.Handler {
@@ -70,6 +71,13 @@ func NewRouter(
 	authed.POST("/tokens", tokenHandler.Create)
 	authed.GET("/tokens", tokenHandler.List)
 	authed.DELETE("/tokens/{id}", tokenHandler.Revoke)
+
+	admin := authed.Group("", httpx.HTTPMiddleware(middleware.RequireAdmin()))
+	admin.GET("/admin/users", adminHandler.ListUsers)
+	admin.GET("/admin/users/{id}", adminHandler.GetUser)
+	admin.POST("/admin/users", adminHandler.CreateUser)
+	admin.PATCH("/admin/users/{id}", adminHandler.UpdateUser)
+	admin.DELETE("/admin/users/{id}", adminHandler.DeleteUser)
 
 	apiLimiter := middleware.NewRateLimiter(180, 60)
 	authLimiter := middleware.NewRateLimiter(30, 10)

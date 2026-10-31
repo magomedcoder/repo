@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 type schemaMeta struct {
 	ID      uint `gorm:"primaryKey"`
@@ -54,6 +54,21 @@ func applyVersionedMigrations(db *gorm.DB) error {
 			return fmt.Errorf("migrate v2 issues_enabled: %w", err)
 		}
 		meta.Version = 2
+		if err := db.Save(&meta).Error; err != nil {
+			return err
+		}
+	}
+
+	if meta.Version < 3 {
+		if err := db.Exec(`
+			UPDATE users
+			SET role = 'user'
+			WHERE deleted_at IS NULL
+			  AND (role IS NULL OR role = '')
+		`).Error; err != nil {
+			return fmt.Errorf("migrate v3 user roles: %w", err)
+		}
+		meta.Version = 3
 		if err := db.Save(&meta).Error; err != nil {
 			return err
 		}

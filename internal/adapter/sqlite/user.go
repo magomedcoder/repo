@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -16,6 +17,7 @@ type userModel struct {
 	Email        string `gorm:"not null"`
 	PasswordHash string `gorm:"not null"`
 	AvatarPath   string `gorm:"size:255"`
+	Role         string `gorm:"size:16;not null;default:user"`
 }
 
 func (userModel) TableName() string {
@@ -23,12 +25,18 @@ func (userModel) TableName() string {
 }
 
 func (m userModel) toDomain() *domain.User {
+	role := m.Role
+	if role == "" {
+		role = domain.RoleUser
+	}
+
 	return &domain.User{
 		ID:           m.ID,
 		Username:     m.Username,
 		Email:        m.Email,
 		PasswordHash: m.PasswordHash,
 		AvatarPath:   m.AvatarPath,
+		Role:         role,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 	}
@@ -73,16 +81,25 @@ func NewUserStore(db *gorm.DB) *UserStore {
 }
 
 func (s *UserStore) Create(user *domain.User) error {
+	role := domain.NormalizeRole(user.Role)
+	if role == "" {
+		role = domain.RoleUser
+	}
+
 	model := &userModel{
 		Username:     user.Username,
 		Email:        user.Email,
 		PasswordHash: user.PasswordHash,
+		AvatarPath:   user.AvatarPath,
+		Role:         role,
 	}
+
 	if err := s.db.Create(model).Error; err != nil {
 		return err
 	}
 
 	user.ID = model.ID
+	user.Role = model.Role
 	user.CreatedAt = model.CreatedAt
 	user.UpdatedAt = model.UpdatedAt
 	return nil
@@ -147,11 +164,64 @@ func (s *UserStore) ExistsByEmail(email string) (bool, error) {
 }
 
 func (s *UserStore) Update(user *domain.User) error {
+	role := domain.NormalizeRole(user.Role)
+	if role == "" {
+		role = domain.RoleUser
+	}
+
 	return s.db.Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]any{
 		"email":         user.Email,
 		"password_hash": user.PasswordHash,
 		"avatar_path":   user.AvatarPath,
+		"role":          role,
 	}).Error
+}
+
+func (s *UserStore) Delete(id uint) error {
+	return s.db.Delete(&userModel{}, id).Error
+}
+
+func (s *UserStore) List(filter domain.UserListFilter) ([]domain.User, int, error) {
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	offset := max(filter.Offset, 0)
+
+	q := s.db.Model(&userModel{})
+	if query := strings.TrimSpace(filter.Query); query != "" {
+		like := "%" + strings.ToLower(query) + "%"
+		q = q.Where("lower(username) LIKE ? OR lower(email) LIKE ?", like, like)
+	}
+
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var models []userModel
+	if err := q.Order("id ASC").Limit(limit).Offset(offset).Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+
+	out := make([]domain.User, 0, len(models))
+	for i := range models {
+		out = append(out, *models[i].toDomain())
+	}
+
+	return out, int(total), nil
+}
+
+func (s *UserStore) CountByRole(role string) (int64, error) {
+	role = domain.NormalizeRole(role)
+	if role == "" {
+		role = domain.RoleUser
+	}
+
+	var count int64
+	err := s.db.Model(&userModel{}).Where("role = ?", role).Count(&count).Error
+	return count, err
 }
 
 type SessionStore struct {
@@ -205,7 +275,12 @@ func (s *SessionStore) DeleteByToken(token string) error {
 
 func (s *SessionStore) DeleteByUserIDExcept(userID uint, keepToken string) error {
 	if keepToken == "" {
-		return s.db.Where("user_id = ?", userID).Delete(&sessionModel{}).Error
+		return s.DeleteByUserID(userID)
 	}
+
 	return s.db.Where("user_id = ? AND token <> ?", userID, keepToken).Delete(&sessionModel{}).Error
+}
+
+func (s *SessionStore) DeleteByUserID(userID uint) error {
+	return s.db.Where("user_id = ?", userID).Delete(&sessionModel{}).Error
 }

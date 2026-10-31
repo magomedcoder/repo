@@ -14,6 +14,7 @@ const openNewFolder = inject<() => void>('openNewFolder', () => {})
 const openNewRepo = inject<() => void>('openNewRepo', () => {})
 
 const username = computed(() => auth.user.value?.username || '')
+const isAdmin = computed(() => auth.isAdmin.value)
 
 watch(
   () => route.query.q,
@@ -77,6 +78,7 @@ async function onLogout() {
         >
       </form>
       <template v-if="username">
+        <RouterLink v-if="isAdmin" :to="{ name: 'users' }">{{ $t('nav.users') }}</RouterLink>
         <RouterLink :to="{ name: 'profile' }">{{ $t('nav.profile') }}</RouterLink>
         <button
           type="button"

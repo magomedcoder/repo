@@ -123,7 +123,7 @@ onMounted(() => load())
             >
               {{ $t('folder.rename') }}
             </button>
-            <span class="mx-2 text-ink-muted">·</span>
+ 
             <button
               type="button"
               class="cursor-pointer border-0 bg-transparent p-0 text-[10pt] font-medium text-ink hover:underline"
