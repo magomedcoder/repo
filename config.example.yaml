@@ -3,7 +3,7 @@ data_dir: "data"
 site_name: "Repo"
 session_secret: "" # openssl rand -hex 32
 cookie_secure: false
-allow_registration: false
+allow_registration: true
 receive_max_bytes: 536870912
 # trusted_proxies:
 #   - "10.0.0.0/8"

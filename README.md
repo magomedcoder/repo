@@ -1,15 +1,72 @@
 # Repo
 
-Lightweight Git hosting.
+Lightweight self-hosted Git hosting.
 
-## Commands
+## Stack
+
+- Go 1.27+, CGO for SQLite
+- GORM + SQLite; go-git for repository operations
+- Vue 3, Vite, TypeScript, Tailwind CSS, vue-i18n, vue-router
+- Yarn for the web app; Make for build orchestration
+
+## Requirements
+
+- Go 1.27.1 or newer with CGO enabled (`gcc` / build essentials)
+- Node.js 22.18+ or 24.12+, and Yarn
+- `config.yaml` (copy from `config.example.yaml`)
+
+## Configuration
+
+Copy the example and edit values:
 
 ```bash
-make build
+cp config.example.yaml config.yaml
+```
 
+| Key                  | Description                                                                       |
+|----------------------|-----------------------------------------------------------------------------------|
+| `http_addr`          | HTTP listen address (default `:8080`)                                             |
+| `data_dir`           | SQLite DB, Git repos, and avatars                                                 |
+| `site_name`          | Site title in the UI                                                              |
+| `session_secret`     | Session signing secret (required, min 32 characters; e.g. `openssl rand -hex 32`) |
+| `cookie_secure`      | Set `true` behind HTTPS                                                           |
+| `allow_registration` | Public self-registration; otherwise create users via CLI/admin                    |
+| `receive_max_bytes`  | Max Git push size in bytes (default 512 MiB)                                      |
+| `trusted_proxies`    | Optional CIDRs/IPs trusted for `X-Forwarded-For`                                  |
+
+## Build
+
+```bash
+make install # yarn install in web/
+make build # yarn build -> embed web/dist, then go build -> build/repo-server
+```
+
+After `make build` the binary is `./build/repo-server`. A release asset is `repo-linux-amd64.tar.gz` with `repo-server` inside:
+
+```bash
+tar -xzf repo-linux-amd64.tar.gz
+./repo-server serve
+```
+
+## Run
+
+```bash
+./build/repo-server serve
+# or after unpacking a release: ./repo-server serve
+# or: make run
+```
+
+## First user
+
+Create the first admin via CLI. Password must be at least 8 characters.
+
+```bash
+./build/repo-server user create -username admin -email admin@example.com -password 'your-password' -role admin
+# release binary: ./repo-server user create ...
+```
+
+## Test
+
+```bash
 make test
-
-./build/repo serve
-
-./build/repo user create -username NAME -email EMAIL -password PASS
 ```

@@ -18,10 +18,11 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/fsutil"
 )
 
 func (r *Repository) open(repoPath string) (*gogit.Repository, error) {
-	safe, err := SafePath(r.Root, repoPath)
+	safe, err := fsutil.SafePath(r.Root, repoPath)
 	if err != nil {
 		return nil, err
 	}

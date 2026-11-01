@@ -39,7 +39,7 @@ func NewDB(dataDir string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	if err := migrate(db); err != nil {
+	if err := runMigrations(db, file); err != nil {
 		if sqlDB, dbErr := db.DB(); dbErr == nil {
 			_ = sqlDB.Close()
 		}

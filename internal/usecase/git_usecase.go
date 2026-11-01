@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/attempts"
 )
 
 type GitService string
@@ -24,7 +25,7 @@ type GitUseCase struct {
 	hasher   domain.PasswordHasher
 	git      domain.GitRepository
 	activity domain.ActivityStore
-	attempts AttemptCounter
+	attempts attempts.Counter
 }
 
 func NewGitUseCase(
@@ -42,7 +43,7 @@ func NewGitUseCase(
 		hasher:   hasher,
 		git:      git,
 		activity: activity,
-		attempts: NewAttemptCounter(),
+		attempts: attempts.New(),
 	}
 }
 

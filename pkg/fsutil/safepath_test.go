@@ -1,15 +1,17 @@
-package git
+package fsutil_test
 
 import (
 	"path/filepath"
 	"testing"
+
+	"magomedcoder.ru/repo/pkg/fsutil"
 )
 
 func TestSafePathAllowsDotDotInName(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	path := filepath.Join(root, "a..b")
-	got, err := SafePath(root, path)
+	got, err := fsutil.SafePath(root, path)
 	if err != nil {
 		t.Fatalf("SafePath(a..b): %v", err)
 	}
@@ -22,7 +24,7 @@ func TestSafePathAllowsDotDotInName(t *testing.T) {
 func TestSafePathRejectsParentSegment(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	_, err := SafePath(root, filepath.Join(root, "..", "outside"))
+	_, err := fsutil.SafePath(root, filepath.Join(root, "..", "outside"))
 	if err == nil {
 		t.Fatal("expected error for .. segment")
 	}

@@ -4,9 +4,19 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
+	"magomedcoder.ru/repo/pkg/migrate"
 )
 
-func migrate(db *gorm.DB) error {
+func runMigrations(db *gorm.DB, dbPath string) error {
+	return migrate.Run(migrate.Options{
+		DB:         db,
+		DBPath:     dbPath,
+		Migrations: allMigrations(),
+		Bootstrap:  bootstrapSchema,
+	})
+}
+
+func bootstrapSchema(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&userModel{},
 		&sessionModel{},
@@ -21,9 +31,13 @@ func migrate(db *gorm.DB) error {
 		&pullCommentModel{},
 		&activityModel{},
 	); err != nil {
-		return fmt.Errorf("automigrate: %w", err)
+		return fmt.Errorf("automigrate bootstrap: %w", err)
 	}
 
+	return ensureIndexes(db)
+}
+
+func ensureIndexes(db *gorm.DB) error {
 	for _, stmt := range []string{
 		`DROP INDEX IF EXISTS idx_folder_scope`,
 		`DROP INDEX IF EXISTS idx_repo_scope`,
@@ -40,5 +54,5 @@ func migrate(db *gorm.DB) error {
 		}
 	}
 
-	return applyVersionedMigrations(db)
+	return nil
 }

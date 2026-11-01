@@ -444,7 +444,7 @@ func writeTree(repo *gogit.Repository, files map[string]object.TreeEntry) (plumb
 		}
 		cur := root
 		if dirPath != "" {
-			for _, part := range strings.Split(dirPath, "/") {
+			for part := range strings.SplitSeq(dirPath, "/") {
 				next, found := cur.dirs[part]
 				if !found {
 					next = &dir{files: map[string]object.TreeEntry{}, dirs: map[string]*dir{}}

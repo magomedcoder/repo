@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/attempts"
 )
 
 var (
@@ -104,7 +105,7 @@ type AuthUseCase struct {
 	sessions          domain.SessionStore
 	hasher            domain.PasswordHasher
 	tokens            domain.TokenGenerator
-	attempts          AttemptCounter
+	attempts          attempts.Counter
 	secret            string
 	allowRegistration bool
 	now               func() time.Time
@@ -121,7 +122,7 @@ func NewAuthUseCase(
 		sessions: sessions,
 		hasher:   hasher,
 		tokens:   tokens,
-		attempts: NewAttemptCounter(),
+		attempts: attempts.New(),
 		now:      time.Now,
 	}
 }

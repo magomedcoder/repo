@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/transport"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/fsutil"
 )
 
 type Repository struct {
@@ -108,7 +109,7 @@ func (r *Repository) Remove(path string) error {
 		return fmt.Errorf("remove repository: %w", err)
 	}
 
-	if safe, serr := SafePath(r.Root, path); serr == nil {
+	if safe, serr := fsutil.SafePath(r.Root, path); serr == nil {
 		if r.opens != nil {
 			r.opens.evict(safe)
 		}
@@ -141,7 +142,7 @@ func (r *Repository) Move(oldPath, newPath string) error {
 		return fmt.Errorf("move repository: %w", err)
 	}
 
-	if safe, serr := SafePath(r.Root, oldPath); serr == nil {
+	if safe, serr := fsutil.SafePath(r.Root, oldPath); serr == nil {
 		if r.opens != nil {
 			r.opens.evict(safe)
 		}

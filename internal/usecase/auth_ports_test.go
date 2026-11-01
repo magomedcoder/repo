@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/attempts"
 )
 
 type memUsers struct {
@@ -333,12 +334,11 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 func TestAttemptLockExpires(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	m := &memoryAttempts{
-		fails:   map[string]*attemptState{},
-		now:     func() time.Time { return now },
-		maxFail: 5,
-		base:    time.Minute,
-	}
+	m := attempts.New(attempts.Config{
+		MaxFails: 5,
+		BaseLock: time.Minute,
+		Now:      func() time.Time { return now },
+	})
 
 	for range 5 {
 		m.Fail("k")

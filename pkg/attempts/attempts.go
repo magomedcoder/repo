@@ -1,4 +1,4 @@
-package usecase
+package attempts
 
 import (
 	"sync"
@@ -6,28 +6,34 @@ import (
 )
 
 const (
-	maxLoginFails     = 5
-	loginLockDuration = 15 * time.Minute
-	attemptSweepEvery = 64
-	attemptIdleTTL    = 30 * time.Minute
+	defaultMaxFails     = 5
+	defaultLockDuration = 15 * time.Minute
+	sweepEvery          = 64
+	idleTTL             = 30 * time.Minute
 )
 
-type AttemptCounter interface {
+type Counter interface {
 	Fail(key string) bool
 	Reset(key string)
 	Locked(key string) bool
 }
 
-type attemptState struct {
+type Config struct {
+	MaxFails int
+	BaseLock time.Duration
+	Now      func() time.Time
+}
+
+type state struct {
 	fails       int
 	lockedUntil time.Time
 	lockLevel   int
 	lastUsed    time.Time
 }
 
-type memoryAttempts struct {
+type memory struct {
 	mu        sync.Mutex
-	fails     map[string]*attemptState
+	fails     map[string]*state
 	now       func() time.Time
 	maxFail   int
 	base      time.Duration
@@ -35,25 +41,42 @@ type memoryAttempts struct {
 	lastSweep time.Time
 }
 
-func NewAttemptCounter() AttemptCounter {
-	now := time.Now()
-	return &memoryAttempts{
-		fails:     map[string]*attemptState{},
-		now:       time.Now,
-		maxFail:   maxLoginFails,
-		base:      loginLockDuration,
+func New(cfg ...Config) Counter {
+	c := Config{}
+	if len(cfg) > 0 {
+		c = cfg[0]
+	}
+
+	if c.MaxFails <= 0 {
+		c.MaxFails = defaultMaxFails
+	}
+
+	if c.BaseLock <= 0 {
+		c.BaseLock = defaultLockDuration
+	}
+
+	if c.Now == nil {
+		c.Now = time.Now
+	}
+
+	now := c.Now()
+	return &memory{
+		fails:     map[string]*state{},
+		now:       c.Now,
+		maxFail:   c.MaxFails,
+		base:      c.BaseLock,
 		lastSweep: now,
 	}
 }
 
-func (m *memoryAttempts) Fail(key string) bool {
+func (m *memory) Fail(key string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	now := m.now()
 	st := m.fails[key]
 	if st == nil {
-		st = &attemptState{}
+		st = &state{}
 		m.fails[key] = st
 	}
 	st.lastUsed = now
@@ -80,7 +103,7 @@ func (m *memoryAttempts) Fail(key string) bool {
 	return true
 }
 
-func (m *memoryAttempts) Locked(key string) bool {
+func (m *memory) Locked(key string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -105,15 +128,15 @@ func (m *memoryAttempts) Locked(key string) bool {
 	return false
 }
 
-func (m *memoryAttempts) Reset(key string) {
+func (m *memory) Reset(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.fails, key)
 }
 
-func (m *memoryAttempts) maybeSweep(now time.Time) {
+func (m *memory) maybeSweep(now time.Time) {
 	m.calls++
-	if m.calls < attemptSweepEvery && now.Sub(m.lastSweep) <= 10*time.Minute {
+	if m.calls < sweepEvery && now.Sub(m.lastSweep) <= 10*time.Minute {
 		return
 	}
 
@@ -122,10 +145,10 @@ func (m *memoryAttempts) maybeSweep(now time.Time) {
 	m.calls = 0
 }
 
-func (m *memoryAttempts) sweep(now time.Time) {
+func (m *memory) sweep(now time.Time) {
 	for k, st := range m.fails {
 		lockExpired := !st.lockedUntil.IsZero() && !now.Before(st.lockedUntil) && st.fails == 0
-		idle := !st.lastUsed.IsZero() && now.Sub(st.lastUsed) > attemptIdleTTL
+		idle := !st.lastUsed.IsZero() && now.Sub(st.lastUsed) > idleTTL
 		if lockExpired || idle {
 			delete(m.fails, k)
 		}
