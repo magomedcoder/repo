@@ -109,7 +109,7 @@ func runServe() {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           withStatic(cfg.DataDir, router, accessLog, authUC),
+		Handler:           withStatic(cfg.DataDir, router, accessLog, authUC, cfg.CookieSecure),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Minute,
 		WriteTimeout:      15 * time.Minute,
@@ -137,14 +137,14 @@ func runServe() {
 	}
 }
 
-func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth middleware.Authenticator) http.Handler {
+func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth middleware.Authenticator, cookieSecure bool) http.Handler {
 	frontend, err := repo.WebHandler()
 	if err != nil {
 		slog.Error("web", "err", err)
 		os.Exit(1)
 	}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return middleware.SecurityHeaders(cookieSecure)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if handler.IsGitHTTPPath(path) || isAPIPath(path) {
 			api.ServeHTTP(w, r)
@@ -169,7 +169,7 @@ func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth mid
 		}
 
 		frontend.ServeHTTP(w, r)
-	})
+	}))
 }
 
 func isAPIPath(urlPath string) bool {

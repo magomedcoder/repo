@@ -88,8 +88,8 @@ func NewRouter(
 	apiLimiter := middleware.NewRateLimiter(180, 60)
 	authLimiter := middleware.NewRateLimiter(30, 10)
 	gitLimiter := middleware.NewRateLimiter(60, 20)
-	apiHandler := middleware.SecurityHeaders(middleware.CSRF(cookieSecure)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(r.Handler()))))))
-	gitHTTP := middleware.SecurityHeaders(middleware.RateLimitIP(gitLimiter)(middleware.Logger(gitHandler)))
+	apiHandler := middleware.SecurityHeaders(cookieSecure)(middleware.CSRF(cookieSecure)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(r.Handler()))))))
+	gitHTTP := middleware.SecurityHeaders(cookieSecure)(middleware.RateLimitIP(gitLimiter)(middleware.Logger(gitHandler)))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if handler.IsGitHTTPPath(req.URL.Path) {

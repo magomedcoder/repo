@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { siteApi } from '@/api'
 import { i18n } from '@/i18n'
 
@@ -9,6 +9,8 @@ let loading: Promise<void> | null = null
 function applyTitle() {
   document.title = name.value || i18n.global.t('brand.title')
 }
+
+watch(() => i18n.global.locale.value, applyTitle)
 
 export function useSite() {
   async function fetchSite(): Promise<void> {

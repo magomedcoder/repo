@@ -12,11 +12,15 @@ const auth = useAuth()
 const profile = ref<Profile | null>(null)
 const email = ref('')
 const error = ref('')
+const emailError = ref('')
+const emailSaved = ref(false)
 const loading = ref(true)
 const saving = ref(false)
 const currentPassword = ref('')
 const nextPassword = ref('')
-const passwordMessage = ref('')
+const passwordError = ref('')
+const passwordSaved = ref(false)
+const passwordSaving = ref(false)
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const activity = ref<ActivityEvent[]>([])
@@ -64,10 +68,11 @@ async function load() {
 
 async function saveEmail() {
   saving.value = true
-  error.value = ''
+  emailError.value = ''
+  emailSaved.value = false
   try {
-    profile.value = await usersApi.updateMe({ 
-      email: email.value 
+    profile.value = await usersApi.updateMe({
+      email: email.value,
     })
     if (auth.user.value) {
       auth.setUser({
@@ -76,8 +81,9 @@ async function saveEmail() {
         has_avatar: profile.value.has_avatar,
       })
     }
+    emailSaved.value = true
   } catch (err) {
-    error.value = localizeError(err, 'errors.saveProfile')
+    emailError.value = localizeError(err, 'errors.saveProfile')
   } finally {
     saving.value = false
   }
@@ -126,8 +132,9 @@ async function removeAvatar() {
 }
 
 async function changePassword() {
-  passwordMessage.value = ''
-  error.value = ''
+  passwordError.value = ''
+  passwordSaved.value = false
+  passwordSaving.value = true
   try {
     await authApi.password({
       current: currentPassword.value,
@@ -135,9 +142,11 @@ async function changePassword() {
     })
     currentPassword.value = ''
     nextPassword.value = ''
-    passwordMessage.value = 'ok'
+    passwordSaved.value = true
   } catch (err) {
-    error.value = localizeError(err, 'errors.saveFailed')
+    passwordError.value = localizeError(err, 'errors.saveFailed')
+  } finally {
+    passwordSaving.value = false
   }
 }
 
@@ -190,29 +199,55 @@ onMounted(load)
         <form class="space-y-3" @submit.prevent="saveEmail">
           <label class="block text-sm">
             <span class="mb-1 block font-semibold">{{ $t('profile.email') }}</span>
-            <input 
-              v-model="email" 
-              type="email" 
-              required 
-              :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'w-full']"
+            <input
+              v-model="email"
+              type="email"
+              required
+              class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
             >
           </label>
-          <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="saving">
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="saving"
+          >
             {{ saving ? $t('profile.saving') : $t('profile.save') }}
           </button>
+          <p v-if="emailError" class="text-sm text-warn">{{ emailError }}</p>
+          <p v-else-if="emailSaved" class="text-sm text-ink-muted">{{ $t('common.ok') }}</p>
         </form>
 
         <form class="space-y-3" @submit.prevent="changePassword">
           <label class="block text-sm">
-            <span class="mb-1 block font-semibold">{{ $t('auth.password') }}</span>
-            <input v-model="currentPassword" type="password" required class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" autocomplete="current-password" />
+            <span class="mb-1 block font-semibold">{{ $t('profile.currentPassword') }}</span>
+            <input
+              v-model="currentPassword"
+              type="password"
+              required
+              class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
+              autocomplete="current-password"
+            >
           </label>
           <label class="block text-sm">
             <span class="mb-1 block font-semibold">{{ $t('profile.newPassword') }}</span>
-            <input v-model="nextPassword" type="password" required minlength="8" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" autocomplete="new-password" />
+            <input
+              v-model="nextPassword"
+              type="password"
+              required
+              minlength="8"
+              class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
+              autocomplete="new-password"
+            >
           </label>
-          <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50">{{ $t('profile.save') }}</button>
-          <p v-if="passwordMessage">{{ $t('common.ok') }}</p>
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="passwordSaving"
+          >
+            {{ passwordSaving ? $t('profile.saving') : $t('profile.save') }}
+          </button>
+          <p v-if="passwordError" class="text-sm text-warn">{{ passwordError }}</p>
+          <p v-else-if="passwordSaved" class="text-sm text-ink-muted">{{ $t('common.ok') }}</p>
         </form>
 
         <p class="flex flex-wrap gap-x-4 gap-y-1 text-sm">

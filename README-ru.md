@@ -29,10 +29,16 @@ cp config.example.yaml config.yaml
 | `data_dir`           | Каталог для SQLite, Git-репозиториев и аватаров                                      |
 | `site_name`          | Название сайта в UI                                                                  |
 | `session_secret`     | Секрет подписи сессий (обязателен, мин. 32 символа; например `openssl rand -hex 32`) |
-| `cookie_secure`      | `true` при работе за HTTPS                                                           |
+| `cookie_secure`      | `true` за HTTPS (Secure-cookie + HSTS)                                               |
 | `allow_registration` | Публичная саморегистрация; иначе пользователи через CLI/админку                      |
 | `receive_max_bytes`  | Максимальный размер Git push в байтах (по умолчанию 512 MiB)                         |
-| `trusted_proxies`    | Опциональные CIDR/IP, которым доверять `X-Forwarded-For`                             |
+| `trusted_proxies`    | Опциональные CIDR/IP для `X-Forwarded-For` / `X-Forwarded-Proto`                     |
+
+В ответах выставляются CSP, `X-Frame-Options`, `X-Content-Type-Options` и (по HTTPS / при `cookie_secure`) HSTS с `includeSubDomains; preload`. После запуска сайта на HTTPS домен можно подать на [hstspreload.org](https://hstspreload.org).
+
+## Обратный прокси
+
+Пример конфига nginx: `nginx.example.conf` (TLS, крупные Git push, прокси-заголовки). Укажите прокси в `trusted_proxies` и включите `cookie_secure: true`.
 
 ## Сборка
 

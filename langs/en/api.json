@@ -8,6 +8,7 @@
   "username_taken": "This username is already taken",
   "email_taken": "This email is already taken",
   "invalid_credentials": "Incorrect username or password",
+  "current_password_wrong": "Current password is incorrect",
   "unauthorized": "Access denied",
   "session_expired": "Session expired",
   "repository_name_required": "Enter a repository name",

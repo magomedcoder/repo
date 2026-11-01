@@ -15,23 +15,24 @@ import (
 )
 
 var (
-	ErrUsernameRequired   = NewError(KindValidation, "username_required")
-	ErrEmailRequired      = NewError(KindValidation, "email_required")
-	ErrPasswordRequired   = NewError(KindValidation, "password_required")
-	ErrInvalidUsername    = NewError(KindValidation, "invalid_username")
-	ErrInvalidEmail       = NewError(KindValidation, "invalid_email")
-	ErrPasswordTooShort   = NewError(KindValidation, "password_too_short")
-	ErrUsernameTaken      = NewError(KindConflict, "username_taken")
-	ErrEmailTaken         = NewError(KindConflict, "email_taken")
-	ErrInvalidCredentials = NewError(KindUnauthorized, "invalid_credentials")
-	ErrUnauthorized       = NewError(KindUnauthorized, "unauthorized")
-	ErrSessionExpired     = NewError(KindUnauthorized, "session_expired")
-	ErrRegistrationClosed = NewError(KindForbidden, "registration_closed")
-	ErrTooManyAttempts    = NewError(KindRateLimited, "too_many_attempts")
-	ErrReservedSlug       = NewError(KindValidation, "reserved_slug")
-	ErrInvalidRole        = NewError(KindValidation, "invalid_role")
-	ErrLastAdmin          = NewError(KindConflict, "last_admin")
-	ErrAdminRequired      = NewError(KindForbidden, "admin_required")
+	ErrUsernameRequired     = NewError(KindValidation, "username_required")
+	ErrEmailRequired        = NewError(KindValidation, "email_required")
+	ErrPasswordRequired     = NewError(KindValidation, "password_required")
+	ErrInvalidUsername      = NewError(KindValidation, "invalid_username")
+	ErrInvalidEmail         = NewError(KindValidation, "invalid_email")
+	ErrPasswordTooShort     = NewError(KindValidation, "password_too_short")
+	ErrUsernameTaken        = NewError(KindConflict, "username_taken")
+	ErrEmailTaken           = NewError(KindConflict, "email_taken")
+	ErrInvalidCredentials   = NewError(KindUnauthorized, "invalid_credentials")
+	ErrCurrentPasswordWrong = NewError(KindValidation, "current_password_wrong")
+	ErrUnauthorized         = NewError(KindUnauthorized, "unauthorized")
+	ErrSessionExpired       = NewError(KindUnauthorized, "session_expired")
+	ErrRegistrationClosed   = NewError(KindForbidden, "registration_closed")
+	ErrTooManyAttempts      = NewError(KindRateLimited, "too_many_attempts")
+	ErrReservedSlug         = NewError(KindValidation, "reserved_slug")
+	ErrInvalidRole          = NewError(KindValidation, "invalid_role")
+	ErrLastAdmin            = NewError(KindConflict, "last_admin")
+	ErrAdminRequired        = NewError(KindForbidden, "admin_required")
 )
 
 var reservedSlugs = map[string]struct{}{
@@ -286,7 +287,7 @@ func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInpu
 	}
 
 	if err := uc.hasher.Compare(user.PasswordHash, in.Current); err != nil {
-		return ErrInvalidCredentials
+		return ErrCurrentPasswordWrong
 	}
 
 	hash, err := uc.hasher.Hash(in.Next)

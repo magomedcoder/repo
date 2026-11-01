@@ -8,6 +8,7 @@
   "username_taken": "Это имя пользователя уже занято",
   "email_taken": "Этот email уже занят",
   "invalid_credentials": "Неверное имя пользователя или пароль",
+  "current_password_wrong": "Текущий пароль неверен",
   "unauthorized": "Нет доступа",
   "session_expired": "Сессия истекла",
   "repository_name_required": "Укажите имя репозитория",

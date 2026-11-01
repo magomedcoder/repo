@@ -33,9 +33,6 @@ export function setLocale(locale: AppLocale) {
   localStorage.setItem(STORAGE_KEY, locale)
   document.documentElement.lang = locale
   document.title = i18n.global.t('brand.title')
-  void import('@/composables/useSite').then(({ useSite }) => {
-    useSite().applyTitle()
-  })
 }
 
 setLocale(detectLocale())

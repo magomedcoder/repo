@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.1.0 - November 1, 2026
+# dev
+
+- Security: CSP, frame and content-type headers on SPA; HSTS behind HTTPS
+- nginx example config; docs for reverse proxy and HSTS preload
+- Profile: password change form error handling fix
+
+## v0.1.0 - November 1, 2026
 
 - Accounts: register, login, logout, sessions, password change, registration toggle, login attempt lockouts
 - Roles: user and admin; admin user list, create, update, delete in the API and UI
