@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"magomedcoder.ru/repo/internal/adapter/http/audit"
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/httpx"
@@ -15,11 +16,16 @@ import (
 
 type GitHandler struct {
 	git             *usecase.GitUseCase
+	access          *audit.Logger
 	receiveMaxBytes int64
 }
 
 func NewGitHandler(git *usecase.GitUseCase) *GitHandler {
 	return &GitHandler{git: git, receiveMaxBytes: 512 << 20}
+}
+
+func (h *GitHandler) SetAccessLogger(log *audit.Logger) {
+	h.access = log
 }
 
 func (h *GitHandler) SetReceiveMaxBytes(n int64) {
@@ -153,6 +159,15 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		return
 	}
 
+	if h.access != nil {
+		switch service {
+		case usecase.GitUploadPack:
+			h.access.Clone(r, repo.RepoPath, viewer)
+		case usecase.GitReceivePack:
+			h.access.Push(r, repo.RepoPath, viewer)
+		}
+	}
+
 	if service == usecase.GitReceivePack {
 		var actorID uint
 		if viewer != nil {
@@ -173,6 +188,11 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 	viewer, authErr := h.authenticateRequest(r)
 	needAuth := repo.IsPrivate || service == usecase.GitReceivePack
 	if needAuth && authErr != nil {
+		if h.access != nil {
+			login, _, _ := r.BasicAuth()
+			h.access.FailedAuth(r, login)
+		}
+
 		if errors.Is(authErr, usecase.ErrTooManyAttempts) {
 			http.Error(w, "too many attempts", http.StatusTooManyRequests)
 			return nil, nil, authErr

@@ -108,7 +108,8 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
 		handler.NewSiteHandler("Repo"),
-		handler.NewAdminHandler(adminUC),
+		handler.NewAdminHandler(adminUC, nil),
+		nil,
 		authUC,
 		false,
 	)

@@ -1,4 +1,6 @@
-export type UserRole = 'user' | 'admin'
+export const RoleUser = 0 as const
+export const RoleAdmin = 1 as const
+export type UserRole = typeof RoleUser | typeof RoleAdmin
 
 export interface User {
   id: number
@@ -24,6 +26,19 @@ export interface AdminUser {
   email: string
   role: UserRole
   has_avatar: boolean
+  created_at: string
+}
+
+export interface AccessLog {
+  id: number
+  action: string
+  ip: string
+  user_agent: string
+  user_id?: number
+  username: string
+  path: string
+  repo: string
+  ref: string
   created_at: string
 }
 

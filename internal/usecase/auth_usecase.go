@@ -84,7 +84,7 @@ type RegisterInput struct {
 	Username string
 	Email    string
 	Password string
-	Role     string
+	Role     domain.Role
 }
 
 type LoginInput struct {
@@ -201,8 +201,8 @@ func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domai
 		return nil, ErrEmailTaken
 	}
 
-	role := domain.NormalizeRole(in.Role)
-	if role == "" {
+	role := in.Role
+	if !role.Valid() {
 		return nil, ErrInvalidRole
 	}
 

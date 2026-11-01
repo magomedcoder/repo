@@ -31,7 +31,7 @@ func runUserCreate(args []string) error {
 	username := fs.String("username", "", "username")
 	email := fs.String("email", "", "email")
 	password := fs.String("password", "", "password (min 8)")
-	role := fs.String("role", domain.RoleUser, "role: user|admin")
+	roleFlag := fs.String("role", domain.RoleUser.String(), "role: user|admin")
 	configPath := fs.String("config", config.DefaultPath, "path to config.yaml")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -41,9 +41,9 @@ func runUserCreate(args []string) error {
 		return fmt.Errorf("required: -username -email -password")
 	}
 
-	normalized := domain.NormalizeRole(*role)
-	if normalized == "" {
-		return fmt.Errorf("invalid -role %q (want user|admin)", *role)
+	role, ok := domain.ParseRole(*roleFlag)
+	if !ok {
+		return fmt.Errorf("invalid -role %q (want user|admin)", *roleFlag)
 	}
 
 	cfg, err := config.Load(*configPath)
@@ -68,7 +68,7 @@ func runUserCreate(args []string) error {
 		Username: *username,
 		Email:    *email,
 		Password: *password,
-		Role:     normalized,
+		Role:     role,
 	})
 	if err != nil {
 		return err

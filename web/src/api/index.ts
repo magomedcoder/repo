@@ -1,10 +1,19 @@
 import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
-import type { AccessToken, ActivityEvent, AdminUser, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User, UserRole } from './types'
+import type { AccessLog, AccessToken, ActivityEvent, AdminUser, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User, UserRole } from './types'
 
 export const siteApi = {
   get() {
     return api<{ name: string }>('/api/site')
+  },
+}
+
+export const accessApi = {
+  visit(path: string) {
+    return api<void>('/api/access/visit', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }).catch(() => undefined)
   },
 }
 
@@ -417,6 +426,21 @@ export const adminUsersApi = {
   },
   remove(id: number) {
     return api<void>(`/api/admin/users/${id}`, { method: 'DELETE' })
+  },
+}
+
+export const adminAccessLogsApi = {
+  list(params?: { action?: string; ip?: string; username?: string; limit?: number; offset?: number }) {
+    const q = new URLSearchParams()
+    if (params?.action) q.set('action', params.action)
+    if (params?.ip) q.set('ip', params.ip)
+    if (params?.username) q.set('username', params.username)
+    if (params?.limit != null) q.set('limit', String(params.limit))
+    if (params?.offset != null) q.set('offset', String(params.offset))
+    const qs = q.toString()
+    return api<{ items: AccessLog[]; total: number; limit: number; offset: number }>(
+      `/api/admin/access-logs${qs ? `?${qs}` : ''}`,
+    )
   },
 }
 

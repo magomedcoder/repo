@@ -12,12 +12,12 @@ type registrationResponse struct {
 }
 
 type userJSON struct {
-	ID        uint      `json:"id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	HasAvatar bool      `json:"has_avatar"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint        `json:"id"`
+	Username  string      `json:"username"`
+	Email     string      `json:"email"`
+	Role      domain.Role `json:"role"`
+	HasAvatar bool        `json:"has_avatar"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 type siteResponse struct {
@@ -76,8 +76,8 @@ type treeResponse struct {
 }
 
 func userResponse(user *domain.User) userJSON {
-	role := domain.NormalizeRole(user.Role)
-	if role == "" {
+	role := user.Role
+	if !role.Valid() {
 		role = domain.RoleUser
 	}
 

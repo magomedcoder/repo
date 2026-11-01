@@ -6,17 +6,23 @@ import (
 	"slices"
 	"strings"
 
+	"magomedcoder.ru/repo/internal/adapter/http/audit"
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 type RepositoryHandler struct {
-	repos *usecase.RepositoryUseCase
+	repos  *usecase.RepositoryUseCase
+	access *audit.Logger
 }
 
 func NewRepositoryHandler(repos *usecase.RepositoryUseCase) *RepositoryHandler {
 	return &RepositoryHandler{repos: repos}
+}
+
+func (h *RepositoryHandler) SetAccessLogger(log *audit.Logger) {
+	h.access = log
 }
 
 type createRepoRequest struct {
@@ -68,6 +74,11 @@ func (h *RepositoryHandler) Create(c *httpx.Context) error {
 	if err != nil {
 		return mapError(c, err)
 	}
+
+	if h.access != nil {
+		h.access.RepoCreate(c.R, user, out.RepoPath)
+	}
+
 	return httpx.Created(c, out)
 }
 
@@ -273,6 +284,10 @@ func (h *RepositoryHandler) Delete(c *httpx.Context) error {
 		return mapError(c, err)
 	}
 
+	if h.access != nil {
+		h.access.RepoDelete(c.R, user, audit.RepoKey(folderPath, name))
+	}
+
 	return c.NoContent()
 }
 
@@ -303,6 +318,10 @@ func (h *RepositoryHandler) move(c *httpx.Context, folderPath, name string) erro
 	})
 	if err != nil {
 		return mapError(c, err)
+	}
+
+	if h.access != nil {
+		h.access.RepoMove(c.R, user, audit.RepoKey(folderPath, name), out.RepoPath)
 	}
 
 	return httpx.OK(c, out)

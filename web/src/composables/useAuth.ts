@@ -1,7 +1,7 @@
 import { computed, reactive } from 'vue'
 import { ApiError } from '@/api/client'
 import { authApi } from '@/api'
-import type { User } from '@/api/types'
+import { RoleAdmin, type User } from '@/api/types'
 
 const state = reactive<{
   user: User | null
@@ -14,7 +14,7 @@ const state = reactive<{
 export function useAuth() {
   const user = computed(() => state.user)
   const isAuthenticated = computed(() => !!state.user)
-  const isAdmin = computed(() => state.user?.role === 'admin')
+  const isAdmin = computed(() => state.user?.role === RoleAdmin)
   const ready = computed(() => state.ready)
 
   async function fetchMe() {

@@ -1,7 +1,33 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
+import { accessApi } from '@/api'
 import { useAuth } from '@/composables/useAuth'
 import { useRegistration } from '@/composables/useRegistration'
 import { useSite } from '@/composables/useSite'
+
+const REPO_TAB_ROUTES: Record<string, string> = {
+  settings: 'repo-settings',
+  commits: 'repo-commits',
+  tree: 'repo-tree',
+  blob: 'repo-blob',
+  refs: 'repo-refs',
+  issues: 'repo-issues',
+  pulls: 'repo-pulls',
+}
+
+function redirectReservedRepoTab(to: RouteLocationNormalized) {
+  const name = String(to.params.name || '')
+  const routeName = REPO_TAB_ROUTES[name]
+  if (!routeName) {
+    return true
+  }
+
+  return {
+    name: routeName,
+    params: { repoPath: String(to.params.folder || '') },
+    query: to.query,
+    hash: to.hash,
+  }
+}
 
 const routes: RouteRecordRaw[] = [
   {
@@ -47,6 +73,12 @@ const routes: RouteRecordRaw[] = [
         name: 'users',
         meta: { requiresAdmin: true },
         component: () => import('@/views/UsersView.vue'),
+      },
+      {
+        path: 'settings/access-logs',
+        name: 'access-logs',
+        meta: { requiresAdmin: true },
+        component: () => import('@/views/AccessLogsView.vue'),
       },
       {
         path: 'search',
@@ -128,6 +160,7 @@ const routes: RouteRecordRaw[] = [
         path: ':folder/:name',
         name: 'repo',
         meta: { publicRead: true },
+        beforeEnter: redirectReservedRepoTab,
         component: () => import('@/views/RepoHomeView.vue'),
         props: (route) => ({
           repoPath: `${String(route.params.folder)}/${String(route.params.name)}`,
@@ -197,6 +230,15 @@ router.beforeEach(async (to) => {
   }
 
   return true
+})
+
+let skipNextVisitBeacon = true
+router.afterEach((to) => {
+  if (skipNextVisitBeacon) {
+    skipNextVisitBeacon = false
+    return
+  }
+  void accessApi.visit(to.fullPath)
 })
 
 export default router

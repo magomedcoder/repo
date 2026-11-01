@@ -13,11 +13,11 @@ type userModel struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	DeletedAt    gorm.DeletedAt
-	Username     string `gorm:"size:39;not null"`
-	Email        string `gorm:"not null"`
-	PasswordHash string `gorm:"not null"`
-	AvatarPath   string `gorm:"size:255"`
-	Role         string `gorm:"size:16;not null;default:user"`
+	Username     string      `gorm:"size:39;not null"`
+	Email        string      `gorm:"not null"`
+	PasswordHash string      `gorm:"not null"`
+	AvatarPath   string      `gorm:"size:255"`
+	Role         domain.Role `gorm:"not null;default:0"`
 }
 
 func (userModel) TableName() string {
@@ -26,10 +26,9 @@ func (userModel) TableName() string {
 
 func (m userModel) toDomain() *domain.User {
 	role := m.Role
-	if role == "" {
+	if !role.Valid() {
 		role = domain.RoleUser
 	}
-
 	return &domain.User{
 		ID:           m.ID,
 		Username:     m.Username,
@@ -81,8 +80,8 @@ func NewUserStore(db *gorm.DB) *UserStore {
 }
 
 func (s *UserStore) Create(user *domain.User) error {
-	role := domain.NormalizeRole(user.Role)
-	if role == "" {
+	role := user.Role
+	if !role.Valid() {
 		role = domain.RoleUser
 	}
 
@@ -164,8 +163,8 @@ func (s *UserStore) ExistsByEmail(email string) (bool, error) {
 }
 
 func (s *UserStore) Update(user *domain.User) error {
-	role := domain.NormalizeRole(user.Role)
-	if role == "" {
+	role := user.Role
+	if !role.Valid() {
 		role = domain.RoleUser
 	}
 
@@ -213,9 +212,8 @@ func (s *UserStore) List(filter domain.UserListFilter) ([]domain.User, int, erro
 	return out, int(total), nil
 }
 
-func (s *UserStore) CountByRole(role string) (int64, error) {
-	role = domain.NormalizeRole(role)
-	if role == "" {
+func (s *UserStore) CountByRole(role domain.Role) (int64, error) {
+	if !role.Valid() {
 		role = domain.RoleUser
 	}
 

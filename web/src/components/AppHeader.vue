@@ -79,6 +79,7 @@ async function onLogout() {
       </form>
       <template v-if="username">
         <RouterLink v-if="isAdmin" :to="{ name: 'users' }">{{ $t('nav.users') }}</RouterLink>
+        <RouterLink v-if="isAdmin" :to="{ name: 'access-logs' }">{{ $t('nav.accessLogs') }}</RouterLink>
         <RouterLink :to="{ name: 'profile' }">{{ $t('nav.profile') }}</RouterLink>
         <button
           type="button"

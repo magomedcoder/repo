@@ -18,7 +18,7 @@ jobs:
           cache: yarn
           cache-dependency-path: web/yarn.lock
 
-      - name: Build frontend (required for go:embed)
+      - name: Build frontend
         working-directory: web
         run: |
           yarn install --frozen-lockfile
@@ -33,3 +33,40 @@ jobs:
 
       - name: Go test
         run: go test ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: web/yarn.lock
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          yarn install --frozen-lockfile
+          yarn build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binary
+        run: |
+          mkdir -p build
+          go build -trimpath -ldflags="-s -w" -o build/repo-server ./cmd/repo
+
+      - name: Pack archive
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: tar -C build -czf build/repo-linux-amd64.tar.gz repo-server
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: repo-linux-amd64
+          path: build/repo-linux-amd64.tar.gz
+          retention-days: 14

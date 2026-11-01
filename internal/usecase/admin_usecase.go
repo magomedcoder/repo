@@ -10,12 +10,12 @@ import (
 )
 
 type AdminUserItem struct {
-	ID        uint      `json:"id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	HasAvatar bool      `json:"has_avatar"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint        `json:"id"`
+	Username  string      `json:"username"`
+	Email     string      `json:"email"`
+	Role      domain.Role `json:"role"`
+	HasAvatar bool        `json:"has_avatar"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 type AdminListResult struct {
@@ -29,12 +29,12 @@ type AdminCreateInput struct {
 	Username string
 	Email    string
 	Password string
-	Role     string
+	Role     domain.Role
 }
 
 type AdminUpdateInput struct {
 	Email    *string
-	Role     *string
+	Role     *domain.Role
 	Password *string
 }
 
@@ -99,8 +99,7 @@ func (uc *AdminUseCase) Get(ctx context.Context, id uint) (*AdminUserItem, error
 }
 
 func (uc *AdminUseCase) Create(ctx context.Context, in AdminCreateInput) (*AdminUserItem, error) {
-	role := domain.NormalizeRole(in.Role)
-	if role == "" {
+	if !in.Role.Valid() {
 		return nil, ErrInvalidRole
 	}
 
@@ -108,7 +107,7 @@ func (uc *AdminUseCase) Create(ctx context.Context, in AdminCreateInput) (*Admin
 		Username: in.Username,
 		Email:    in.Email,
 		Password: in.Password,
-		Role:     role,
+		Role:     in.Role,
 	})
 	if err != nil {
 		return nil, err
@@ -126,8 +125,8 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 		return nil, ErrUserNotFound
 	}
 
-	prevRole := domain.NormalizeRole(user.Role)
-	if prevRole == "" {
+	prevRole := user.Role
+	if !prevRole.Valid() {
 		prevRole = domain.RoleUser
 	}
 
@@ -156,8 +155,8 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 	}
 
 	if in.Role != nil {
-		role := domain.NormalizeRole(*in.Role)
-		if role == "" {
+		role := *in.Role
+		if !role.Valid() {
 			return nil, ErrInvalidRole
 		}
 
@@ -238,8 +237,8 @@ func (uc *AdminUseCase) ensureNotLastAdmin() error {
 }
 
 func toAdminUserItem(user *domain.User) AdminUserItem {
-	role := domain.NormalizeRole(user.Role)
-	if role == "" {
+	role := user.Role
+	if !role.Valid() {
 		role = domain.RoleUser
 	}
 

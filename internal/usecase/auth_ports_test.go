@@ -140,13 +140,22 @@ func (s *memUsers) List(filter domain.UserListFilter) ([]domain.User, int, error
 	return out[offset:end], total, nil
 }
 
-func (s *memUsers) CountByRole(role string) (int64, error) {
+func (s *memUsers) CountByRole(role domain.Role) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if !role.Valid() {
+		role = domain.RoleUser
+	}
+
 	var n int64
 	for _, u := range s.items {
-		if domain.NormalizeRole(u.Role) == domain.NormalizeRole(role) || (u.Role == "" && domain.NormalizeRole(role) == domain.RoleUser) {
+		r := u.Role
+		if !r.Valid() {
+			r = domain.RoleUser
+		}
+
+		if r == role {
 			n++
 		}
 	}

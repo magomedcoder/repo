@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { adminUsersApi } from '@/api'
-import type { AdminUser, UserRole } from '@/api/types'
+import { RoleAdmin, RoleUser, type AdminUser, type UserRole } from '@/api/types'
 import PageState from '@/components/ui/PageState.vue'
 import { useAuth } from '@/composables/useAuth'
 import { formatDate, i18n, localizeError } from '@/i18n'
@@ -19,7 +19,7 @@ const editing = ref<AdminUser | null>(null)
 const formUsername = ref('')
 const formEmail = ref('')
 const formPassword = ref('')
-const formRole = ref<UserRole>('user')
+const formRole = ref<UserRole>(RoleUser)
 
 const pageSize = 50
 
@@ -28,7 +28,7 @@ function resetForm() {
   formUsername.value = ''
   formEmail.value = ''
   formPassword.value = ''
-  formRole.value = 'user'
+  formRole.value = RoleUser
 }
 
 function openCreate() {
@@ -194,9 +194,9 @@ onMounted(() => load(true))
         </label>
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ $t('users.role') }}</span>
-          <select v-model="formRole" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
-            <option value="user">{{ $t('users.roleUser') }}</option>
-            <option value="admin">{{ $t('users.roleAdmin') }}</option>
+          <select v-model.number="formRole" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
+            <option :value="RoleUser">{{ $t('users.roleUser') }}</option>
+            <option :value="RoleAdmin">{{ $t('users.roleAdmin') }}</option>
           </select>
         </label>
         <button
@@ -220,7 +220,7 @@ onMounted(() => load(true))
           <div class="min-w-0">
             <p class="font-semibold text-ink">
               {{ user.username }}
-              <span class="ml-2 font-normal text-ink-muted">{{ user.role === 'admin' ? $t('users.roleAdmin') : $t('users.roleUser') }}</span>
+              <span class="ml-2 font-normal text-ink-muted">{{ user.role === RoleAdmin ? $t('users.roleAdmin') : $t('users.roleUser') }}</span>
             </p>
             <p class="mt-0.5 text-xs text-ink-muted">
               {{ user.email }} {{ $t('users.created') }} {{ formatDate(user.created_at) }}

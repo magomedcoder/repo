@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 - dev
+## 0.1.0 - November 1, 2026
 
 - Accounts: register, login, logout, sessions, password change, registration toggle, login attempt lockouts
 - Roles: user and admin; admin user list, create, update, delete in the API and UI

@@ -30,6 +30,7 @@ func bootstrapSchema(db *gorm.DB) error {
 		&pullRequestModel{},
 		&pullCommentModel{},
 		&activityModel{},
+		&accessLogModel{},
 	); err != nil {
 		return fmt.Errorf("automigrate bootstrap: %w", err)
 	}
@@ -48,6 +49,8 @@ func ensureIndexes(db *gorm.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repo_scope ON repositories (owner_kind, owner_id, ifnull(folder_id, 0), name) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repositories_repo_path ON repositories (repo_path) WHERE deleted_at IS NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_activity_events_owner ON activity_events (owner_kind, owner_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs (created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_access_logs_action ON access_logs (action)`,
 	} {
 		if err := db.Exec(stmt).Error; err != nil {
 			return fmt.Errorf("index: %w", err)

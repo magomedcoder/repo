@@ -14,10 +14,12 @@ import (
 	"magomedcoder.ru/repo"
 	"magomedcoder.ru/repo/internal/adapter/git"
 	deliveryhttp "magomedcoder.ru/repo/internal/adapter/http"
+	"magomedcoder.ru/repo/internal/adapter/http/audit"
 	"magomedcoder.ru/repo/internal/adapter/http/handler"
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/adapter/sqlite"
 	"magomedcoder.ru/repo/internal/config"
+	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/argon2id"
 	"magomedcoder.ru/repo/pkg/token"
@@ -58,6 +60,8 @@ func runServe() {
 	issueStore := sqlite.NewIssueStore(db)
 	pullStore := sqlite.NewPullRequestStore(db)
 	activityStore := sqlite.NewActivityStore(db)
+	accessStore := sqlite.NewAccessLogStore(db)
+	accessLog := audit.New(accessStore)
 
 	gitRepo := git.NewRepository(cfg.DataDir)
 
@@ -78,27 +82,34 @@ func runServe() {
 	profileUC := usecase.NewProfileUseCase(userStore, cfg.DataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, authUC, hasher)
+	accessUC := usecase.NewAccessLogUseCase(accessStore)
 
 	authHandler := handler.NewAuthHandler(authUC)
 	authHandler.SetCookiePolicy(cfg.CookieSecure, http.SameSiteLaxMode)
 	authHandler.SetAllowRegistration(cfg.AllowRegistration)
+	authHandler.SetAccessLogger(accessLog)
 	folderHandler := handler.NewFolderHandler(folderUC)
 	repoHandler := handler.NewRepositoryHandler(repoUC)
+	repoHandler.SetAccessLogger(accessLog)
 	tokenHandler := handler.NewTokenHandler(tokenUC)
+	tokenHandler.SetAccessLogger(accessLog)
 	gitHandler := handler.NewGitHandler(gitUC)
 	gitHandler.SetReceiveMaxBytes(cfg.ReceiveMaxBytes)
+	gitHandler.SetAccessLogger(accessLog)
 	issueHandler := handler.NewIssueHandler(issueUC)
 	pullHandler := handler.NewPullRequestHandler(pullUC)
 	profileHandler := handler.NewProfileHandler(profileUC)
 	activityHandler := handler.NewActivityHandler(activityUC)
 	siteHandler := handler.NewSiteHandler(cfg.SiteName)
-	adminHandler := handler.NewAdminHandler(adminUC)
+	adminHandler := handler.NewAdminHandler(adminUC, accessUC)
+	adminHandler.SetAccessLogger(accessLog)
+	accessHandler := handler.NewAccessHandler(accessLog)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, authUC, cfg.CookieSecure)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.CookieSecure)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           withStatic(cfg.DataDir, router),
+		Handler:           withStatic(cfg.DataDir, router, accessLog, authUC),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Minute,
 		WriteTimeout:      15 * time.Minute,
@@ -126,7 +137,7 @@ func runServe() {
 	}
 }
 
-func withStatic(dataDir string, api http.Handler) http.Handler {
+func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth middleware.Authenticator) http.Handler {
 	frontend, err := repo.WebHandler()
 	if err != nil {
 		slog.Error("web", "err", err)
@@ -143,6 +154,18 @@ func withStatic(dataDir string, api http.Handler) http.Handler {
 		if isDataPath(path, dataDir) {
 			http.NotFound(w, r)
 			return
+		}
+
+		if access != nil && audit.IsPageVisit(r) {
+			var user *domain.User
+			if auth != nil {
+				if token := middleware.SessionToken(r); token != "" {
+					if u, _, err := auth.Authenticate(r.Context(), token); err == nil {
+						user = u
+					}
+				}
+			}
+			access.Visit(r, user)
 		}
 
 		frontend.ServeHTTP(w, r)

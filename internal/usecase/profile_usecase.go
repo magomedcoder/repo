@@ -22,12 +22,12 @@ var (
 const maxAvatarBytes = 1 << 20 // 1 MiB
 
 type ProfileItem struct {
-	ID        uint      `json:"id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email,omitzero"`
-	Role      string    `json:"role"`
-	HasAvatar bool      `json:"has_avatar"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint        `json:"id"`
+	Username  string      `json:"username"`
+	Email     string      `json:"email,omitzero"`
+	Role      domain.Role `json:"role"`
+	HasAvatar bool        `json:"has_avatar"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 type ProfileUseCase struct {
@@ -184,8 +184,8 @@ func (uc *ProfileUseCase) OpenAvatar(ctx context.Context, username string) (io.R
 }
 
 func toProfileItem(user *domain.User, includeEmail bool) *ProfileItem {
-	role := domain.NormalizeRole(user.Role)
-	if role == "" {
+	role := user.Role
+	if !role.Valid() {
 		role = domain.RoleUser
 	}
 

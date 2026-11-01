@@ -5,10 +5,35 @@ import (
 	"time"
 )
 
+type Role int
+
 const (
-	RoleUser  = "user"
-	RoleAdmin = "admin"
+	RoleUser  Role = 0
+	RoleAdmin Role = 1
 )
+
+func (r Role) Valid() bool {
+	return r == RoleUser || r == RoleAdmin
+}
+
+func (r Role) String() string {
+	if r == RoleAdmin {
+		return "admin"
+	}
+
+	return "user"
+}
+
+func ParseRole(s string) (Role, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "admin":
+		return RoleAdmin, true
+	case "user", "":
+		return RoleUser, true
+	default:
+		return 0, false
+	}
+}
 
 type User struct {
 	ID           uint
@@ -16,20 +41,9 @@ type User struct {
 	Email        string
 	PasswordHash string
 	AvatarPath   string
-	Role         string
+	Role         Role
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
-}
-
-func NormalizeRole(role string) string {
-	switch strings.ToLower(strings.TrimSpace(role)) {
-	case RoleAdmin:
-		return RoleAdmin
-	case RoleUser, "":
-		return RoleUser
-	default:
-		return ""
-	}
 }
 
 func (u *User) IsAdmin() bool {
@@ -72,7 +86,7 @@ type UserStore interface {
 
 	List(filter UserListFilter) ([]User, int, error)
 
-	CountByRole(role string) (int64, error)
+	CountByRole(role Role) (int64, error)
 }
 
 type SessionStore interface {

@@ -47,6 +47,7 @@
     "pulls": "Merges",
     "profile": "Profile",
     "users": "Users",
+    "accessLogs": "Access logs",
     "accessTokens": "Access tokens",
     "tagline": "Lightweight Git hosting",
     "refs": "refs",
@@ -299,6 +300,7 @@
     "loadTokens": "Could not load tokens",
     "createToken": "Could not create token",
     "loadUsers": "Could not load users",
+    "loadAccessLogs": "Could not load access logs",
     "createUser": "Could not create user",
     "saveUser": "Could not save user",
     "loadActivity": "Could not load activity",
@@ -400,6 +402,21 @@
     "confirmDelete": "Delete user “{username}”? This cannot be undone.",
     "edit": "Edit",
     "created": "Created",
+    "loadMore": "Load more"
+  },
+  "accessLogs": {
+    "title": "Access logs",
+    "action": "Action",
+    "allActions": "All actions",
+    "ip": "IP",
+    "ipPlaceholder": "Filter by IP",
+    "username": "Username",
+    "usernamePlaceholder": "Filter by username",
+    "user": "User",
+    "userAgent": "User-Agent",
+    "time": "Time",
+    "details": "Details",
+    "empty": "No log entries yet.",
     "loadMore": "Load more"
   }
 }

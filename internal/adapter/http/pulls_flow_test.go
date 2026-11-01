@@ -81,7 +81,8 @@ func TestPullRequestFlow(t *testing.T) {
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
 		handler.NewSiteHandler("Repo"),
-		handler.NewAdminHandler(adminUC),
+		handler.NewAdminHandler(adminUC, nil),
+		nil,
 		authUC,
 		false,
 	)

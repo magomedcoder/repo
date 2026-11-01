@@ -21,6 +21,7 @@ func NewRouter(
 	activityHandler *handler.ActivityHandler,
 	siteHandler *handler.SiteHandler,
 	adminHandler *handler.AdminHandler,
+	accessHandler *handler.AccessHandler,
 	auth middleware.Authenticator,
 	cookieSecure bool,
 ) http.Handler {
@@ -39,6 +40,10 @@ func NewRouter(
 	optional := httpx.HTTPMiddleware(middleware.OptionalAuth(auth))
 	authed := api.Group("", require)
 	pub := api.Group("", optional)
+
+	if accessHandler != nil {
+		pub.POST("/access/visit", accessHandler.Visit)
+	}
 
 	authed.POST("/auth/password", authHandler.Password)
 
@@ -78,6 +83,7 @@ func NewRouter(
 	admin.POST("/admin/users", adminHandler.CreateUser)
 	admin.PATCH("/admin/users/{id}", adminHandler.UpdateUser)
 	admin.DELETE("/admin/users/{id}", adminHandler.DeleteUser)
+	admin.GET("/admin/access-logs", adminHandler.ListAccessLogs)
 
 	apiLimiter := middleware.NewRateLimiter(180, 60)
 	authLimiter := middleware.NewRateLimiter(30, 10)

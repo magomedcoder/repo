@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
+	"magomedcoder.ru/repo/internal/adapter/http/audit"
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/httpx"
@@ -10,10 +12,15 @@ import (
 
 type TokenHandler struct {
 	tokens *usecase.TokenUseCase
+	access *audit.Logger
 }
 
 func NewTokenHandler(tokens *usecase.TokenUseCase) *TokenHandler {
 	return &TokenHandler{tokens: tokens}
+}
+
+func (h *TokenHandler) SetAccessLogger(log *audit.Logger) {
+	h.access = log
 }
 
 type createTokenRequest struct {
@@ -35,6 +42,10 @@ func (h *TokenHandler) Create(c *httpx.Context) error {
 	if err != nil {
 		return mapError(c, err)
 	}
+	if h.access != nil {
+		h.access.TokenCreate(c.R, user, req.Name)
+	}
+
 	return httpx.Created(c, out)
 }
 
@@ -65,5 +76,10 @@ func (h *TokenHandler) Revoke(c *httpx.Context) error {
 	if err := h.tokens.Revoke(c.Ctx(), user.ID, id); err != nil {
 		return mapError(c, err)
 	}
+
+	if h.access != nil {
+		h.access.TokenRevoke(c.R, user, strconv.FormatUint(uint64(id), 10))
+	}
+
 	return c.NoContent()
 }

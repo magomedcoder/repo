@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"magomedcoder.ru/repo/internal/adapter/http/audit"
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/httpx"
@@ -12,6 +13,7 @@ import (
 
 type AuthHandler struct {
 	auth              *usecase.AuthUseCase
+	access            *audit.Logger
 	secure            bool
 	sameSite          http.SameSite
 	allowRegistration bool
@@ -22,6 +24,10 @@ func NewAuthHandler(auth *usecase.AuthUseCase) *AuthHandler {
 		auth:     auth,
 		sameSite: http.SameSiteLaxMode,
 	}
+}
+
+func (h *AuthHandler) SetAccessLogger(log *audit.Logger) {
+	h.access = log
 }
 
 func (h *AuthHandler) SetCookiePolicy(secure bool, sameSite http.SameSite) {
@@ -66,6 +72,9 @@ func (h *AuthHandler) Register(c *httpx.Context) error {
 	}
 
 	h.setSessionCookie(c.W, out.Token)
+	if h.access != nil {
+		h.access.Register(c.R, out.User)
+	}
 	return httpx.Created(c, userResponse(out.User))
 }
 
@@ -81,10 +90,16 @@ func (h *AuthHandler) Login(c *httpx.Context) error {
 		Key:      middleware.ClientIP(c.R) + "\n" + strings.ToLower(strings.TrimSpace(req.Login)),
 	})
 	if err != nil {
+		if h.access != nil {
+			h.access.FailedAuth(c.R, strings.TrimSpace(req.Login))
+		}
 		return mapError(c, err)
 	}
 
 	h.setSessionCookie(c.W, out.Token)
+	if h.access != nil {
+		h.access.Login(c.R, out.User)
+	}
 
 	return httpx.OK(c, userResponse(out.User))
 }
@@ -114,8 +129,13 @@ func (h *AuthHandler) Password(c *httpx.Context) error {
 
 func (h *AuthHandler) Logout(c *httpx.Context) error {
 	token := middleware.SessionToken(c.R)
+	user, _ := h.auth.Me(c.Ctx(), token)
 	_ = h.auth.Logout(c.Ctx(), token)
 	h.clearSessionCookie(c.W)
+	if h.access != nil {
+		h.access.Logout(c.R, user)
+	}
+
 	return c.NoContent()
 }
 

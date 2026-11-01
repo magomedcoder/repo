@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/httpx"
 )
@@ -112,6 +113,17 @@ func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveR
 		c.W.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		c.W.WriteHeader(http.StatusOK)
 		_, _ = c.W.Write(data)
+
+		repoPath := in.Name
+		if in.FolderPath != "" {
+			repoPath = in.FolderPath + "/" + in.Name
+		}
+
+		if h.access != nil {
+			user, _ := middleware.UserFromContext(c.Ctx())
+			h.access.Download(c.R, repoPath, ref, path, user)
+		}
+
 		return nil
 
 	case "readme":
