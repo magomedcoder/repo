@@ -67,28 +67,41 @@ func NewIssueStore(db *gorm.DB) *IssueStore {
 }
 
 func (s *IssueStore) Create(issue *domain.Issue) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		var maxNum int
-		if err := tx.Model(&issueModel{}).
-			Where("repository_id = ?", issue.RepositoryID).
-			Select("COALESCE(MAX(number), 0)").
-			Scan(&maxNum).Error; err != nil {
-			return err
+	const maxAttempts = 5
+	var last error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		last = s.db.Transaction(func(tx *gorm.DB) error {
+			var maxNum int
+			if err := tx.Model(&issueModel{}).
+				Where("repository_id = ?", issue.RepositoryID).
+				Select("COALESCE(MAX(number), 0)").
+				Scan(&maxNum).Error; err != nil {
+				return err
+			}
+
+			issue.Number = maxNum + 1
+			if issue.State == "" {
+				issue.State = "open"
+			}
+
+			model := issueFromDomain(issue)
+			if err := tx.Create(model).Error; err != nil {
+				return err
+			}
+
+			*issue = model.toDomain()
+			return nil
+		})
+		if last == nil {
+			return nil
 		}
 
-		issue.Number = maxNum + 1
-		if issue.State == "" {
-			issue.State = "open"
+		if !isUniqueViolation(last) {
+			return last
 		}
+	}
 
-		model := issueFromDomain(issue)
-		if err := tx.Create(model).Error; err != nil {
-			return err
-		}
-
-		*issue = model.toDomain()
-		return nil
-	})
+	return last
 }
 
 func (s *IssueStore) Update(issue *domain.Issue) error {

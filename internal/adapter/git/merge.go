@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"io"
 	"maps"
 	"slices"
 	"strings"
@@ -22,11 +23,11 @@ func (r *Repository) Compare(repoPath, base, head string) (*domain.CompareResult
 			return nil, err
 		}
 
-		return r.compare(repoPath, base, head)
+		return r.compare(ctx, repoPath, base, head)
 	})
 }
 
-func (r *Repository) compare(repoPath, base, head string) (*domain.CompareResult, error) {
+func (r *Repository) compare(ctx context.Context, repoPath, base, head string) (*domain.CompareResult, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return nil, err
@@ -49,14 +50,14 @@ func (r *Repository) compare(repoPath, base, head string) (*domain.CompareResult
 		Files:   []domain.FileDiff{},
 	}
 
-	ff, err := r.CanFastForward(repoPath, base, head)
+	ff, err := r.canFastForward(ctx, repoPath, base, head)
 	if err != nil {
 		return nil, err
 	}
 
 	out.CanFastForward = ff
 
-	commits, err := r.logRange(repoPath, base, head)
+	commits, err := r.logRange(ctx, repoPath, base, head)
 	if err != nil {
 		return nil, err
 	}
@@ -78,16 +79,32 @@ func (r *Repository) compare(repoPath, base, head string) (*domain.CompareResult
 		return nil, err
 	}
 
+	patchBytes := 0
 	for _, change := range changes {
-		if fd, ok := fileDiffFromChange(change); ok {
-			out.Files = append(out.Files, fd)
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
+
+		if len(out.Files) >= maxDiffFiles {
+			break
+		}
+
+		fd, ok := fileDiffFromChange(ctx, change)
+		if !ok {
+			continue
+		}
+
+		if patchBytes+len(fd.Patch) > maxComparePatchBytes {
+			fd.Patch = ""
+		}
+		patchBytes += len(fd.Patch)
+		out.Files = append(out.Files, fd)
 	}
 
 	return out, nil
 }
 
-func (r *Repository) logRange(repoPath, base, head string) ([]domain.CommitInfo, error) {
+func (r *Repository) logRange(ctx context.Context, repoPath, base, head string) ([]domain.CommitInfo, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return nil, err
@@ -103,16 +120,21 @@ func (r *Repository) logRange(repoPath, base, head string) ([]domain.CommitInfo,
 		return nil, err
 	}
 
-	excluded, err := ancestorSet(baseCommit)
+	excluded, err := ancestorSet(ctx, baseCommit)
 	if err != nil {
 		return nil, err
 	}
 
 	var out []domain.CommitInfo
-	err = walkCommits(headCommit, func(c *object.Commit) bool {
+	err = walkCommits(ctx, headCommit, func(c *object.Commit) bool {
+		if len(out) >= maxCompareCommits {
+			return false
+		}
+
 		if excluded[c.Hash] {
 			return false
 		}
+
 		out = append(out, commitToInfo(c))
 		return true
 	})
@@ -124,6 +146,12 @@ func (r *Repository) logRange(repoPath, base, head string) ([]domain.CommitInfo,
 }
 
 func (r *Repository) CanFastForward(repoPath, base, head string) (bool, error) {
+	return r.withTimeout(context.Background(), func(ctx context.Context) (bool, error) {
+		return r.canFastForward(ctx, repoPath, base, head)
+	})
+}
+
+func (r *Repository) canFastForward(ctx context.Context, repoPath, base, head string) (bool, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return false, err
@@ -139,7 +167,7 @@ func (r *Repository) CanFastForward(repoPath, base, head string) (bool, error) {
 		return false, err
 	}
 
-	seen, err := ancestorSet(headCommit)
+	seen, err := ancestorSet(ctx, headCommit)
 	if err != nil {
 		return false, err
 	}
@@ -152,11 +180,15 @@ func (r *Repository) Merge(repoPath, base, head, strategy, authorName, authorEma
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		return r.merge(repoPath, base, head, strategy, authorName, authorEmail, message)
+
+		unlock := r.LockRepo(repoPath)
+		defer unlock()
+
+		return r.merge(ctx, repoPath, base, head, strategy, authorName, authorEmail, message)
 	})
 }
 
-func (r *Repository) merge(repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
+func (r *Repository) merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
 	base = strings.TrimSpace(base)
 	head = strings.TrimSpace(head)
 	if base == "" || head == "" {
@@ -188,7 +220,7 @@ func (r *Repository) merge(repoPath, base, head, strategy, authorName, authorEma
 		message = fmt.Sprintf("Merge branch '%s' into %s", head, base)
 	}
 
-	ff, err := r.CanFastForward(repoPath, base, head)
+	ff, err := r.canFastForward(ctx, repoPath, base, head)
 	if err != nil {
 		return "", err
 	}
@@ -205,29 +237,10 @@ func (r *Repository) merge(repoPath, base, head, strategy, authorName, authorEma
 		return r.fastForward(repoPath, base, head)
 	}
 
-	return r.mergeTrees(repoPath, base, head, authorName, authorEmail, message)
+	return r.mergeTrees(ctx, repoPath, base, head, authorName, authorEmail, message)
 }
 
 func (r *Repository) fastForward(repoPath, base, head string) (string, error) {
-	repo, err := r.open(repoPath)
-	if err != nil {
-		return "", err
-	}
-
-	headCommit, err := r.commitFromRef(repo, head)
-	if err != nil {
-		return "", err
-	}
-
-	refName := plumbing.ReferenceName("refs/heads/" + base)
-	if err := repo.Storer.SetReference(plumbing.NewHashReference(refName, headCommit.Hash)); err != nil {
-		return "", fmt.Errorf("fast-forward: %w", err)
-	}
-
-	return headCommit.Hash.String(), nil
-}
-
-func (r *Repository) mergeTrees(repoPath, base, head, authorName, authorEmail, message string) (string, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return "", err
@@ -243,7 +256,41 @@ func (r *Repository) mergeTrees(repoPath, base, head, authorName, authorEmail, m
 		return "", err
 	}
 
-	mergeBase, err := mergeBaseCommit(baseCommit, headCommit)
+	refName := plumbing.ReferenceName("refs/heads/" + base)
+	oldRef, err := repo.Storer.Reference(refName)
+	if err != nil {
+		return "", fmt.Errorf("fast-forward base: %w", err)
+	}
+
+	if oldRef.Hash() != baseCommit.Hash {
+		return "", fmt.Errorf("fast-forward: base moved")
+	}
+
+	newRef := plumbing.NewHashReference(refName, headCommit.Hash)
+	if err := repo.Storer.CheckAndSetReference(newRef, oldRef); err != nil {
+		return "", fmt.Errorf("fast-forward: %w", err)
+	}
+
+	return headCommit.Hash.String(), nil
+}
+
+func (r *Repository) mergeTrees(ctx context.Context, repoPath, base, head, authorName, authorEmail, message string) (string, error) {
+	repo, err := r.open(repoPath)
+	if err != nil {
+		return "", err
+	}
+
+	baseCommit, err := r.commitFromRef(repo, base)
+	if err != nil {
+		return "", err
+	}
+
+	headCommit, err := r.commitFromRef(repo, head)
+	if err != nil {
+		return "", err
+	}
+
+	mergeBase, err := mergeBaseCommit(ctx, baseCommit, headCommit)
 	if err != nil {
 		return "", err
 	}
@@ -322,26 +369,45 @@ func (r *Repository) mergeTrees(repoPath, base, head, authorName, authorEmail, m
 	}
 
 	refName := plumbing.ReferenceName("refs/heads/" + base)
-	if err := repo.Storer.SetReference(plumbing.NewHashReference(refName, hash)); err != nil {
-		return "", err
+	oldRef, err := repo.Storer.Reference(refName)
+	if err != nil {
+		return "", fmt.Errorf("merge base ref: %w", err)
+	}
+
+	if oldRef.Hash() != baseCommit.Hash {
+		return "", fmt.Errorf("merge: base moved")
+	}
+
+	newRef := plumbing.NewHashReference(refName, hash)
+	if err := repo.Storer.CheckAndSetReference(newRef, oldRef); err != nil {
+		return "", fmt.Errorf("merge update ref: %w", err)
 	}
 
 	return hash.String(), nil
 }
 
-func ancestorSet(c *object.Commit) (map[plumbing.Hash]bool, error) {
+func ancestorSet(ctx context.Context, c *object.Commit) (map[plumbing.Hash]bool, error) {
 	seen := map[plumbing.Hash]bool{}
-	err := walkCommits(c, func(commit *object.Commit) bool {
+	err := walkCommits(ctx, c, func(commit *object.Commit) bool {
 		seen[commit.Hash] = true
 		return true
 	})
+
 	return seen, err
 }
 
-func walkCommits(c *object.Commit, visit func(*object.Commit) bool) error {
+func walkCommits(ctx context.Context, c *object.Commit, visit func(*object.Commit) bool) error {
 	stack := []*object.Commit{c}
 	seen := map[plumbing.Hash]bool{}
 	for len(stack) > 0 {
+		if err := checkCtx(ctx); err != nil {
+			return err
+		}
+
+		if len(seen) >= maxWalkCommits {
+			return ErrHistoryTooLarge
+		}
+
 		cur := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		if seen[cur.Hash] {
@@ -367,29 +433,21 @@ func walkCommits(c *object.Commit, visit func(*object.Commit) bool) error {
 	return nil
 }
 
-func mergeBaseCommit(a, b *object.Commit) (*object.Commit, error) {
-	seen, err := ancestorSet(a)
+func mergeBaseCommit(ctx context.Context, a, b *object.Commit) (*object.Commit, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	bases, err := a.MergeBase(b)
 	if err != nil {
 		return nil, err
 	}
 
-	var found *object.Commit
-	err = walkCommits(b, func(c *object.Commit) bool {
-		if seen[c.Hash] && found == nil {
-			found = c
-			return false
-		}
-		return found == nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if found == nil {
+	if len(bases) == 0 || bases[0] == nil {
 		return nil, fmt.Errorf("merge base not found")
 	}
 
-	return found, nil
+	return bases[0], nil
 }
 
 func flattenTree(c *object.Commit) (map[string]object.TreeEntry, error) {
@@ -403,8 +461,12 @@ func flattenTree(c *object.Commit) (map[string]object.TreeEntry, error) {
 	defer walker.Close()
 	for {
 		name, entry, err := walker.Next()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+
+		if err != nil {
+			return nil, err
 		}
 
 		if entry.Mode == filemode.Dir {
@@ -493,7 +555,7 @@ func writeTree(repo *gogit.Repository, files map[string]object.TreeEntry) (plumb
 	return store(root)
 }
 
-func fileDiffFromChange(change *object.Change) (domain.FileDiff, bool) {
+func fileDiffFromChange(ctx context.Context, change *object.Change) (domain.FileDiff, bool) {
 	action, err := change.Action()
 	if err != nil {
 		return domain.FileDiff{}, false
@@ -523,8 +585,13 @@ func fileDiffFromChange(change *object.Change) (domain.FileDiff, bool) {
 		}
 	}
 
-	if patch, err := change.Patch(); err == nil {
-		fd.Patch = patch.String()
+	if patch, err := change.PatchContext(ctx); err == nil {
+		text := patch.String()
+		if len(text) > maxDiffPatchBytes {
+			text = text[:maxDiffPatchBytes]
+		}
+
+		fd.Patch = text
 	}
 
 	return fd, true

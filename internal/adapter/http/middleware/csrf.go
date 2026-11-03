@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
-	"strings"
 )
 
 const CSRFCookie = "repo_csrf"
@@ -48,16 +47,10 @@ func ensureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool) strin
 func needsCSRF(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
 	default:
 		return false
 	}
-
-	if strings.HasPrefix(r.URL.Path, "/api/auth/login") || strings.HasPrefix(r.URL.Path, "/api/auth/register") {
-		return false
-	}
-
-	_, err := r.Cookie(SessionCookie)
-	return err == nil
 }
 
 func validCSRF(r *http.Request, cookieToken string) bool {

@@ -48,7 +48,10 @@ func NewGitUseCase(
 }
 
 func (uc *GitUseCase) ResolveClonePath(ctx context.Context, path string) (*domain.Repository, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	path = strings.Trim(strings.TrimSpace(path), "/")
 	if path == "" {
 		return nil, ErrRepoNotFound
@@ -73,19 +76,22 @@ func (uc *GitUseCase) ResolveClonePath(ctx context.Context, path string) (*domai
 	return repo, nil
 }
 
-func (uc *GitUseCase) Authenticate(ctx context.Context, username, secret string) (*domain.User, error) {
-	_ = ctx.Err()
+func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secret string) (*domain.User, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	username = strings.ToLower(strings.TrimSpace(username))
 	secret = strings.TrimSpace(secret)
 
 	if strings.HasPrefix(username, "repo_") && (secret == "" || secret == "x" || secret == username) {
-		return uc.authenticateToken(username)
+		return uc.authenticateTokenWithAttempts(username)
 	}
 
 	if strings.HasPrefix(secret, "repo_") {
-		user, err := uc.authenticateToken(secret)
+		user, err := uc.authenticateTokenWithAttempts(secret)
 		if err != nil {
-			return nil, ErrUnauthorized
+			return nil, err
 		}
 
 		if username != "" && user.Username != username {
@@ -99,13 +105,14 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, username, secret string)
 		return nil, ErrUnauthorized
 	}
 
-	attemptKey := "git\n" + username
+	attemptKey := "git\n" + remoteIP + "\n" + username
 	if uc.attempts != nil && uc.attempts.Locked(attemptKey) {
 		return nil, ErrTooManyAttempts
 	}
 
 	user, err := uc.users.FindByUsername(username)
 	if err != nil {
+		_ = uc.hasher.Compare(dummyPasswordHash, secret)
 		if uc.attempts != nil {
 			_ = uc.attempts.Fail(attemptKey)
 		}
@@ -126,6 +133,27 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, username, secret string)
 	return sanitizeUser(user), nil
 }
 
+func (uc *GitUseCase) authenticateTokenWithAttempts(raw string) (*domain.User, error) {
+	attemptKey := "git-token\n" + hashAccessToken(raw)
+	if uc.attempts != nil && uc.attempts.Locked(attemptKey) {
+		return nil, ErrTooManyAttempts
+	}
+
+	user, err := uc.authenticateToken(raw)
+	if err != nil {
+		if uc.attempts != nil {
+			_ = uc.attempts.Fail(attemptKey)
+		}
+		return nil, err
+	}
+
+	if uc.attempts != nil {
+		uc.attempts.Reset(attemptKey)
+	}
+
+	return user, nil
+}
+
 func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 	token, err := uc.tokens.FindByHash(hashAccessToken(raw))
 	if err != nil {
@@ -142,7 +170,10 @@ func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 }
 
 func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, viewer *domain.User, service GitService) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	switch service {
 	case GitUploadPack:
 		if !repo.IsPrivate {
@@ -174,27 +205,46 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 }
 
 func (uc *GitUseCase) AdvertiseRefs(ctx context.Context, repoPath string, service GitService, w io.Writer) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	return uc.git.AdvertiseRefs(ctx, repoPath, string(service), w)
 }
 
-func (uc *GitUseCase) ServePack(ctx context.Context, repoPath string, service GitService, stdin io.Reader, stdout io.Writer) error {
-	_ = ctx.Err()
-	return uc.git.ServePack(ctx, repoPath, string(service), stdin, stdout)
+func (uc *GitUseCase) ServePack(ctx context.Context, repoPath string, service GitService, stdin io.Reader, stdout io.Writer, receive *domain.ReceivePackOptions) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	return uc.git.ServePack(ctx, repoPath, string(service), stdin, stdout, receive)
+}
+
+func (uc *GitUseCase) LockRepo(repoPath string) func() {
+	return uc.git.LockRepo(repoPath)
 }
 
 func (uc *GitUseCase) EnsureDefaultBranch(ctx context.Context, repoPath, branch string) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	return uc.git.EnsureDefaultBranch(repoPath, branch)
 }
 
 func (uc *GitUseCase) Ancestor(ctx context.Context, repoPath, oldRev, newRev string) (bool, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
 	return uc.git.CanFastForward(repoPath, oldRev, newRev)
 }
 
 func (uc *GitUseCase) TouchActivity(ctx context.Context, repo *domain.Repository, actorID uint) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if repo == nil {
 		return nil
 	}

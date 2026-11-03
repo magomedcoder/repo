@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/fsutil"
 )
 
 var (
@@ -43,7 +44,10 @@ func NewProfileUseCase(users domain.UserStore, dataDir string) *ProfileUseCase {
 }
 
 func (uc *ProfileUseCase) GetByUsername(ctx context.Context, username string, viewerID uint) (*ProfileItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	user, err := uc.users.FindByUsername(strings.TrimSpace(username))
 	if err != nil {
 		return nil, ErrUserNotFound
@@ -53,13 +57,16 @@ func (uc *ProfileUseCase) GetByUsername(ctx context.Context, username string, vi
 }
 
 func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email string) (*ProfileItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" {
 		return nil, ErrEmailRequired
 	}
 
-	if !strings.Contains(email, "@") {
+	if !emailPattern.MatchString(email) {
 		return nil, ErrInvalidEmail
 	}
 
@@ -80,6 +87,9 @@ func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email st
 
 		user.Email = email
 		if err := uc.users.Update(user); err != nil {
+			if isUniqueViolation(err) {
+				return nil, ErrEmailTaken
+			}
 			return nil, fmt.Errorf("update user: %w", err)
 		}
 	}
@@ -88,7 +98,10 @@ func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email st
 }
 
 func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reader, contentType string, size int64) (*ProfileItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if size > maxAvatarBytes {
 		return nil, ErrAvatarTooLarge
 	}
@@ -150,7 +163,10 @@ func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reade
 }
 
 func (uc *ProfileUseCase) ClearAvatar(ctx context.Context, userID uint) (*ProfileItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	user, err := uc.users.FindByID(userID)
 	if err != nil {
 		return nil, ErrUnauthorized
@@ -168,13 +184,20 @@ func (uc *ProfileUseCase) ClearAvatar(ctx context.Context, userID uint) (*Profil
 }
 
 func (uc *ProfileUseCase) OpenAvatar(ctx context.Context, username string) (io.ReadCloser, string, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+
 	user, err := uc.users.FindByUsername(strings.TrimSpace(username))
 	if err != nil || user.AvatarPath == "" {
 		return nil, "", ErrAvatarNotFound
 	}
 
-	path := filepath.Join(uc.avatarDir, user.AvatarPath)
+	path, err := fsutil.SafePath(uc.avatarDir, filepath.Join(uc.avatarDir, user.AvatarPath))
+	if err != nil {
+		return nil, "", ErrAvatarNotFound
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, "", ErrAvatarNotFound

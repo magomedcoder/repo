@@ -4,7 +4,6 @@ import (
 	"embed"
 	"sync"
 
-	"gorm.io/gorm"
 	"magomedcoder.ru/repo/pkg/migrate"
 )
 
@@ -17,11 +16,9 @@ var (
 	loadMigrationsErr error
 )
 
-var goHooks = map[string]func(*gorm.DB) error{}
-
 func allMigrations() []migrate.Migration {
 	migrationsOnce.Do(func() {
-		loadedMigrations, loadMigrationsErr = migrate.LoadSQL(migrationFS, "migrations", goHooks)
+		loadedMigrations, loadMigrationsErr = migrate.LoadSQL(migrationFS, "migrations", nil)
 	})
 
 	if loadMigrationsErr != nil {

@@ -157,6 +157,12 @@ async function remove() {
   }
 }
 
+watch(repo, (value) => {
+  if (value && value.issues_enabled === false) {
+    void router.replace(repoLocation('repo', props.repoPath))
+  }
+})
+
 watch([() => props.repoPath, () => props.number], load, { immediate: true })
 </script>
 

@@ -46,4 +46,6 @@ type AccessLogStore interface {
 	Create(log *AccessLog) error
 
 	List(filter AccessLogFilter) (items []AccessLog, total int, err error)
+
+	DeleteOlderThan(before time.Time) error
 }

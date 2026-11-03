@@ -4,15 +4,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 
 	"magomedcoder.ru/repo/internal/adapter/http/audit"
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/usecase"
-	"magomedcoder.ru/repo/pkg/httpx"
 )
+
+const uploadPackMaxBytes = 32 << 20
 
 type GitHandler struct {
 	git             *usecase.GitUseCase
@@ -27,6 +27,8 @@ func NewGitHandler(git *usecase.GitUseCase) *GitHandler {
 func (h *GitHandler) SetAccessLogger(log *audit.Logger) {
 	h.access = log
 }
+
+func (h *GitHandler) SetTempDir(string) {}
 
 func (h *GitHandler) SetReceiveMaxBytes(n int64) {
 	if n > 0 {
@@ -83,78 +85,35 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		return
 	}
 
-	var body io.Reader = r.Body
+	var (
+		body    io.Reader = http.MaxBytesReader(w, r.Body, uploadPackMaxBytes)
+		receive *domain.ReceivePackOptions
+	)
+
 	if service == usecase.GitReceivePack {
+		unlock := h.git.LockRepo(repo.Path)
+		defer unlock()
+
 		limit := h.receiveMaxBytes
 		if limit <= 0 {
 			limit = 512 << 20
 		}
 
+		body = http.MaxBytesReader(w, r.Body, limit)
 		if repo.ProtectDefaultBranch {
-			tmp, err := os.CreateTemp("", "receive-pack-")
-			if err != nil {
-				http.Error(w, "internal error", http.StatusInternalServerError)
-				return
+			receive = &domain.ReceivePackOptions{
+				ProtectDefaultBranch: true,
+				DefaultBranch:        repo.DefaultBranch,
 			}
-			defer os.Remove(tmp.Name())
-			defer tmp.Close()
-
-			limited := io.LimitReader(r.Body, limit+1)
-			n, err := io.Copy(tmp, limited)
-			if err != nil {
-				http.Error(w, "bad request", http.StatusBadRequest)
-				return
-			}
-
-			if n > limit {
-				http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
-				return
-			}
-
-			if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-				http.Error(w, "internal error", http.StatusInternalServerError)
-				return
-			}
-
-			cmds, err := readReceiveCommands(tmp)
-			if err != nil {
-				http.Error(w, "bad request", http.StatusBadRequest)
-				return
-			}
-
-			for _, cmd := range cmds {
-				ancestor := true
-				if !domain.IsZeroHash(cmd[0]) && !domain.IsZeroHash(cmd[1]) {
-					ok, err := h.git.Ancestor(r.Context(), repo.Path, cmd[0], cmd[1])
-					if err != nil || !ok {
-						ancestor = false
-					}
-				}
-
-				if err := domain.CheckRefUpdate(true, repo.DefaultBranch, cmd[2], cmd[0], cmd[1], ancestor); err != nil {
-					if errors.Is(err, domain.ErrBranchProtected) {
-						c := &httpx.Context{W: w, R: r}
-						_ = c.Error(http.StatusForbidden, domain.ErrBranchProtected.Error())
-						return
-					}
-					http.Error(w, "forbidden", http.StatusForbidden)
-					return
-				}
-			}
-
-			if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-				http.Error(w, "internal error", http.StatusInternalServerError)
-				return
-			}
-			body = tmp
-		} else {
-			body = http.MaxBytesReader(w, r.Body, limit)
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/x-"+string(service)+"-result")
 	w.Header().Set("Cache-Control", "no-cache")
-	if err := h.git.ServePack(r.Context(), repo.Path, service, body, w); err != nil {
+	if err := h.git.ServePack(r.Context(), repo.Path, service, body, w, receive); err != nil {
+		if errors.Is(err, domain.ErrBranchProtected) {
+			return
+		}
 		http.Error(w, "git error", http.StatusInternalServerError)
 		return
 	}
@@ -198,6 +157,11 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 			return nil, nil, authErr
 		}
 
+		if repo.IsPrivate {
+			http.Error(w, "not found", http.StatusNotFound)
+			return nil, nil, authErr
+		}
+
 		w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return nil, nil, authErr
@@ -208,6 +172,11 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 	}
 
 	if err := h.git.Authorize(r.Context(), repo, viewer, service); err != nil {
+		if repo.IsPrivate {
+			http.Error(w, "not found", http.StatusNotFound)
+			return nil, nil, err
+		}
+
 		if errors.Is(err, usecase.ErrUnauthorized) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -223,7 +192,7 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 
 func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) {
 	if user, pass, ok := r.BasicAuth(); ok {
-		u, err := h.git.Authenticate(r.Context(), user, pass)
+		u, err := h.git.Authenticate(r.Context(), middleware.ClientIPKey(r), user, pass)
 		if errors.Is(err, usecase.ErrTooManyAttempts) {
 			return nil, err
 		}
@@ -232,7 +201,7 @@ func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) 
 
 	auth := r.Header.Get("Authorization")
 	if len(auth) > 7 && strings.EqualFold(auth[:7], "bearer ") {
-		return h.git.Authenticate(r.Context(), "", strings.TrimSpace(auth[7:]))
+		return h.git.Authenticate(r.Context(), middleware.ClientIPKey(r), "", strings.TrimSpace(auth[7:]))
 	}
 
 	return nil, usecase.ErrUnauthorized
@@ -271,42 +240,4 @@ func parseGitHTTPPath(urlPath string) (repoPath, action string, err error) {
 	}
 
 	return repoPath, action, nil
-}
-
-func readReceiveCommands(r io.Reader) (cmds [][3]string, err error) {
-	for {
-		var lenBuf [4]byte
-		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
-			return cmds, err
-		}
-
-		if string(lenBuf[:]) == "PACK" {
-			return cmds, errors.New("missing flush before pack")
-		}
-
-		n, perr := strconv.ParseInt(string(lenBuf[:]), 16, 32)
-		if perr != nil || n < 0 {
-			return cmds, errors.New("invalid pkt-line")
-		}
-
-		if n == 0 {
-			break
-		}
-		if n < 4 {
-			return cmds, errors.New("invalid pkt-line")
-		}
-		payload := make([]byte, n-4)
-		if _, err := io.ReadFull(r, payload); err != nil {
-			return cmds, err
-		}
-		line := strings.TrimRight(string(payload), "\n")
-		if i := strings.IndexByte(line, 0); i >= 0 {
-			line = line[:i]
-		}
-		fields := strings.Fields(line)
-		if len(fields) >= 3 {
-			cmds = append(cmds, [3]string{fields[0], fields[1], fields[2]})
-		}
-	}
-	return cmds, nil
 }

@@ -49,28 +49,41 @@ func NewPullRequestStore(db *gorm.DB) *PullRequestStore {
 }
 
 func (s *PullRequestStore) Create(pr *domain.PullRequest) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		var maxNum int
-		if err := tx.Model(&pullRequestModel{}).
-			Where("repository_id = ?", pr.RepositoryID).
-			Select("COALESCE(MAX(number), 0)").
-			Scan(&maxNum).Error; err != nil {
-			return err
+	const maxAttempts = 5
+	var last error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		last = s.db.Transaction(func(tx *gorm.DB) error {
+			var maxNum int
+			if err := tx.Model(&pullRequestModel{}).
+				Where("repository_id = ?", pr.RepositoryID).
+				Select("COALESCE(MAX(number), 0)").
+				Scan(&maxNum).Error; err != nil {
+				return err
+			}
+
+			pr.Number = maxNum + 1
+			if pr.State == "" {
+				pr.State = "open"
+			}
+
+			model := pullFromDomain(pr)
+			if err := tx.Create(model).Error; err != nil {
+				return err
+			}
+
+			*pr = model.toDomain()
+			return nil
+		})
+		if last == nil {
+			return nil
 		}
 
-		pr.Number = maxNum + 1
-		if pr.State == "" {
-			pr.State = "open"
+		if !isUniqueViolation(last) {
+			return last
 		}
+	}
 
-		model := pullFromDomain(pr)
-		if err := tx.Create(model).Error; err != nil {
-			return err
-		}
-
-		*pr = model.toDomain()
-		return nil
-	})
+	return last
 }
 
 func (s *PullRequestStore) Update(pr *domain.PullRequest) error {

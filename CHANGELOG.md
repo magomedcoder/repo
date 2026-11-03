@@ -2,9 +2,11 @@
 
 # dev
 
-- Security: CSP, frame and content-type headers on SPA; HSTS behind HTTPS
-- nginx example config; docs for reverse proxy and HSTS preload
-- Profile: password change form error handling fix
+- Sessions: store hashed tokens; list devices with IP and user agent; revoke one, other, or all sessions in settings
+- Git: enforce protected default branch on push after unpack; allow fast-forward, block force-push and delete; safer concurrent merge and push
+- Security: CSP and HSTS behind trusted HTTPS; CSRF on mutating API routes; sanitize README HTML without rewriting images through a proxy
+- Access: guests see only public activity, home, and search; sort repositories by name in the database; clamp list pagination
+- Reliability: safer git repository open cache; create repository row before bare init; separate audit queues for security and visits; cancel browse work on request context
 
 ## v0.1.0 - November 1, 2026
 

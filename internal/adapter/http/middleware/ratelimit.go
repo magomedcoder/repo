@@ -163,6 +163,23 @@ func ClientIP(r *http.Request) string {
 	return host
 }
 
+func ClientIPKey(r *http.Request) string {
+	return NormalizeIPKey(ClientIP(r))
+}
+
+func NormalizeIPKey(host string) string {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return host
+	}
+
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
+
 func isTrustedProxy(ip net.IP) bool {
 	for _, network := range trustedProxies {
 		if network != nil && network.Contains(ip) {

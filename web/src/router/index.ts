@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
-import { accessApi } from '@/api'
+import { accessApi, reposApi } from '@/api'
+import { repoLocation } from '@/lib/repoNav'
 import { useAuth } from '@/composables/useAuth'
 import { useRegistration } from '@/composables/useRegistration'
 import { useSite } from '@/composables/useSite'
@@ -7,7 +8,6 @@ import { useSite } from '@/composables/useSite'
 const REPO_TAB_ROUTES: Record<string, string> = {
   settings: 'repo-settings',
   commits: 'repo-commits',
-  tree: 'repo-tree',
   blob: 'repo-blob',
   refs: 'repo-refs',
   issues: 'repo-issues',
@@ -62,6 +62,11 @@ const routes: RouteRecordRaw[] = [
         path: 'settings/tokens',
         name: 'tokens',
         component: () => import('@/views/TokensView.vue'),
+      },
+      {
+        path: 'settings/sessions',
+        name: 'sessions',
+        component: () => import('@/views/SessionsView.vue'),
       },
       {
         path: 'settings/profile',
@@ -143,13 +148,6 @@ const routes: RouteRecordRaw[] = [
         props: true,
       },
       {
-        path: ':repoPath(.*)/tree',
-        name: 'repo-tree',
-        meta: { publicRead: true },
-        component: () => import('@/views/RepoTreeView.vue'),
-        props: true,
-      },
-      {
         path: ':repoPath(.*)/settings',
         name: 'repo-settings',
         meta: { requiresOwner: true },
@@ -217,6 +215,30 @@ router.beforeEach(async (to) => {
     return { name: 'not-found' }
   }
 
+  const requiresOwner = to.matched.some((record) => record.meta.requiresOwner)
+  if (requiresOwner) {
+    if (!auth.isAuthenticated.value) {
+      return {
+        name: 'login',
+        query: {
+          redirect: to.fullPath,
+        },
+      }
+    }
+
+    const repoPath = String(to.params.repoPath || '')
+    if (repoPath) {
+      try {
+        const repo = await reposApi.get(repoPath)
+        if (auth.user.value?.username !== repo.owner) {
+          return repoLocation('repo', repoPath)
+        }
+      } catch {
+        return { name: 'not-found' }
+      }
+    }
+  }
+
   if (to.meta.guest && auth.isAuthenticated.value) {
     return { name: 'home' }
   }
@@ -238,7 +260,7 @@ router.afterEach((to) => {
     skipNextVisitBeacon = false
     return
   }
-  void accessApi.visit(to.fullPath)
+  void accessApi.visit(to.path)
 })
 
 export default router

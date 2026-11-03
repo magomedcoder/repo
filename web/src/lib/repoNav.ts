@@ -2,10 +2,10 @@ import type { RouteLocationRaw } from 'vue-router'
 import type { TreeEntry } from '@/api/types'
 import { encodeRepoPath } from '@/lib/repoPath'
 
-export type RepoRouteKind = | 'repo'
+export type RepoRouteKind =
+  | 'repo'
   | 'repo-commits'
   | 'repo-commit'
-  | 'repo-tree'
   | 'repo-blob'
   | 'repo-refs'
   | 'repo-issues'
@@ -28,7 +28,6 @@ export function repoLocation(
     repo: '',
     'repo-commits': '/commits',
     'repo-commit': `/commits/${encodeURIComponent(opts?.sha || '')}`,
-    'repo-tree': '/tree',
     'repo-blob': '/blob',
     'repo-refs': '/refs',
     'repo-issues': '/issues',
@@ -54,11 +53,10 @@ export function repoLocation(
 }
 
 export function entryRoute(repoPath: string, refName: string, entry: TreeEntry): RouteLocationRaw {
-  return repoLocation(entry.type === 'tree' ? 'repo-tree' : 'repo-blob', repoPath, {
-    query: { 
+  return repoLocation(entry.type === 'tree' ? 'repo' : 'repo-blob', repoPath, {
+    query: {
       ref: refName,
-       
-      path: entry.path 
+      path: entry.path,
     },
   })
 }

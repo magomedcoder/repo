@@ -54,6 +54,8 @@ type Session struct {
 	ID         uint
 	Token      string
 	UserID     uint
+	IP         string
+	UserAgent  string
 	ExpiresAt  time.Time
 	LastSeenAt time.Time
 	CreatedAt  time.Time
@@ -93,6 +95,10 @@ type SessionStore interface {
 	Create(session *Session) error
 
 	FindByToken(token string) (*Session, error)
+
+	ListByUserID(userID uint) ([]Session, error)
+
+	DeleteByUserAndID(userID, sessionID uint) error
 
 	Touch(session *Session) error
 

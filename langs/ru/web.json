@@ -49,6 +49,7 @@
     "users": "Пользователи",
     "accessLogs": "Журнал доступа",
     "accessTokens": "Токены доступа",
+    "sessions": "Сессии",
     "tagline": "Лёгкий Git-хостинг",
     "refs": "ссылки",
     "langEn": "en",
@@ -91,6 +92,7 @@
     "commit": "Коммит",
     "mode": "Режим",
     "size": "Размер",
+    "changed": "Изменён",
     "ref": "Ссылка"
   },
   "repo": {
@@ -102,12 +104,13 @@
     "commits": "коммитов: {n}"
   },
   "blob": {
-    "tree": "Дерево",
-    "raw": "Скачать",
-    "binary": "Двоичный файл - нажмите «Скачать», чтобы получить его.",
+    "tree": "Код",
+    "raw": "Исходник",
+    "binary": "Двоичный файл - скачайте через «Исходник».",
     "blame": "Авторство",
-    "hideBlame": "Скрыть авторство",
-    "fallbackName": "файл"
+    "hideBlame": "Обычный вид",
+    "fallbackName": "файл",
+    "lines": "строк"
   },
   "refs": {
     "head": "refs/heads/{name}",
@@ -198,6 +201,23 @@
     "createdTitle": "Токен создан",
     "createdHint": "Скопируйте токен сейчас. Повторно он больше не отобразится."
   },
+  "sessions": {
+    "title": "Сессии",
+    "hint": "Устройства, на которых выполнен вход. Отзовите незнакомые сессии.",
+    "empty": "Активных сессий нет.",
+    "current": "Это устройство",
+    "unknownDevice": "Неизвестное устройство",
+    "lastSeen": "Активность",
+    "created": "Вход",
+    "revoke": "Отозвать",
+    "signOut": "Выйти",
+    "revokeOthers": "Выйти на других устройствах",
+    "revokeAll": "Выйти везде",
+    "confirmRevoke": "Отозвать эту сессию?",
+    "confirmRevokeCurrent": "Выйти на этом устройстве?",
+    "confirmRevokeOthers": "Выйти на всех других устройствах?",
+    "confirmRevokeAll": "Выйти на всех устройствах, включая это?"
+  },
   "errors": {
     "codes": {
       "username_required": "Укажите имя пользователя",
@@ -212,8 +232,10 @@
       "current_password_wrong": "Текущий пароль неверен",
       "unauthorized": "Нет доступа",
       "session_expired": "Сессия истекла",
+      "session_not_found": "Сессия не найдена",
       "repository_name_required": "Укажите имя репозитория",
       "repository_already_exists": "Репозиторий с таким именем уже существует",
+      "repository_quota_exceeded": "Достигнут лимит репозиториев для этой учётной записи",
       "invalid_repository_name": "Некорректное имя репозитория",
       "repository_not_found": "Репозиторий не найден",
       "repository_access_denied": "Нет доступа к репозиторию",
@@ -224,6 +246,8 @@
       "folder_not_found": "Папка не найдена",
       "folder_not_empty": "Папка не пуста",
       "ref_not_found": "Ссылка не найдена",
+      "blame_too_large": "Файл слишком большой для blame",
+      "history_too_large": "История репозитория слишком велика для этой операции",
       "path_not_found": "Путь не найден",
       "empty_repository": "Репозиторий пуст",
       "invalid_json": "Некорректный JSON",
@@ -232,6 +256,8 @@
       "not_found": "Не найдено",
       "invalid_token_id": "Некорректный идентификатор токена",
       "token_name_required": "Укажите название токена",
+      "token_name_too_long": "Название токена слишком длинное (максимум 64 символа)",
+      "too_many_tokens": "Слишком много токенов (максимум 50); отзовите один",
       "token_not_found": "Токен не найден",
       "invalid_repo_move_path": "Используйте POST /api/repos/{owner}/.../{name}/move",
       "issue_title_required": "Укажите заголовок задачи",
@@ -299,6 +325,7 @@
     "uploadAvatar": "Не удалось обновить аватар",
     "searchFailed": "Ошибка поиска",
     "loadTokens": "Не удалось загрузить токены",
+    "loadSessions": "Не удалось загрузить сессии",
     "createToken": "Не удалось создать токен",
     "loadUsers": "Не удалось загрузить пользователей",
     "loadAccessLogs": "Не удалось загрузить журнал доступа",

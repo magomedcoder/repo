@@ -80,23 +80,16 @@ func NewIssueUseCase(
 }
 
 func (uc *IssueUseCase) List(ctx context.Context, in ResolveRepositoryInput, state string, offset, limit int) ([]IssueItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
 	}
 
-	if limit <= 0 {
-		limit = 30
-	}
-
-	if limit > 100 {
-		limit = 100
-	}
-
-	if offset < 0 {
-		offset = 0
-	}
+	offset, limit = NormalizePagination(offset, limit)
 
 	issues, err := uc.issues.ListByRepo(repo.ID, state, offset, limit)
 	if err != nil {
@@ -107,7 +100,10 @@ func (uc *IssueUseCase) List(ctx context.Context, in ResolveRepositoryInput, sta
 }
 
 func (uc *IssueUseCase) Get(ctx context.Context, in ResolveRepositoryInput, number int) (*IssueDetail, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
@@ -140,7 +136,10 @@ func (uc *IssueUseCase) Get(ctx context.Context, in ResolveRepositoryInput, numb
 }
 
 func (uc *IssueUseCase) Create(ctx context.Context, in ResolveRepositoryInput, title, body string, labelIDs []uint) (*IssueItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -182,7 +181,10 @@ func (uc *IssueUseCase) Create(ctx context.Context, in ResolveRepositoryInput, t
 }
 
 func (uc *IssueUseCase) Update(ctx context.Context, in ResolveRepositoryInput, number int, title *string, body *string, state *string, labelIDs *[]uint) (*IssueItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -202,6 +204,16 @@ func (uc *IssueUseCase) Update(ctx context.Context, in ResolveRepositoryInput, n
 	}
 
 	prevState := issue.State
+
+	if labelIDs != nil {
+		if !CanAdminRepo(repo, in.ViewerID) {
+			return nil, ErrIssueForbidden
+		}
+
+		if err := uc.validateLabels(repo.ID, *labelIDs); err != nil {
+			return nil, err
+		}
+	}
 
 	if title != nil {
 		next := strings.TrimSpace(*title)
@@ -227,14 +239,6 @@ func (uc *IssueUseCase) Update(ctx context.Context, in ResolveRepositoryInput, n
 	}
 
 	if labelIDs != nil {
-		if !CanAdminRepo(repo, in.ViewerID) {
-			return nil, ErrIssueForbidden
-		}
-
-		if err := uc.validateLabels(repo.ID, *labelIDs); err != nil {
-			return nil, err
-		}
-
 		if err := uc.issues.SetIssueLabels(issue.ID, *labelIDs); err != nil {
 			return nil, fmt.Errorf("set labels: %w", err)
 		}
@@ -247,7 +251,10 @@ func (uc *IssueUseCase) Update(ctx context.Context, in ResolveRepositoryInput, n
 }
 
 func (uc *IssueUseCase) Delete(ctx context.Context, in ResolveRepositoryInput, number int) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if in.ViewerID == 0 {
 		return ErrUnauthorized
 	}
@@ -274,7 +281,10 @@ func (uc *IssueUseCase) Delete(ctx context.Context, in ResolveRepositoryInput, n
 }
 
 func (uc *IssueUseCase) AddComment(ctx context.Context, in ResolveRepositoryInput, number int, body string) (*CommentItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -303,7 +313,10 @@ func (uc *IssueUseCase) AddComment(ctx context.Context, in ResolveRepositoryInpu
 }
 
 func (uc *IssueUseCase) UpdateComment(ctx context.Context, in ResolveRepositoryInput, number, commentID int, body string) (*CommentItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -341,7 +354,10 @@ func (uc *IssueUseCase) UpdateComment(ctx context.Context, in ResolveRepositoryI
 }
 
 func (uc *IssueUseCase) DeleteComment(ctx context.Context, in ResolveRepositoryInput, number, commentID int) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if in.ViewerID == 0 {
 		return ErrUnauthorized
 	}
@@ -373,7 +389,10 @@ func (uc *IssueUseCase) DeleteComment(ctx context.Context, in ResolveRepositoryI
 }
 
 func (uc *IssueUseCase) ListLabels(ctx context.Context, in ResolveRepositoryInput) ([]LabelItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
@@ -388,7 +407,10 @@ func (uc *IssueUseCase) ListLabels(ctx context.Context, in ResolveRepositoryInpu
 }
 
 func (uc *IssueUseCase) CreateLabel(ctx context.Context, in ResolveRepositoryInput, name, color string) (*LabelItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.ownerRepo(in)
 	if err != nil {
 		return nil, err
@@ -420,7 +442,10 @@ func (uc *IssueUseCase) CreateLabel(ctx context.Context, in ResolveRepositoryInp
 }
 
 func (uc *IssueUseCase) UpdateLabel(ctx context.Context, in ResolveRepositoryInput, id uint, name, color *string) (*LabelItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.ownerRepo(in)
 	if err != nil {
 		return nil, err
@@ -459,7 +484,10 @@ func (uc *IssueUseCase) UpdateLabel(ctx context.Context, in ResolveRepositoryInp
 }
 
 func (uc *IssueUseCase) DeleteLabel(ctx context.Context, in ResolveRepositoryInput, id uint) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	repo, err := uc.ownerRepo(in)
 	if err != nil {
 		return err
@@ -649,6 +677,11 @@ func (uc *IssueUseCase) username(id uint, cache map[uint]string) (string, error)
 
 	user, err := uc.users.FindByID(id)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			cache[id] = ""
+			return "", nil
+		}
+
 		return "", fmt.Errorf("find author: %w", err)
 	}
 

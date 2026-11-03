@@ -6,7 +6,7 @@ import type { RefInfo } from '@/api/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { useCanWrite } from '@/composables/useCanWrite'
-import { useRepo } from '@/composables/useRepo'
+import { invalidateRepo, useRepo } from '@/composables/useRepo'
 import type { PageError } from '@/i18n'
 import { i18n, localizeError } from '@/i18n'
 import { folderKey } from '@/lib/folderNav'
@@ -152,18 +152,23 @@ async function save() {
     if (currentFolder !== nextFolder) {
       const moved = await reposApi.move(currentPath, nextFolder)
       currentPath = repoFullPath(moved.folder_path || '', moved.name)
+      invalidateRepo(props.repoPath)
+      invalidateRepo(currentPath)
       await router.replace(repoLocation('repo-settings', currentPath))
       message.value = i18n.global.t('settings.savedMoved')
       return
     }
 
     if (currentPath !== props.repoPath) {
+      invalidateRepo(props.repoPath)
+      invalidateRepo(currentPath)
       await router.replace(repoLocation('repo-settings', currentPath))
       message.value = i18n.global.t('settings.saved')
       return
     }
 
     message.value = i18n.global.t('settings.saved')
+    invalidateRepo(props.repoPath)
     await reload()
   } catch (err) {
     formError.value = localizeError(err, 'errors.saveFailed')

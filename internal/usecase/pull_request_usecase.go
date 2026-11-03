@@ -85,23 +85,16 @@ func NewPullRequestUseCase(
 }
 
 func (uc *PullRequestUseCase) List(ctx context.Context, in ResolveRepositoryInput, state string, offset, limit int) ([]PullItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
 	}
 
-	if limit <= 0 {
-		limit = 30
-	}
-
-	if limit > 100 {
-		limit = 100
-	}
-
-	if offset < 0 {
-		offset = 0
-	}
+	offset, limit = NormalizePagination(offset, limit)
 
 	items, err := uc.pulls.ListByRepo(repo.ID, state, offset, limit)
 	if err != nil {
@@ -112,7 +105,10 @@ func (uc *PullRequestUseCase) List(ctx context.Context, in ResolveRepositoryInpu
 }
 
 func (uc *PullRequestUseCase) Get(ctx context.Context, in ResolveRepositoryInput, number int) (*PullDetail, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
@@ -155,7 +151,10 @@ func (uc *PullRequestUseCase) Get(ctx context.Context, in ResolveRepositoryInput
 }
 
 func (uc *PullRequestUseCase) Create(ctx context.Context, in ResolveRepositoryInput, title, body, base, head string) (*PullItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -210,7 +209,10 @@ func (uc *PullRequestUseCase) Create(ctx context.Context, in ResolveRepositoryIn
 }
 
 func (uc *PullRequestUseCase) Update(ctx context.Context, in ResolveRepositoryInput, number int, title, body, state, base, head *string) (*PullItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -311,7 +313,10 @@ func (uc *PullRequestUseCase) Update(ctx context.Context, in ResolveRepositoryIn
 }
 
 func (uc *PullRequestUseCase) Delete(ctx context.Context, in ResolveRepositoryInput, number int) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if in.ViewerID == 0 {
 		return ErrUnauthorized
 	}
@@ -334,7 +339,10 @@ func (uc *PullRequestUseCase) Delete(ctx context.Context, in ResolveRepositoryIn
 }
 
 func (uc *PullRequestUseCase) Diff(ctx context.Context, in ResolveRepositoryInput, number int) (*PullCompare, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
@@ -360,7 +368,10 @@ func (uc *PullRequestUseCase) Diff(ctx context.Context, in ResolveRepositoryInpu
 }
 
 func (uc *PullRequestUseCase) Commits(ctx context.Context, in ResolveRepositoryInput, number int) ([]domain.CommitInfo, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	cmp, err := uc.Diff(ctx, in, number)
 	if err != nil {
 		return nil, err
@@ -370,7 +381,10 @@ func (uc *PullRequestUseCase) Commits(ctx context.Context, in ResolveRepositoryI
 }
 
 func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInput, number int, strategy string) (*PullItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -408,7 +422,8 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 	}
 
 	msg := fmt.Sprintf("Merge pull request #%d from %s", pr.Number, pr.HeadBranch)
-	_, err = uc.git.Merge(repo.Path, pr.BaseBranch, pr.HeadBranch, strategy, user.Username, user.Email, msg)
+	noreply := fmt.Sprintf("%d+%s@users.noreply.local", user.ID, user.Username)
+	_, err = uc.git.Merge(repo.Path, pr.BaseBranch, pr.HeadBranch, strategy, user.Username, noreply, msg)
 	if err != nil {
 		return nil, mapGitMergeErr(err)
 	}
@@ -418,8 +433,18 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 	pr.MergedAt = &now
 	viewer := in.ViewerID
 	pr.MergedBy = &viewer
-	if err := uc.pulls.Update(pr); err != nil {
-		return nil, fmt.Errorf("update pull: %w", err)
+	var updateErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		updateErr = uc.pulls.Update(pr)
+		if updateErr == nil {
+			break
+		}
+
+		time.Sleep(time.Duration(attempt+1) * 25 * time.Millisecond)
+	}
+
+	if updateErr != nil {
+		return nil, fmt.Errorf("merge succeeded but failed to update pull state: %w", updateErr)
 	}
 
 	_ = uc.repos.TouchLastActivity(repo.ID, now)
@@ -429,7 +454,10 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 }
 
 func (uc *PullRequestUseCase) AddComment(ctx context.Context, in ResolveRepositoryInput, number int, body string) (*CommentItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -458,7 +486,10 @@ func (uc *PullRequestUseCase) AddComment(ctx context.Context, in ResolveReposito
 }
 
 func (uc *PullRequestUseCase) UpdateComment(ctx context.Context, in ResolveRepositoryInput, number int, commentID uint, body string) (*CommentItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -496,7 +527,10 @@ func (uc *PullRequestUseCase) UpdateComment(ctx context.Context, in ResolveRepos
 }
 
 func (uc *PullRequestUseCase) DeleteComment(ctx context.Context, in ResolveRepositoryInput, number int, commentID uint) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if in.ViewerID == 0 {
 		return ErrUnauthorized
 	}
@@ -598,9 +632,9 @@ func (uc *PullRequestUseCase) mapPull(pr *domain.PullRequest, usersByID map[uint
 		}
 	}
 
-	author := usersByID[pr.AuthorID]
-	if author == nil {
-		return nil, fmt.Errorf("find author: not found")
+	var authorName string
+	if author := usersByID[pr.AuthorID]; author != nil {
+		authorName = author.Username
 	}
 
 	count, err := uc.pulls.CountComments(pr.ID)
@@ -613,7 +647,7 @@ func (uc *PullRequestUseCase) mapPull(pr *domain.PullRequest, usersByID map[uint
 		Title:        pr.Title,
 		Body:         pr.Body,
 		State:        pr.State,
-		Author:       author.Username,
+		Author:       authorName,
 		BaseBranch:   pr.BaseBranch,
 		HeadBranch:   pr.HeadBranch,
 		CommentCount: count,
@@ -666,15 +700,15 @@ func (uc *PullRequestUseCase) mapComment(c *domain.PullRequestComment, usersByID
 		}
 	}
 
-	user := usersByID[c.AuthorID]
-	if user == nil {
-		return nil, fmt.Errorf("find author: not found")
+	var authorName string
+	if user := usersByID[c.AuthorID]; user != nil {
+		authorName = user.Username
 	}
 
 	return &CommentItem{
 		ID:        c.ID,
 		Body:      c.Body,
-		Author:    user.Username,
+		Author:    authorName,
 		CreatedAt: c.CreatedAt,
 		UpdatedAt: c.UpdatedAt,
 	}, nil
@@ -683,6 +717,9 @@ func (uc *PullRequestUseCase) mapComment(c *domain.PullRequestComment, usersByID
 func mapGitCompareErr(err error) error {
 	if errors.Is(err, gitadapter.ErrRefNotFound) {
 		return ErrBranchNotFound
+	}
+	if errors.Is(err, gitadapter.ErrHistoryTooLarge) {
+		return ErrHistoryTooLarge
 	}
 	return err
 }

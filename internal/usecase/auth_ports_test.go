@@ -172,6 +172,10 @@ func (s *memSessions) Create(session *domain.Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cp := *session
+	if cp.ID == 0 {
+		cp.ID = uint(len(s.items) + 1)
+		session.ID = cp.ID
+	}
 	s.items = append(s.items, &cp)
 	return nil
 }
@@ -185,7 +189,43 @@ func (s *memSessions) FindByToken(token string) (*domain.Session, error) {
 			return &cp, nil
 		}
 	}
+
 	return nil, errors.New("not found")
+}
+
+func (s *memSessions) ListByUserID(userID uint) ([]domain.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []domain.Session
+	for _, item := range s.items {
+		if item.UserID == userID {
+			out = append(out, *item)
+		}
+	}
+
+	return out, nil
+}
+
+func (s *memSessions) DeleteByUserAndID(userID, sessionID uint) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := s.items[:0]
+	found := false
+	for _, item := range s.items {
+		if item.UserID == userID && item.ID == sessionID {
+			found = true
+			continue
+		}
+		out = append(out, item)
+	}
+
+	s.items = out
+	if !found {
+		return domain.ErrNotFound
+	}
+
+	return nil
 }
 
 func (s *memSessions) Touch(session *domain.Session) error {
@@ -254,6 +294,35 @@ func (t *memTokens) Generate() (string, error) {
 	return fmt.Sprintf("token-%d", t.n), nil
 }
 
+type memAccessTokens struct {
+	deletedFor []uint
+}
+
+func (m *memAccessTokens) Create(*domain.AccessToken) error {
+	return nil
+}
+
+func (m *memAccessTokens) ListByUserID(uint) ([]domain.AccessToken, error) {
+	return nil, nil
+}
+
+func (m *memAccessTokens) FindByHash(string) (*domain.AccessToken, error) {
+	return nil, errors.New("not found")
+}
+
+func (m *memAccessTokens) DeleteByUserAndID(uint, uint) error {
+	return nil
+}
+
+func (m *memAccessTokens) DeleteByUserID(id uint) error {
+	m.deletedFor = append(m.deletedFor, id)
+	return nil
+}
+
+func (m *memAccessTokens) TouchLastUsed(uint, time.Time) error {
+	return nil
+}
+
 type memHasher struct{}
 
 func (memHasher) Hash(password string) (string, error) {
@@ -269,7 +338,7 @@ func (memHasher) Compare(hash, password string) error {
 }
 
 func testAuth(users *memUsers, sessions domain.SessionStore) *AuthUseCase {
-	uc := NewAuthUseCase(users, sessions, memHasher{}, &memTokens{})
+	uc := NewAuthUseCase(users, sessions, &memAccessTokens{}, memHasher{}, &memTokens{})
 	uc.SetSessionSecret("0123456789abcdef0123456789abcdef")
 	return uc
 }
@@ -307,17 +376,19 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 	users := &memUsers{}
 	sessions := &memSessions{}
 	uc := testAuth(users, sessions)
+	at := &memAccessTokens{}
+	uc.accessTokens = at
 	user, err := uc.CreateUser(t.Context(), RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	keep, err := uc.createSession(user.ID)
+	keep, err := uc.createSession(user.ID, "127.0.0.1", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	other, err := uc.createSession(user.ID)
+	other, err := uc.createSession(user.ID, "127.0.0.1", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,6 +408,10 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 
 	if _, err := sessions.FindByToken(other); err == nil {
 		t.Fatal("other session still present")
+	}
+
+	if len(at.deletedFor) != 1 || at.deletedFor[0] != user.ID {
+		t.Fatalf("access tokens not revoked: %v", at.deletedFor)
 	}
 }
 

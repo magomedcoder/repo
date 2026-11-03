@@ -16,7 +16,7 @@ func TestAnonymousPrivateAndMissingReposMatch(t *testing.T) {
 
 	privateRepo := doJSON(t, env.Server, http.MethodGet, "/api/repos/secret", "", nil)
 	missing := doJSON(t, env.Server, http.MethodGet, "/api/repos/missing", "", nil)
-	if privateRepo.StatusCode != http.StatusUnauthorized || missing.StatusCode != http.StatusUnauthorized {
+	if privateRepo.StatusCode != http.StatusNotFound || missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("private %d %s missing %d %s", privateRepo.StatusCode, privateRepo.Body, missing.StatusCode, missing.Body)
 	}
 

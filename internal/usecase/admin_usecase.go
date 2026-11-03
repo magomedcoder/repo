@@ -41,21 +41,25 @@ type AdminUpdateInput struct {
 type AdminUseCase struct {
 	users    domain.UserStore
 	sessions domain.SessionStore
+	tokens   domain.AccessTokenStore
 	auth     *AuthUseCase
 	hasher   domain.PasswordHasher
 }
 
-func NewAdminUseCase(users domain.UserStore, sessions domain.SessionStore, auth *AuthUseCase, hasher domain.PasswordHasher) *AdminUseCase {
+func NewAdminUseCase(users domain.UserStore, sessions domain.SessionStore, tokens domain.AccessTokenStore, auth *AuthUseCase, hasher domain.PasswordHasher) *AdminUseCase {
 	return &AdminUseCase{
 		users:    users,
 		sessions: sessions,
+		tokens:   tokens,
 		auth:     auth,
 		hasher:   hasher,
 	}
 }
 
 func (uc *AdminUseCase) List(ctx context.Context, query string, limit, offset int) (*AdminListResult, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -87,7 +91,10 @@ func (uc *AdminUseCase) List(ctx context.Context, query string, limit, offset in
 }
 
 func (uc *AdminUseCase) Get(ctx context.Context, id uint) (*AdminUserItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	user, err := uc.users.FindByID(id)
 	if err != nil {
 		return nil, ErrUserNotFound
@@ -119,7 +126,10 @@ func (uc *AdminUseCase) Create(ctx context.Context, in AdminCreateInput) (*Admin
 }
 
 func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUpdateInput) (*AdminUserItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	user, err := uc.users.FindByID(id)
 	if err != nil {
 		return nil, ErrUserNotFound
@@ -187,7 +197,9 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 		}
 
 		user.PasswordHash = hash
-		_ = uc.sessions.DeleteByUserID(id)
+		if err := uc.sessions.DeleteByUserID(id); err != nil {
+			return nil, fmt.Errorf("revoke sessions: %w", err)
+		}
 	}
 
 	if err := uc.users.Update(user); err != nil {
@@ -200,7 +212,9 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 }
 
 func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	user, err := uc.users.FindByID(id)
 	if err != nil {
 		return ErrUserNotFound
@@ -214,6 +228,12 @@ func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint) error {
 
 	if err := uc.sessions.DeleteByUserID(id); err != nil {
 		return fmt.Errorf("revoke sessions: %w", err)
+	}
+
+	if uc.tokens != nil {
+		if err := uc.tokens.DeleteByUserID(id); err != nil {
+			return fmt.Errorf("revoke access tokens: %w", err)
+		}
 	}
 
 	if err := uc.users.Delete(id); err != nil {

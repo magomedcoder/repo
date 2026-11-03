@@ -27,7 +27,7 @@ const loading = ref(true)
 const blameLoading = ref(false)
 const showBlame = ref(false)
 
-const LINE_HEIGHT = 18
+const LINE_HEIGHT = 16
 const VIRT_THRESHOLD = 200
 const WINDOW_OVERSCAN = 40
 
@@ -79,7 +79,7 @@ function attachCodeViewport() {
   if (!el) {
     return
   }
-  
+
   viewportHeight.value = el.clientHeight || viewportHeight.value
   scrollTop.value = el.scrollTop
   resizeObserver = new ResizeObserver(() => {
@@ -159,7 +159,7 @@ async function loadBlame() {
   if (!filePath.value || blob.value?.is_binary) {
     return
   }
-  
+
   blameLoading.value = true
   blameError.value = ''
   try {
@@ -200,87 +200,99 @@ watch([blob, virtualize], () => {
 </script>
 
 <template>
-  <RepoShell 
-    :repo-path="repoPath" 
-    tab="tree" 
-    :repo="repo" 
-    :loading="repoLoading" 
+  <RepoShell
+    :repo-path="repoPath"
+    tab="summary"
+    :repo="repo"
+    :loading="repoLoading"
     :error="repoError"
   >
-    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <PathCrumbs
-        class="min-w-0"
-        :repo-path="repoPath"
-        :ref-name="refName"
-        :path="filePath"
-      />
-      <div class="flex gap-2">
-        <button
-          v-if="blob && !blob.is_binary"
-          type="button"
-          :class="['inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50', showBlame && 'bg-paper-2']"
-          @click="toggleBlame"
-        >
-          {{ showBlame ? $t('blob.hideBlame') : $t('blob.blame') }}
-        </button>
-        <RouterLink
-          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
-          :to="repoLocation('repo-tree', repoPath, { query: { ref: refName, path: parentDir || undefined } })"
-        >
-          {{ $t('blob.tree') }}
-        </RouterLink>
-        <a
-          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
-          :href="rawHref"
-          :download="rawFilename"
-          target="_blank"
-          rel="noreferrer"
-        >
-          {{ $t('blob.raw') }}
-        </a>
-      </div>
-    </div>
-
     <PageState :loading="loading" :error="error">
-      <div v-if="blob && showBlame && !blob.is_binary" class="overflow-hidden border border-line bg-paper">
-        <p v-if="blameLoading" class="p-4 text-sm text-ink-muted">{{ $t('common.loading') }}</p>
-        <p v-else-if="blameError" class="p-4 text-sm text-warn">{{ blameError }}</p>
-        <div v-else-if="blame" class="overflow-x-auto">
-          <table class="w-full font-mono text-xs">
-            <tbody>
-              <tr
-                v-for="line in blame.lines"
-                :key="line.line"
-                class="border-b border-line/60 hover:bg-paper"
-              >
-                <td class="whitespace-nowrap px-2 py-0.5 text-right text-ink-muted">{{ line.line }}</td>
-                <td class="whitespace-nowrap px-2 py-0.5 text-ink-muted">{{ shortSha(line.commit_sha) }}</td>
-                <td class="whitespace-nowrap px-2 py-0.5 text-ink-muted">{{ line.author_name }}</td>
-                <td class="px-2 py-0.5">{{ line.content }}</td>
-              </tr>
-            </tbody>
-          </table>
+      <div v-if="blob" class="overflow-hidden border border-line bg-paper">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-path px-2 py-1">
+          <PathCrumbs
+            class="min-w-0 flex-1"
+            :repo-path="repoPath"
+            :ref-name="refName"
+            :path="filePath"
+          />
+          <div class="flex shrink-0 items-center gap-1.5 text-[9pt] text-ink-muted">
+            <span class="tabular-nums">{{ formatBytes(blob.size) }}</span>
+            
+            <span>{{ blob.is_binary ? $t('common.binary') : blob.encoding }}</span>
+          </div>
+          <div class="flex shrink-0 gap-1">
+            <button
+              v-if="!blob.is_binary"
+              type="button"
+              :class="[
+                'border border-line bg-paper px-1.5 py-0.5 text-[9pt] text-ink hover:bg-row-hover',
+                showBlame && 'bg-paper-2',
+              ]"
+              @click="toggleBlame"
+            >
+              {{ showBlame ? $t('blob.hideBlame') : $t('blob.blame') }}
+            </button>
+            <RouterLink
+              class="border border-line bg-paper px-1.5 py-0.5 text-[9pt] text-ink no-underline hover:bg-row-hover hover:no-underline"
+              :to="repoLocation('repo', repoPath, { query: { ref: refName, path: parentDir || undefined } })"
+            >
+              {{ $t('blob.tree') }}
+            </RouterLink>
+            <a
+              class="border border-line bg-paper px-1.5 py-0.5 text-[9pt] text-ink no-underline hover:bg-row-hover hover:no-underline"
+              :href="rawHref"
+              :download="rawFilename"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {{ $t('blob.raw') }}
+            </a>
+          </div>
         </div>
-      </div>
-      <div v-else-if="blob" class="overflow-hidden border border-line bg-paper">
-        <div class="flex items-center justify-between flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink text-xs text-ink-muted">
-          <span>{{ formatBytes(blob.size) }}</span>
-          <span>{{ blob.is_binary ? $t('common.binary') : blob.encoding }}</span>
+
+        <div v-if="showBlame && !blob.is_binary">
+          <p v-if="blameLoading" class="px-2 py-2 text-[9pt] text-ink-muted">{{ $t('common.loading') }}</p>
+          <p v-else-if="blameError" class="px-2 py-2 text-[9pt] text-warn">{{ blameError }}</p>
+          <div v-else-if="blame" class="max-h-[75vh] overflow-auto">
+            <table class="w-full border-collapse font-mono text-[11px] leading-4">
+              <tbody>
+                <tr
+                  v-for="line in blame.lines"
+                  :key="line.line"
+                  class="hover:bg-row-hover"
+                >
+                  <td class="w-8 select-none whitespace-nowrap border-r border-line/70 bg-path px-1.5 py-0 text-right tabular-nums text-ink-muted">
+                    {{ line.line }}
+                  </td>
+                  <td class="whitespace-nowrap px-1.5 py-0 text-ink-muted">{{ shortSha(line.commit_sha) }}</td>
+                  <td class="max-w-[8rem] truncate whitespace-nowrap px-1.5 py-0 text-ink-muted">{{ line.author_name }}</td>
+                  <td class="whitespace-pre px-1.5 py-0 text-ink">{{ line.content || ' ' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
+
         <div
-          v-if="!blob.is_binary && virtualize"
+          v-else-if="!blob.is_binary && virtualize"
           ref="codeScrollEl"
-          class="max-h-[70vh] overflow-y-auto overflow-x-auto"
+          class="max-h-[75vh] overflow-auto"
           @scroll="onCodeScroll"
         >
-          <table :class="['w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_th]:text-ink-muted [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover', 'font-mono']">
+          <table class="w-full border-collapse font-mono text-[11px] leading-4">
             <tbody>
               <tr v-if="topSpacer" aria-hidden="true">
                 <td :style="{ height: `${topSpacer}px`, padding: 0, border: 'none' }" colspan="2" />
               </tr>
-              <tr v-for="i in visibleLineIndices" :key="i">
-                <td class="w-10 text-right text-ink-muted">{{ i + 1 }}</td>
-                <td :class="lineClass(textLines[i] ?? '', rawFilename)">{{ textLines[i] || ' ' }}</td>
+              <tr v-for="i in visibleLineIndices" :key="i" class="hover:bg-row-hover">
+                <td class="w-8 select-none whitespace-nowrap border-r border-line/70 bg-path px-1.5 py-0 text-right tabular-nums text-ink-muted">
+                  {{ i + 1 }}
+                </td>
+                <td
+                  class="whitespace-pre px-2 py-0"
+                  :class="lineClass(textLines[i] ?? '', rawFilename)"
+                >{{ textLines[i] || ' ' }}</td>
               </tr>
               <tr v-if="bottomSpacer" aria-hidden="true">
                 <td :style="{ height: `${bottomSpacer}px`, padding: 0, border: 'none' }" colspan="2" />
@@ -288,15 +300,21 @@ watch([blob, virtualize], () => {
             </tbody>
           </table>
         </div>
-        <table v-else-if="!blob.is_binary" :class="['w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_th]:text-ink-muted [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover', 'font-mono']">
-          <tbody>
-            <tr v-for="(line, i) in textLines" :key="i">
-              <td class="w-10 text-right text-ink-muted">{{ i + 1 }}</td>
-              <td :class="lineClass(line, rawFilename)">{{ line || ' ' }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-else class="p-4 text-sm text-ink-muted">{{ $t('blob.binary') }}</p>
+
+        <div v-else-if="!blob.is_binary" class="max-h-[75vh] overflow-auto">
+          <table class="w-full border-collapse font-mono text-[11px] leading-4">
+            <tbody>
+              <tr v-for="(line, i) in textLines" :key="i" class="hover:bg-row-hover">
+                <td class="w-8 select-none whitespace-nowrap border-r border-line/70 bg-path px-1.5 py-0 text-right tabular-nums text-ink-muted">
+                  {{ i + 1 }}
+                </td>
+                <td class="whitespace-pre px-2 py-0" :class="lineClass(line, rawFilename)">{{ line || ' ' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p v-else class="px-2 py-2 text-[9pt] text-ink-muted">{{ $t('blob.binary') }}</p>
       </div>
     </PageState>
   </RepoShell>

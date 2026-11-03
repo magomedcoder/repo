@@ -28,4 +28,6 @@ type ActivityStore interface {
 	Create(ev *ActivityEvent) error
 
 	ListByOwner(ownerKind string, ownerID uint, limit int) ([]ActivityEvent, error)
+
+	ListPublicByOwner(ownerKind string, ownerID uint, limit int) ([]ActivityEvent, error)
 }

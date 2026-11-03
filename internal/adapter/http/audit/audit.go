@@ -1,17 +1,58 @@
 package audit
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"path"
 	"strings"
+	"sync"
+	"time"
 
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/domain"
 )
 
+const (
+	securityQueueSize   = 4096
+	visitQueueSize      = 512
+	securityEnqueueWait = 500 * time.Millisecond
+	accessLogRetention  = 90 * 24 * time.Hour
+	accessVisitThrottle = time.Minute
+	accessPurgeEveryN   = 128
+	maxVisitPathLen     = 512
+	maxVisitKeys        = 10000
+	visitBurstPerIP     = 60
+)
+
 type Logger struct {
-	store domain.AccessLogStore
+	store    domain.AccessLogStore
+	security chan *domain.AccessLog
+	visits   chan *domain.AccessLog
+
+	visitMu   sync.Mutex
+	visitLast map[string]time.Time
+	visitIP   map[string]visitWindow
+
+	writes atomicCounter
+}
+
+type visitWindow struct {
+	start time.Time
+	n     int
+}
+
+type atomicCounter struct {
+	mu sync.Mutex
+	n  uint64
+}
+
+func (c *atomicCounter) add(n uint64) uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.n += n
+	return c.n
 }
 
 func New(store domain.AccessLogStore) *Logger {
@@ -19,9 +60,72 @@ func New(store domain.AccessLogStore) *Logger {
 		return nil
 	}
 
-	return &Logger{
-		store: store,
+	l := &Logger{
+		store:     store,
+		security:  make(chan *domain.AccessLog, securityQueueSize),
+		visits:    make(chan *domain.AccessLog, visitQueueSize),
+		visitLast: make(map[string]time.Time),
+		visitIP:   make(map[string]visitWindow),
 	}
+	go l.worker()
+	return l
+}
+
+func (l *Logger) worker() {
+	for {
+		select {
+		case ev := <-l.security:
+			l.write(ev)
+			continue
+		default:
+		}
+
+		select {
+		case ev := <-l.security:
+			l.write(ev)
+		case ev := <-l.visits:
+			l.write(ev)
+		}
+	}
+}
+
+func (l *Logger) write(ev *domain.AccessLog) {
+	if err := l.store.Create(ev); err != nil {
+		slog.Warn("access_log", "action", ev.Action, "err", err)
+	}
+	n := l.writes.add(1)
+	if n%accessPurgeEveryN == 0 {
+		cutoff := time.Now().Add(-accessLogRetention)
+		if err := l.store.DeleteOlderThan(cutoff); err != nil {
+			slog.Warn("access_log_purge", "err", err)
+		}
+	}
+}
+
+func validVisitPath(p string) bool {
+	if p == "" || len(p) > maxVisitPathLen || p[0] != '/' {
+		return false
+	}
+
+	if p == "/api" || strings.HasPrefix(p, "/api/") || strings.HasPrefix(p, "/assets/") {
+		return false
+	}
+
+	if strings.Contains(p, "..") || strings.Contains(p, "//") || strings.Contains(p, "\\") {
+		return false
+	}
+
+	if strings.ContainsAny(p, "?#%") {
+		return false
+	}
+
+	for i := 0; i < len(p); i++ {
+		if p[i] < 0x20 || p[i] == 0x7f {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (l *Logger) Visit(r *http.Request, user *domain.User) {
@@ -29,11 +133,75 @@ func (l *Logger) Visit(r *http.Request, user *domain.User) {
 }
 
 func (l *Logger) VisitPath(r *http.Request, user *domain.User, pathValue string) {
+	if l == nil {
+		return
+	}
+
 	if pathValue == "" {
 		pathValue = "/"
 	}
 
+	if !validVisitPath(pathValue) {
+		return
+	}
+
+	if !l.allowVisit(r, pathValue) {
+		return
+	}
+
 	l.record(r, domain.AccessVisit, user, "", "", pathValue)
+}
+
+func (l *Logger) allowVisit(r *http.Request, pathValue string) bool {
+	ip := middleware.ClientIP(r)
+	key := ip + "\n" + pathValue
+	now := time.Now()
+
+	l.visitMu.Lock()
+	defer l.visitMu.Unlock()
+
+	if last, ok := l.visitLast[key]; ok && now.Sub(last) < accessVisitThrottle {
+		return false
+	}
+
+	w := l.visitIP[ip]
+	if now.Sub(w.start) > accessVisitThrottle {
+		w = visitWindow{start: now}
+	}
+
+	if w.n >= visitBurstPerIP {
+		l.visitIP[ip] = w
+		return false
+	}
+
+	w.n++
+	l.visitIP[ip] = w
+	l.visitLast[key] = now
+
+	if len(l.visitLast) > maxVisitKeys {
+		for k, t := range l.visitLast {
+			if now.Sub(t) > accessVisitThrottle {
+				delete(l.visitLast, k)
+			}
+		}
+		if len(l.visitLast) > maxVisitKeys {
+			l.visitLast = make(map[string]time.Time)
+		}
+	}
+
+	if len(l.visitIP) > maxVisitKeys {
+		for k, v := range l.visitIP {
+			if now.Sub(v.start) > accessVisitThrottle {
+				delete(l.visitIP, k)
+			}
+		}
+
+		if len(l.visitIP) > maxVisitKeys {
+			l.visitIP = make(map[string]visitWindow)
+		}
+	}
+
+	return true
 }
 
 func (l *Logger) Clone(r *http.Request, repoPath string, user *domain.User) {
@@ -61,7 +229,7 @@ func (l *Logger) Register(r *http.Request, user *domain.User) {
 }
 
 func (l *Logger) FailedAuth(r *http.Request, login string) {
-	l.record(r, domain.AccessFailedAuth, nil, "", "", truncate(login, 128))
+	l.record(r, domain.AccessFailedAuth, nil, "", "", loginFingerprint(login))
 }
 
 func (l *Logger) TokenCreate(r *http.Request, user *domain.User, tokenName string) {
@@ -115,11 +283,39 @@ func (l *Logger) record(r *http.Request, action string, user *domain.User, repo,
 		ev.Username = user.Username
 	}
 
-	go func() {
-		if err := l.store.Create(ev); err != nil {
-			slog.Warn("access_log", "action", action, "err", err)
+	if action == domain.AccessVisit {
+		select {
+		case l.visits <- ev:
+		default:
+			slog.Debug("access_log_visit_dropped")
 		}
-	}()
+		return
+	}
+
+	select {
+	case l.security <- ev:
+		return
+	default:
+	}
+
+	t := time.NewTimer(securityEnqueueWait)
+	defer t.Stop()
+	select {
+	case l.security <- ev:
+	case <-t.C:
+		slog.Error("access_log_security_dropped", "action", action)
+	}
+}
+
+func loginFingerprint(login string) string {
+	login = strings.TrimSpace(strings.ToLower(login))
+	if login == "" {
+		return ""
+	}
+
+	sum := sha256.Sum256([]byte(login))
+
+	return hex.EncodeToString(sum[:8])
 }
 
 func IsPageVisit(r *http.Request) bool {

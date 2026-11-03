@@ -42,6 +42,16 @@ export interface AccessLog {
   created_at: string
 }
 
+export interface AuthSession {
+  id: number
+  ip: string
+  user_agent: string
+  current: boolean
+  created_at: string
+  last_seen_at: string
+  expires_at: string
+}
+
 export interface Folder {
   name: string
   slug: string
@@ -106,6 +116,7 @@ export interface TreeEntry {
   mode: string
   size: number
   sha: string
+  modified_at?: string
 }
 
 export interface BlobContent {

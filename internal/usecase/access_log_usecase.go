@@ -38,14 +38,10 @@ func NewAccessLogUseCase(logs domain.AccessLogStore) *AccessLogUseCase {
 }
 
 func (uc *AccessLogUseCase) List(ctx context.Context, action, ip, username string, limit, offset int) (*AccessLogListResult, error) {
-	_ = ctx.Err()
-	if limit <= 0 || limit > 200 {
-		limit = 50
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-
-	if offset < 0 {
-		offset = 0
-	}
+	offset, limit = ClampPagination(offset, limit, DefaultPageLimit, MaxAccessLimit)
 
 	items, total, err := uc.logs.List(domain.AccessLogFilter{
 		Action:   action,

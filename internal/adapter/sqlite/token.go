@@ -93,6 +93,10 @@ func (s *AccessTokenStore) DeleteByUserAndID(userID, id uint) error {
 	return nil
 }
 
+func (s *AccessTokenStore) DeleteByUserID(userID uint) error {
+	return s.db.Where("user_id = ?", userID).Delete(&accessTokenModel{}).Error
+}
+
 func (s *AccessTokenStore) TouchLastUsed(id uint, at time.Time) error {
 	return s.db.Model(&accessTokenModel{}).Where("id = ?", id).Update("last_used_at", at).Error
 }

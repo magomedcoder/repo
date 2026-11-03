@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v6/plumbing"
+
 	"magomedcoder.ru/repo/internal/domain"
 )
 
@@ -20,9 +22,22 @@ var (
 	ErrRepoNotFound      = NewError(KindNotFound, "repository_not_found")
 	ErrRepoForbidden     = NewError(KindForbidden, "repository_access_denied")
 	ErrInvalidBranchName = NewError(KindValidation, "invalid_default_branch")
+	ErrRepoQuota         = NewError(KindForbidden, "repository_quota_exceeded")
 )
 
+const maxReposPerOwner = 100
+
 var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "unique") || strings.Contains(msg, "constraint")
+}
 
 type CreateRepositoryInput struct {
 	Name          string
@@ -105,7 +120,10 @@ func NewRepositoryUseCase(
 }
 
 func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInput) (*RepositoryItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	viewerID := in.ViewerID
 	if viewerID == 0 {
 		viewerID = in.OwnerID
@@ -141,6 +159,17 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		return nil, ErrUnauthorized
 	}
 	ownerSlug := owner.Username
+
+	if owner.Role != domain.RoleAdmin {
+		n, cerr := uc.store.CountByOwnerID(ownerKind, ownerID)
+		if cerr != nil {
+			return nil, fmt.Errorf("count repositories: %w", cerr)
+		}
+
+		if n >= maxReposPerOwner {
+			return nil, ErrRepoQuota
+		}
+	}
 
 	folderID, folderPath, err := uc.resolveFolderPath(ownerKind, ownerID, in.FolderPath)
 	if err != nil {
@@ -213,13 +242,6 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 
 	repoPath := buildRepoDiskPath(uc.git.GetReposRoot(), ownerKind, ownerID, folderPath, name)
 
-	if err := uc.git.InitBare(repoPath, domain.BareInitOptions{
-		DefaultBranch:        branch,
-		DenyForcePushDefault: true,
-	}); err != nil {
-		return nil, fmt.Errorf("init bare repository: %w", err)
-	}
-
 	repo := &domain.Repository{
 		Name:                 name,
 		OwnerKind:            ownerKind,
@@ -235,8 +257,19 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		Path:                 repoPath,
 	}
 	if err := uc.store.Create(repo); err != nil {
-		_ = uc.git.Remove(repoPath)
+		if isUniqueViolation(err) {
+			return nil, ErrAlreadyExists
+		}
+
 		return nil, fmt.Errorf("save repository metadata: %w", err)
+	}
+
+	if err := uc.git.InitBare(repoPath, domain.BareInitOptions{
+		DefaultBranch:        branch,
+		DenyForcePushDefault: true,
+	}); err != nil {
+		_ = uc.store.Delete(repo.ID)
+		return nil, fmt.Errorf("init bare repository: %w", err)
 	}
 
 	item := toRepositoryItem(repo, ownerSlug, folderPath)
@@ -252,8 +285,11 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 	return &item, nil
 }
 
-func (uc *RepositoryUseCase) ListOwn(ctx context.Context, ownerID uint, limit, offset int) ([]RepositoryItem, error) {
-	_ = ctx.Err()
+func (uc *RepositoryUseCase) ListOwn(ctx context.Context, ownerID uint, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if ownerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -264,17 +300,20 @@ func (uc *RepositoryUseCase) ListOwn(ctx context.Context, ownerID uint, limit, o
 	}
 
 	offset, limit = NormalizePagination(offset, limit)
-	repos, err := uc.store.ListByOwnerID(domain.OwnerKindUser, ownerID, limit, offset)
+	repos, err := uc.store.ListByOwnerID(domain.OwnerKindUser, ownerID, limit, offset, order)
 	if err != nil {
 		return nil, fmt.Errorf("list repositories: %w", err)
 	}
 	return uc.mapRepos(repos, owner.Username)
 }
 
-func (uc *RepositoryUseCase) ListPublic(ctx context.Context, limit, offset int) ([]RepositoryItem, error) {
-	_ = ctx.Err()
+func (uc *RepositoryUseCase) ListPublic(ctx context.Context, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	offset, limit = NormalizePagination(offset, limit)
-	repos, err := uc.store.ListPublic(limit, offset)
+	repos, err := uc.store.ListPublic(limit, offset, order)
 	if err != nil {
 		return nil, fmt.Errorf("list public repositories: %w", err)
 	}
@@ -282,10 +321,13 @@ func (uc *RepositoryUseCase) ListPublic(ctx context.Context, limit, offset int) 
 	return uc.mapReposWithOwners(repos)
 }
 
-func (uc *RepositoryUseCase) ListHome(ctx context.Context, limit, offset int) ([]RepositoryItem, error) {
-	_ = ctx.Err()
+func (uc *RepositoryUseCase) ListHome(ctx context.Context, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	offset, limit = NormalizePagination(offset, limit)
-	repos, err := uc.store.ListHome(limit, offset)
+	repos, err := uc.store.ListHome(limit, offset, order)
 	if err != nil {
 		return nil, fmt.Errorf("list home repositories: %w", err)
 	}
@@ -293,15 +335,18 @@ func (uc *RepositoryUseCase) ListHome(ctx context.Context, limit, offset int) ([
 	return uc.mapReposWithOwners(repos)
 }
 
-func (uc *RepositoryUseCase) Search(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int) ([]RepositoryItem, error) {
-	_ = ctx.Err()
+func (uc *RepositoryUseCase) Search(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return nil, nil
 	}
 
 	offset, limit = NormalizePagination(offset, limit)
-	repos, err := uc.store.SearchByName(q, domain.OwnerKindUser, ownerID, publicOnly || ownerID == 0, limit, offset)
+	repos, err := uc.store.SearchByName(q, domain.OwnerKindUser, ownerID, publicOnly || ownerID == 0, limit, offset, order)
 	if err != nil {
 		return nil, fmt.Errorf("search repositories: %w", err)
 	}
@@ -319,12 +364,12 @@ func (uc *RepositoryUseCase) Search(ctx context.Context, query string, ownerID u
 }
 
 func (uc *RepositoryUseCase) Get(ctx context.Context, in ResolveRepositoryInput) (*RepositoryItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, ownerSlug, folderPath, err := uc.resolve(in)
 	if err != nil {
-		if in.ViewerID == 0 && errors.Is(err, ErrRepoNotFound) {
-			return nil, ErrUnauthorized
-		}
 		return nil, err
 	}
 
@@ -337,7 +382,10 @@ func (uc *RepositoryUseCase) Get(ctx context.Context, in ResolveRepositoryInput)
 }
 
 func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInput) (*RepositoryItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -352,7 +400,7 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 	}
 
 	if !CanAdminRepo(repo, in.ViewerID) {
-		return nil, ErrRepoForbidden
+		return nil, ErrRepoNotFound
 	}
 
 	if in.Description != nil {
@@ -468,7 +516,10 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 }
 
 func (uc *RepositoryUseCase) Delete(ctx context.Context, in ResolveRepositoryInput) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if in.ViewerID == 0 {
 		return ErrUnauthorized
 	}
@@ -479,7 +530,7 @@ func (uc *RepositoryUseCase) Delete(ctx context.Context, in ResolveRepositoryInp
 	}
 
 	if !CanAdminRepo(repo, in.ViewerID) {
-		return ErrRepoForbidden
+		return ErrRepoNotFound
 	}
 
 	diskPath := repo.Path
@@ -495,7 +546,10 @@ func (uc *RepositoryUseCase) Delete(ctx context.Context, in ResolveRepositoryInp
 }
 
 func (uc *RepositoryUseCase) Move(ctx context.Context, in MoveRepositoryInput) (*RepositoryItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -510,7 +564,7 @@ func (uc *RepositoryUseCase) Move(ctx context.Context, in MoveRepositoryInput) (
 	}
 
 	if !CanAdminRepo(repo, in.ViewerID) {
-		return nil, ErrRepoForbidden
+		return nil, ErrRepoNotFound
 	}
 
 	newFolderID, newFolderPath, err := uc.resolveFolderPath(repo.OwnerKind, repo.OwnerID, in.NewFolderPath)
@@ -746,11 +800,7 @@ func normalizeRepoName(raw string) (string, error) {
 }
 
 func validateBranchName(name string) error {
-	if name == "" || strings.ContainsAny(name, " \t\n\\") || strings.HasPrefix(name, "-") {
-		return ErrInvalidBranchName
-	}
-
-	if strings.Contains(name, "..") || strings.Contains(name, "//") {
+	if name == "" || plumbing.ValidateBranchName(name) != nil {
 		return ErrInvalidBranchName
 	}
 

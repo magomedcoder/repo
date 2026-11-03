@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { issuesApi } from '@/api'
 import type { Issue, Label } from '@/api/types'
 import IssueRow from '@/components/issues/IssueRow.vue'
@@ -11,12 +12,20 @@ import PageState from '@/components/ui/PageState.vue'
 import { useCanWrite } from '@/composables/useCanWrite'
 import { useRepo } from '@/composables/useRepo'
 import { localizeError } from '@/i18n'
+import { repoLocation } from '@/lib/repoNav'
 
 const props = defineProps<{
   repoPath: string
 }>()
 
+const router = useRouter()
 const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
+
+watch(repo, (value) => {
+  if (value && value.issues_enabled === false) {
+    void router.replace(repoLocation('repo', props.repoPath))
+  }
+})
 const { isAuthenticated, isOwner } = useCanWrite(repo)
 const state = ref<'open' | 'closed'>('open')
 const issues = ref<Issue[]>([])

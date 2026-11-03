@@ -1,6 +1,6 @@
 import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
-import type { AccessLog, AccessToken, ActivityEvent, AdminUser, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User, UserRole } from './types'
+import type { AccessLog, AccessToken, ActivityEvent, AdminUser, AuthSession, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User, UserRole } from './types'
 
 export const siteApi = {
   get() {
@@ -53,6 +53,18 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify(body),
     })
+  },
+  listSessions() {
+    return api<{ sessions: AuthSession[] }>('/api/auth/sessions')
+  },
+  revokeSession(id: number) {
+    return api<void>(`/api/auth/sessions/${id}`, { method: 'DELETE' })
+  },
+  revokeOtherSessions() {
+    return api<void>('/api/auth/sessions/revoke-others', { method: 'POST' })
+  },
+  revokeAllSessions() {
+    return api<void>('/api/auth/sessions/revoke-all', { method: 'POST' })
   },
 }
 

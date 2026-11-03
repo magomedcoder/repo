@@ -105,6 +105,8 @@ func (r *Repository) Remove(path string) error {
 		return nil
 	}
 
+	defer r.LockRepo(path)()
+
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("remove repository: %w", err)
 	}
@@ -125,6 +127,8 @@ func (r *Repository) Move(oldPath, newPath string) error {
 	if oldPath == newPath {
 		return nil
 	}
+
+	defer r.lockRepos(oldPath, newPath)()
 
 	if _, err := os.Stat(oldPath); err != nil {
 		return fmt.Errorf("source repository: %w", err)
@@ -179,22 +183,41 @@ func (r *Repository) AdvertiseRefs(ctx context.Context, repoPath, service string
 	})
 }
 
-func (r *Repository) ServePack(ctx context.Context, repoPath, service string, stdin io.Reader, stdout io.Writer) error {
+const maxConcurrentServePacks = 32
+
+var servePackSem = make(chan struct{}, maxConcurrentServePacks)
+
+func (r *Repository) ServePack(ctx context.Context, repoPath, service string, stdin io.Reader, stdout io.Writer, receive *domain.ReceivePackOptions) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	select {
+	case servePackSem <- struct{}{}:
+		defer func() { <-servePackSem }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return err
 	}
 
 	service = normalizeService(service)
-	if ctx == nil {
-		ctx = context.Background()
-	}
+
 	in := io.NopCloser(stdin)
 	out := nopCloser{stdout}
 	if strings.Contains(service, "receive") {
-		return transport.ReceivePack(ctx, repo.Storer, in, out, &transport.ReceivePackRequest{
-			StatelessRPC: true,
-		})
+		req := &transport.ReceivePackRequest{StatelessRPC: true}
+		if receive != nil && receive.ProtectDefaultBranch {
+			defaultBranch := receive.DefaultBranch
+			req.Hooks.PreReceive = func(ctx context.Context, info *transport.PreReceiveInfo) error {
+				return enforceProtectedDefaultBranch(ctx, info, defaultBranch)
+			}
+		}
+
+		return transport.ReceivePack(ctx, repo.Storer, in, out, req)
 	}
 
 	return transport.UploadPack(ctx, repo.Storer, in, out, &transport.UploadPackRequest{

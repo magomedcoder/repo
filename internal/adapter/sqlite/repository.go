@@ -93,20 +93,14 @@ func (s *RepositoryStore) FindByRepoPath(repoPath string) (*domain.Repository, e
 	return &repo, nil
 }
 
-func (s *RepositoryStore) ListByOwnerID(ownerKind string, ownerID uint, limit, offset int) ([]domain.Repository, error) {
+func (s *RepositoryStore) ListByOwnerID(ownerKind string, ownerID uint, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
 	if ownerKind == "" {
 		ownerKind = domain.OwnerKindUser
 	}
 
 	var models []repositoryModel
-	q := s.db.Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID).Order("updated_at DESC")
-	if limit > 0 {
-		q = q.Limit(limit)
-	}
-
-	if offset > 0 {
-		q = q.Offset(offset)
-	}
+	limit, offset = clampListBounds(limit, offset)
+	q := s.db.Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID).Order(repoOrderClause(order)).Limit(limit).Offset(offset)
 
 	err := q.Find(&models).Error
 	if err != nil {
@@ -136,18 +130,10 @@ func (s *RepositoryStore) ListByOwnerAndFolderID(ownerKind string, ownerID uint,
 	return repoModelsToDomain(models), nil
 }
 
-func (s *RepositoryStore) ListPublic(limit, offset int) ([]domain.Repository, error) {
+func (s *RepositoryStore) ListPublic(limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
 	var models []repositoryModel
-	q := s.db.Where("is_private = ?", false).Order("updated_at DESC")
-	if limit > 0 {
-		q = q.Limit(limit)
-	}
-
-	if offset > 0 {
-		q = q.Offset(offset)
-	}
-
-	err := q.Find(&models).Error
+	limit, offset = clampListBounds(limit, offset)
+	err := s.db.Where("is_private = ?", false).Order(repoOrderClause(order)).Limit(limit).Offset(offset).Find(&models).Error
 	if err != nil {
 		return nil, err
 	}
@@ -155,18 +141,10 @@ func (s *RepositoryStore) ListPublic(limit, offset int) ([]domain.Repository, er
 	return repoModelsToDomain(models), nil
 }
 
-func (s *RepositoryStore) ListHome(limit, offset int) ([]domain.Repository, error) {
+func (s *RepositoryStore) ListHome(limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
 	var models []repositoryModel
-	q := s.db.Where("is_private = ? AND show_on_home = ?", false, true).Order("updated_at DESC")
-	if limit > 0 {
-		q = q.Limit(limit)
-	}
-
-	if offset > 0 {
-		q = q.Offset(offset)
-	}
-
-	err := q.Find(&models).Error
+	limit, offset = clampListBounds(limit, offset)
+	err := s.db.Where("is_private = ? AND show_on_home = ?", false, true).Order(repoOrderClause(order)).Limit(limit).Offset(offset).Find(&models).Error
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +152,7 @@ func (s *RepositoryStore) ListHome(limit, offset int) ([]domain.Repository, erro
 	return repoModelsToDomain(models), nil
 }
 
-func (s *RepositoryStore) SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int) ([]domain.Repository, error) {
+func (s *RepositoryStore) SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
 	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
 	q := "%" + escaped + "%"
 	db := s.db.Model(&repositoryModel{}).Where(`name LIKE ? ESCAPE '\'`, q)
@@ -189,17 +167,9 @@ func (s *RepositoryStore) SearchByName(query string, ownerKind string, ownerID u
 		db = db.Where("is_private = ?", false)
 	}
 
+	limit, offset = clampListBounds(limit, offset)
 	var models []repositoryModel
-	stmt := db.Order("updated_at DESC")
-	if limit > 0 {
-		stmt = stmt.Limit(limit)
-	}
-
-	if offset > 0 {
-		stmt = stmt.Offset(offset)
-	}
-
-	if err := stmt.Find(&models).Error; err != nil {
+	if err := db.Order(repoOrderClause(order)).Limit(limit).Offset(offset).Find(&models).Error; err != nil {
 		return nil, err
 	}
 
@@ -237,6 +207,25 @@ func (s *RepositoryStore) TouchLastActivity(id uint, at time.Time) error {
 	}).Error
 }
 
+func repoOrderClause(order domain.RepoOrder) string {
+	if order == domain.RepoOrderName {
+		return "name COLLATE NOCASE ASC, id ASC"
+	}
+
+	return "updated_at DESC"
+}
+
+func (s *RepositoryStore) CountByOwnerID(ownerKind string, ownerID uint) (int64, error) {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
+	var count int64
+	err := s.db.Model(&repositoryModel{}).Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID).Count(&count).Error
+
+	return count, err
+}
+
 func repoModelsToDomain(models []repositoryModel) []domain.Repository {
 	repos := make([]domain.Repository, 0, len(models))
 	for _, model := range models {
@@ -244,4 +233,32 @@ func repoModelsToDomain(models []repositoryModel) []domain.Repository {
 	}
 
 	return repos
+}
+
+func clampListBounds(limit, offset int) (int, int) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	if offset < 0 {
+		offset = 0
+	}
+
+	if offset > 10000 {
+		offset = 10000
+	}
+
+	return limit, offset
+}
+
+func (s *RepositoryStore) ListPublicIDsByOwner(ownerKind string, ownerID uint) ([]uint, error) {
+	if ownerKind == "" {
+		ownerKind = domain.OwnerKindUser
+	}
+
+	var ids []uint
+	err := s.db.Model(&repositoryModel{}).
+		Where("owner_kind = ? AND owner_id = ? AND is_private = ?", ownerKind, ownerID, false).
+		Pluck("id", &ids).Error
+	return ids, err
 }

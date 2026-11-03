@@ -12,6 +12,8 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 )
 
+const defaultActivityLimit = 30
+
 type ActivityItem struct {
 	ID        uint      `json:"id"`
 	Type      string    `json:"type"`
@@ -42,14 +44,25 @@ func NewActivityUseCase(
 }
 
 func (uc *ActivityUseCase) ListOwner(ctx context.Context, ownerSlug string, viewerID uint, limit int) ([]ActivityItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	slug := strings.ToLower(strings.TrimSpace(ownerSlug))
 	kind, id, err := uc.resolveOwner(slug)
 	if err != nil {
 		return nil, err
 	}
 
-	events, err := uc.events.ListByOwner(kind, id, limit)
+	_, limit = ClampPagination(0, limit, defaultActivityLimit, MaxPageLimit)
+
+	isOwner := viewerID != 0 && kind == domain.OwnerKindUser && viewerID == id
+	var events []domain.ActivityEvent
+	if isOwner {
+		events, err = uc.events.ListByOwner(kind, id, limit)
+	} else {
+		events, err = uc.events.ListPublicByOwner(kind, id, limit)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -68,16 +81,14 @@ func (uc *ActivityUseCase) filterVisible(events []domain.ActivityEvent, ownerKin
 		return events, nil
 	}
 
-	repos, err := uc.repos.ListByOwnerID(ownerKind, ownerID, 0, 0)
+	ids, err := uc.repos.ListPublicIDsByOwner(ownerKind, ownerID)
 	if err != nil {
 		return nil, err
 	}
 
-	public := make(map[uint]struct{}, len(repos))
-	for _, repo := range repos {
-		if !repo.IsPrivate {
-			public[repo.ID] = struct{}{}
-		}
+	public := make(map[uint]struct{}, len(ids))
+	for _, id := range ids {
+		public[id] = struct{}{}
 	}
 
 	out := make([]domain.ActivityEvent, 0, len(events))

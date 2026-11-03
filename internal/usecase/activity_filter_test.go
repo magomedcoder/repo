@@ -28,6 +28,10 @@ func (s *memActivity) ListByOwner(ownerKind string, ownerID uint, limit int) ([]
 	return out, nil
 }
 
+func (s *memActivity) ListPublicByOwner(ownerKind string, ownerID uint, limit int) ([]domain.ActivityEvent, error) {
+	return s.ListByOwner(ownerKind, ownerID, limit)
+}
+
 type memRepos struct {
 	items []domain.Repository
 }
@@ -55,7 +59,7 @@ func (s *memRepos) FindByRepoPath(repoPath string) (*domain.Repository, error) {
 	return nil, errors.New("not found")
 }
 
-func (s *memRepos) ListByOwnerID(ownerKind string, ownerID uint, limit, offset int) ([]domain.Repository, error) {
+func (s *memRepos) ListByOwnerID(ownerKind string, ownerID uint, limit, offset int, _ domain.RepoOrder) ([]domain.Repository, error) {
 	_ = limit
 	_ = offset
 	var out []domain.Repository
@@ -68,19 +72,41 @@ func (s *memRepos) ListByOwnerID(ownerKind string, ownerID uint, limit, offset i
 	return out, nil
 }
 
+func (s *memRepos) CountByOwnerID(ownerKind string, ownerID uint) (int64, error) {
+	var n int64
+	for _, r := range s.items {
+		if r.OwnerKind == ownerKind && r.OwnerID == ownerID {
+			n++
+		}
+	}
+
+	return n, nil
+}
+
+func (s *memRepos) ListPublicIDsByOwner(ownerKind string, ownerID uint) ([]uint, error) {
+	var out []uint
+	for _, r := range s.items {
+		if r.OwnerKind == ownerKind && r.OwnerID == ownerID && !r.IsPrivate {
+			out = append(out, r.ID)
+		}
+	}
+
+	return out, nil
+}
+
 func (s *memRepos) ListByOwnerAndFolderID(string, uint, *uint) ([]domain.Repository, error) {
 	return nil, nil
 }
 
-func (s *memRepos) ListPublic(int, int) ([]domain.Repository, error) {
+func (s *memRepos) ListPublic(int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
 }
 
-func (s *memRepos) ListHome(int, int) ([]domain.Repository, error) {
+func (s *memRepos) ListHome(int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
 }
 
-func (s *memRepos) SearchByName(string, string, uint, bool, int, int) ([]domain.Repository, error) {
+func (s *memRepos) SearchByName(string, string, uint, bool, int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"magomedcoder.ru/repo/internal/adapter/http/audit"
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/httpx"
 )
@@ -94,62 +95,71 @@ func (h *RepositoryHandler) List(c *httpx.Context) error {
 	}
 
 	offset, limit := usecase.ParseOffsetLimit(c.Query("offset"), c.Query("limit"))
+	offset, limit = usecase.NormalizePagination(offset, limit)
 	sortKey := c.Query("sort")
+	sqlPage := sortKey == "" || sortKey == "name"
+	order := domain.RepoOrderUpdated
+	if sortKey == "name" {
+		order = domain.RepoOrderName
+	}
 
-	sqlPage := sortKey == ""
-	fetchOff, fetchLim := 0, 0
+	fetch := func(lim, off int) ([]usecase.RepositoryItem, error) {
+		if q != "" {
+			searchPublic := scope == "public" || scope == "home" || !loggedIn
+			return h.repos.Search(c.Ctx(), q, ownerID, searchPublic, lim, off, order)
+		}
+
+		if scope == "home" || (!loggedIn && scope != "public") {
+			return h.repos.ListHome(c.Ctx(), lim, off, order)
+		}
+
+		if publicOnly {
+			return h.repos.ListPublic(c.Ctx(), lim, off, order)
+		}
+
+		return h.repos.ListOwn(c.Ctx(), user.ID, lim, off, order)
+	}
+
+	var items []usecase.RepositoryItem
+	var err error
 	if sqlPage {
-		fetchOff, fetchLim = offset, limit
+		items, err = fetch(limit, offset)
+	} else {
+		items, err = listReposForSort(fetch)
 	}
 
-	if q != "" {
-		searchPublic := scope == "public" || scope == "home" || !loggedIn
-		items, err := h.repos.Search(c.Ctx(), q, ownerID, searchPublic, fetchLim, fetchOff)
-		if err != nil {
-			return mapError(c, err)
-		}
-
-		sortRepoItems(items, sortKey)
-		if sqlPage {
-			return httpx.OK(c, reposResponse{Repos: items})
-		}
-		return httpx.OK(c, reposResponse{Repos: paginateRepoItems(items, offset, limit)})
-	}
-
-	if scope == "home" || (!loggedIn && scope != "public") {
-		items, err := h.repos.ListHome(c.Ctx(), fetchLim, fetchOff)
-		if err != nil {
-			return mapError(c, err)
-		}
-
-		sortRepoItems(items, sortKey)
-		if sqlPage {
-			return httpx.OK(c, reposResponse{Repos: items})
-		}
-		return httpx.OK(c, reposResponse{Repos: paginateRepoItems(items, offset, limit)})
-	}
-
-	if publicOnly {
-		items, err := h.repos.ListPublic(c.Ctx(), fetchLim, fetchOff)
-		if err != nil {
-			return mapError(c, err)
-		}
-		sortRepoItems(items, sortKey)
-		if sqlPage {
-			return httpx.OK(c, reposResponse{Repos: items})
-		}
-		return httpx.OK(c, reposResponse{Repos: paginateRepoItems(items, offset, limit)})
-	}
-
-	items, err := h.repos.ListOwn(c.Ctx(), user.ID, fetchLim, fetchOff)
 	if err != nil {
 		return mapError(c, err)
 	}
-	sortRepoItems(items, sortKey)
+
+	if sortKey != "name" {
+		sortRepoItems(items, sortKey)
+	}
+
 	if sqlPage {
 		return httpx.OK(c, reposResponse{Repos: items})
 	}
+
 	return httpx.OK(c, reposResponse{Repos: paginateRepoItems(items, offset, limit)})
+}
+
+func listReposForSort(fetch func(limit, offset int) ([]usecase.RepositoryItem, error)) ([]usecase.RepositoryItem, error) {
+	const pageSize = 100
+	const maxTotal = 5000
+	all := make([]usecase.RepositoryItem, 0, pageSize)
+	for off := 0; off < maxTotal; off += pageSize {
+		page, err := fetch(pageSize, off)
+		if err != nil {
+			return nil, err
+		}
+
+		all = append(all, page...)
+		if len(page) < pageSize {
+			break
+		}
+	}
+
+	return all, nil
 }
 
 func paginateRepoItems(items []usecase.RepositoryItem, offset, limit int) []usecase.RepositoryItem {
@@ -220,9 +230,6 @@ func (h *RepositoryHandler) Get(c *httpx.Context) error {
 		ViewerID:   viewerID,
 	})
 	if err != nil {
-		if viewerID == 0 && (errors.Is(err, usecase.ErrRepoNotFound) || errors.Is(err, usecase.ErrUnauthorized) || errors.Is(err, usecase.ErrRepoForbidden)) {
-			return c.Error(http.StatusUnauthorized, "unauthorized")
-		}
 		return mapError(c, err)
 	}
 

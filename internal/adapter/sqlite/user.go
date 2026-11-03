@@ -1,6 +1,9 @@
 package sqlite
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 
@@ -47,6 +50,8 @@ type sessionModel struct {
 	Token      string    `gorm:"uniqueIndex;size:128;not null"`
 	UserID     uint      `gorm:"index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	User       userModel `gorm:"foreignKey:UserID;references:ID"`
+	IP         string    `gorm:"size:64;not null;default:''"`
+	UserAgent  string    `gorm:"size:512;not null;default:''"`
 	ExpiresAt  time.Time
 	LastSeenAt time.Time
 }
@@ -65,6 +70,8 @@ func (m sessionModel) toDomain() *domain.Session {
 		ID:         m.ID,
 		Token:      m.Token,
 		UserID:     m.UserID,
+		IP:         m.IP,
+		UserAgent:  m.UserAgent,
 		ExpiresAt:  m.ExpiresAt,
 		LastSeenAt: lastSeen,
 		CreatedAt:  m.CreatedAt,
@@ -80,9 +87,8 @@ func NewUserStore(db *gorm.DB) *UserStore {
 }
 
 func (s *UserStore) Create(user *domain.User) error {
-	role := user.Role
-	if !role.Valid() {
-		role = domain.RoleUser
+	if !user.Role.Valid() {
+		return fmt.Errorf("invalid role")
 	}
 
 	model := &userModel{
@@ -90,7 +96,7 @@ func (s *UserStore) Create(user *domain.User) error {
 		Email:        user.Email,
 		PasswordHash: user.PasswordHash,
 		AvatarPath:   user.AvatarPath,
-		Role:         role,
+		Role:         user.Role,
 	}
 
 	if err := s.db.Create(model).Error; err != nil {
@@ -163,16 +169,15 @@ func (s *UserStore) ExistsByEmail(email string) (bool, error) {
 }
 
 func (s *UserStore) Update(user *domain.User) error {
-	role := user.Role
-	if !role.Valid() {
-		role = domain.RoleUser
+	if !user.Role.Valid() {
+		return fmt.Errorf("invalid role")
 	}
 
 	return s.db.Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]any{
 		"email":         user.Email,
 		"password_hash": user.PasswordHash,
 		"avatar_path":   user.AvatarPath,
-		"role":          role,
+		"role":          user.Role,
 	}).Error
 }
 
@@ -230,6 +235,11 @@ func NewSessionStore(db *gorm.DB) *SessionStore {
 	return &SessionStore{db: db}
 }
 
+func hashSessionToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 func (s *SessionStore) Create(session *domain.Session) error {
 	lastSeen := session.LastSeenAt
 	if lastSeen.IsZero() {
@@ -237,8 +247,10 @@ func (s *SessionStore) Create(session *domain.Session) error {
 	}
 
 	model := &sessionModel{
-		Token:      session.Token,
+		Token:      hashSessionToken(session.Token),
 		UserID:     session.UserID,
+		IP:         truncateRunes(session.IP, 64),
+		UserAgent:  truncateRunes(session.UserAgent, 512),
 		ExpiresAt:  session.ExpiresAt,
 		LastSeenAt: lastSeen,
 	}
@@ -249,15 +261,47 @@ func (s *SessionStore) Create(session *domain.Session) error {
 	session.ID = model.ID
 	session.CreatedAt = model.CreatedAt
 	session.LastSeenAt = model.LastSeenAt
+	session.IP = model.IP
+	session.UserAgent = model.UserAgent
 	return nil
 }
 
 func (s *SessionStore) FindByToken(token string) (*domain.Session, error) {
 	var model sessionModel
-	if err := s.db.Where("token = ?", token).First(&model).Error; err != nil {
+	if err := s.db.Where("token = ?", hashSessionToken(token)).First(&model).Error; err != nil {
 		return nil, mapDBErr(err)
 	}
-	return model.toDomain(), nil
+
+	session := model.toDomain()
+	session.Token = token
+	return session, nil
+}
+
+func (s *SessionStore) ListByUserID(userID uint) ([]domain.Session, error) {
+	var models []sessionModel
+	if err := s.db.Where("user_id = ?", userID).Order("last_seen_at DESC, id DESC").Find(&models).Error; err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.Session, 0, len(models))
+	for i := range models {
+		out = append(out, *models[i].toDomain())
+	}
+
+	return out, nil
+}
+
+func (s *SessionStore) DeleteByUserAndID(userID, sessionID uint) error {
+	res := s.db.Where("user_id = ? AND id = ?", userID, sessionID).Delete(&sessionModel{})
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return domain.ErrNotFound
+	}
+
+	return nil
 }
 
 func (s *SessionStore) Touch(session *domain.Session) error {
@@ -267,8 +311,21 @@ func (s *SessionStore) Touch(session *domain.Session) error {
 	}).Error
 }
 
+func truncateRunes(s string, max int) string {
+	if max <= 0 || s == "" {
+		return s
+	}
+
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+
+	return string(r[:max])
+}
+
 func (s *SessionStore) DeleteByToken(token string) error {
-	return s.db.Where("token = ?", token).Delete(&sessionModel{}).Error
+	return s.db.Where("token = ?", hashSessionToken(token)).Delete(&sessionModel{}).Error
 }
 
 func (s *SessionStore) DeleteByUserIDExcept(userID uint, keepToken string) error {
@@ -276,7 +333,7 @@ func (s *SessionStore) DeleteByUserIDExcept(userID uint, keepToken string) error
 		return s.DeleteByUserID(userID)
 	}
 
-	return s.db.Where("user_id = ? AND token <> ?", userID, keepToken).Delete(&sessionModel{}).Error
+	return s.db.Where("user_id = ? AND token <> ?", userID, hashSessionToken(keepToken)).Delete(&sessionModel{}).Error
 }
 
 func (s *SessionStore) DeleteByUserID(userID uint) error {

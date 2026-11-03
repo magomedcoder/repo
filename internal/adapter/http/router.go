@@ -46,6 +46,10 @@ func NewRouter(
 	}
 
 	authed.POST("/auth/password", authHandler.Password)
+	authed.GET("/auth/sessions", authHandler.ListSessions)
+	authed.DELETE("/auth/sessions/{id}", authHandler.RevokeSession)
+	authed.POST("/auth/sessions/revoke-others", authHandler.RevokeOtherSessions)
+	authed.POST("/auth/sessions/revoke-all", authHandler.RevokeAllSessions)
 
 	pub.GET("/users/{username}", profileHandler.Get)
 	authed.PATCH("/users/me", profileHandler.UpdateMe)

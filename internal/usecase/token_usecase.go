@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"magomedcoder.ru/repo/internal/domain"
 )
@@ -14,6 +15,13 @@ import (
 var (
 	ErrTokenNameRequired = NewError(KindValidation, "token_name_required")
 	ErrTokenNotFound     = NewError(KindNotFound, "token_not_found")
+	ErrTokenNameTooLong  = NewError(KindValidation, "token_name_too_long")
+	ErrTooManyTokens     = NewError(KindConflict, "too_many_tokens")
+)
+
+const (
+	maxTokensPerUser = 50
+	maxTokenNameLen  = 64
 )
 
 type CreateTokenInput struct {
@@ -47,7 +55,10 @@ func NewTokenUseCase(tokens domain.AccessTokenStore, gen domain.TokenGenerator) 
 }
 
 func (uc *TokenUseCase) Create(ctx context.Context, in CreateTokenInput) (*CreateTokenOutput, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if in.UserID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -55,6 +66,18 @@ func (uc *TokenUseCase) Create(ctx context.Context, in CreateTokenInput) (*Creat
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return nil, ErrTokenNameRequired
+	}
+	if utf8.RuneCountInString(name) > maxTokenNameLen {
+		return nil, ErrTokenNameTooLong
+	}
+
+	existing, err := uc.tokens.ListByUserID(in.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("list tokens: %w", err)
+	}
+
+	if len(existing) >= maxTokensPerUser {
+		return nil, ErrTooManyTokens
 	}
 
 	raw, err := uc.gen.Generate()
@@ -81,7 +104,10 @@ func (uc *TokenUseCase) Create(ctx context.Context, in CreateTokenInput) (*Creat
 }
 
 func (uc *TokenUseCase) List(ctx context.Context, userID uint) ([]TokenItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if userID == 0 {
 		return nil, ErrUnauthorized
 	}
@@ -100,7 +126,10 @@ func (uc *TokenUseCase) List(ctx context.Context, userID uint) ([]TokenItem, err
 }
 
 func (uc *TokenUseCase) Revoke(ctx context.Context, userID, tokenID uint) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if userID == 0 {
 		return ErrUnauthorized
 	}

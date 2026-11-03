@@ -16,10 +16,16 @@ var (
 	ErrRefNotFound  = NewError(KindNotFound, "ref_not_found")
 	ErrPathNotFound = NewError(KindNotFound, "path_not_found")
 	ErrEmptyRepo    = NewError(KindNotFound, "empty_repository")
+
+	ErrBlameTooLarge   = NewError(KindValidation, "blame_too_large")
+	ErrHistoryTooLarge = NewError(KindValidation, "history_too_large")
 )
 
 func (uc *RepositoryUseCase) ListBranches(ctx context.Context, in ResolveRepositoryInput) ([]domain.RefInfo, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -38,7 +44,10 @@ func (uc *RepositoryUseCase) ListBranches(ctx context.Context, in ResolveReposit
 }
 
 func (uc *RepositoryUseCase) ListTags(ctx context.Context, in ResolveRepositoryInput) ([]domain.RefInfo, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -57,7 +66,10 @@ func (uc *RepositoryUseCase) ListTags(ctx context.Context, in ResolveRepositoryI
 }
 
 func (uc *RepositoryUseCase) ListCommits(ctx context.Context, in ResolveRepositoryInput, ref string, offset, limit int) ([]domain.CommitInfo, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -67,17 +79,7 @@ func (uc *RepositoryUseCase) ListCommits(ctx context.Context, in ResolveReposito
 		ref = repo.DefaultBranch
 	}
 
-	if limit <= 0 {
-		limit = 30
-	}
-
-	if limit > 100 {
-		limit = 100
-	}
-
-	if offset < 0 {
-		offset = 0
-	}
+	offset, limit = NormalizePagination(offset, limit)
 
 	commits, err := uc.git.ListCommits(repo.Path, ref, offset, limit)
 	if err != nil {
@@ -96,7 +98,10 @@ func (uc *RepositoryUseCase) ListCommits(ctx context.Context, in ResolveReposito
 }
 
 func (uc *RepositoryUseCase) GetCommit(ctx context.Context, in ResolveRepositoryInput, sha string) (*domain.CommitInfo, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -116,7 +121,10 @@ func (uc *RepositoryUseCase) GetCommit(ctx context.Context, in ResolveRepository
 }
 
 func (uc *RepositoryUseCase) ListTree(ctx context.Context, in ResolveRepositoryInput, ref, path string) ([]domain.TreeEntry, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -143,7 +151,10 @@ func (uc *RepositoryUseCase) ListTree(ctx context.Context, in ResolveRepositoryI
 }
 
 func (uc *RepositoryUseCase) GetBlob(ctx context.Context, in ResolveRepositoryInput, ref, path string) (*domain.BlobContent, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -162,7 +173,10 @@ func (uc *RepositoryUseCase) GetBlob(ctx context.Context, in ResolveRepositoryIn
 }
 
 func (uc *RepositoryUseCase) GetBlame(ctx context.Context, in ResolveRepositoryInput, ref, path string) (*domain.BlameResult, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -181,7 +195,10 @@ func (uc *RepositoryUseCase) GetBlame(ctx context.Context, in ResolveRepositoryI
 }
 
 func (uc *RepositoryUseCase) GetReadme(ctx context.Context, in ResolveRepositoryInput, ref string) (*domain.BlobContent, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -200,7 +217,10 @@ func (uc *RepositoryUseCase) GetReadme(ctx context.Context, in ResolveRepository
 }
 
 func (uc *RepositoryUseCase) GetCommitDiff(ctx context.Context, in ResolveRepositoryInput, sha string) (*domain.CommitDiff, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -227,7 +247,10 @@ func (uc *RepositoryUseCase) GetCommitDiff(ctx context.Context, in ResolveReposi
 }
 
 func (uc *RepositoryUseCase) GetStats(ctx context.Context, in ResolveRepositoryInput, ref string) (*domain.RepoStats, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -267,6 +290,10 @@ func mapGitBrowseErr(err error) error {
 		return ErrEmptyRepo
 	case errors.Is(err, gitadapter.ErrRefNotFound):
 		return ErrRefNotFound
+	case errors.Is(err, gitadapter.ErrBlameTooLarge):
+		return ErrBlameTooLarge
+	case errors.Is(err, gitadapter.ErrHistoryTooLarge):
+		return ErrHistoryTooLarge
 	case errors.Is(err, gitadapter.ErrCommitNotFound),
 		errors.Is(err, gitadapter.ErrFileNotFound),
 		errors.Is(err, gitadapter.ErrPathNotFound),
@@ -292,16 +319,42 @@ func ParseOffsetLimit(offsetStr, limitStr string) (offset, limit int) {
 	return offset, limit
 }
 
+const (
+	DefaultPageLimit = 50
+	MaxPageLimit     = 100
+	MaxAccessLimit   = 200
+	MaxOffset        = 10000
+)
+
 func NormalizePagination(offset, limit int) (int, int) {
-	if limit < 0 {
-		limit = 0
+	return ClampPagination(offset, limit, DefaultPageLimit, MaxPageLimit)
+}
+
+func ClampPagination(offset, limit, defLimit, maxLimit int) (int, int) {
+	if defLimit <= 0 {
+		defLimit = DefaultPageLimit
 	}
-	if limit > 100 {
-		limit = 100
+
+	if maxLimit <= 0 {
+		maxLimit = MaxPageLimit
 	}
+
+	if limit <= 0 {
+		limit = defLimit
+	}
+
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
 	if offset < 0 {
 		offset = 0
 	}
+
+	if offset > MaxOffset {
+		offset = MaxOffset
+	}
+
 	return offset, limit
 }
 
@@ -313,7 +366,10 @@ type RepositorySummary struct {
 }
 
 func (uc *RepositoryUseCase) GetSummary(ctx context.Context, in ResolveRepositoryInput, ref string) (*RepositorySummary, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	repo, err := uc.resolveReadable(in)
 	if err != nil {
 		return nil, err
@@ -329,32 +385,73 @@ func (uc *RepositoryUseCase) GetSummary(ctx context.Context, in ResolveRepositor
 		stats    *domain.RepoStats
 		readme   *domain.BlobContent
 	)
-	g, _ := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
+		if err := gctx.Err(); err != nil {
+			return err
+		}
+
 		var e error
 		branches, e = uc.git.ListBranches(repo.Path)
 		if e != nil {
-			branches = []domain.RefInfo{}
+			if isEmptyOrMissingRef(e) {
+				branches = []domain.RefInfo{}
+				return nil
+			}
+			return mapGitBrowseErr(e)
 		}
+
 		return nil
 	})
 	g.Go(func() error {
+		if err := gctx.Err(); err != nil {
+			return err
+		}
+
 		var e error
 		tree, e = uc.git.ListTree(repo.Path, ref, "")
 		if e != nil {
-			tree = []domain.TreeEntry{}
+			if isEmptyOrMissingRef(e) {
+				tree = []domain.TreeEntry{}
+				return nil
+			}
+			return mapGitBrowseErr(e)
 		}
+
 		return nil
 	})
 	g.Go(func() error {
-		stats, _ = uc.git.GetStats(repo.Path, ref)
+		if err := gctx.Err(); err != nil {
+			return err
+		}
+
+		s, e := uc.git.GetStats(repo.Path, ref)
+		if e != nil {
+			if isEmptyOrMissingRef(e) {
+				return nil
+			}
+			return mapGitBrowseErr(e)
+		}
+		stats = s
+
 		return nil
 	})
 	g.Go(func() error {
-		readme, _ = uc.git.FindReadme(repo.Path, ref)
+		if err := gctx.Err(); err != nil {
+			return err
+		}
+
+		r, e := uc.git.FindReadme(repo.Path, ref)
+		if e != nil && !isEmptyOrMissingRef(e) {
+			return mapGitBrowseErr(e)
+		}
+		readme = r
+
 		return nil
 	})
-	_ = g.Wait()
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
 
 	return &RepositorySummary{
 		Branches: branches,

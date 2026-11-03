@@ -49,6 +49,7 @@
     "users": "Users",
     "accessLogs": "Access logs",
     "accessTokens": "Access tokens",
+    "sessions": "Sessions",
     "tagline": "Lightweight Git hosting",
     "refs": "refs",
     "langEn": "en",
@@ -91,6 +92,7 @@
     "commit": "Commit",
     "mode": "Mode",
     "size": "Size",
+    "changed": "Changed",
     "ref": "Ref"
   },
   "repo": {
@@ -102,12 +104,13 @@
     "commits": "commits: {n}"
   },
   "blob": {
-    "tree": "Tree",
-    "raw": "Download",
-    "binary": "Binary file - click Download to get it.",
-    "blame": "Authorship",
-    "hideBlame": "Hide authorship",
-    "fallbackName": "file"
+    "tree": "Code",
+    "raw": "Raw",
+    "binary": "Binary file - use Raw to download.",
+    "blame": "Blame",
+    "hideBlame": "Normal view",
+    "fallbackName": "file",
+    "lines": "lines"
   },
   "refs": {
     "head": "refs/heads/{name}",
@@ -198,6 +201,23 @@
     "createdTitle": "Token created",
     "createdHint": "Copy the token now. It will not be shown again."
   },
+  "sessions": {
+    "title": "Sessions",
+    "hint": "Devices where you are signed in. Revoke any session you do not recognize.",
+    "empty": "No active sessions.",
+    "current": "This device",
+    "unknownDevice": "Unknown device",
+    "lastSeen": "Last active",
+    "created": "Signed in",
+    "revoke": "Revoke",
+    "signOut": "Sign out",
+    "revokeOthers": "Sign out other devices",
+    "revokeAll": "Sign out everywhere",
+    "confirmRevoke": "Revoke this session?",
+    "confirmRevokeCurrent": "Sign out on this device?",
+    "confirmRevokeOthers": "Sign out on all other devices?",
+    "confirmRevokeAll": "Sign out on every device, including this one?"
+  },
   "errors": {
     "codes": {
       "username_required": "Enter a username",
@@ -212,8 +232,10 @@
       "current_password_wrong": "Current password is incorrect",
       "unauthorized": "Access denied",
       "session_expired": "Session expired",
+      "session_not_found": "Session not found",
       "repository_name_required": "Enter a repository name",
       "repository_already_exists": "A repository with this name already exists",
+      "repository_quota_exceeded": "Repository limit reached for this account",
       "invalid_repository_name": "Invalid repository name",
       "repository_not_found": "Repository not found",
       "repository_access_denied": "No access to this repository",
@@ -224,6 +246,8 @@
       "folder_not_found": "Folder not found",
       "folder_not_empty": "Folder is not empty",
       "ref_not_found": "Ref not found",
+      "blame_too_large": "File is too large to blame",
+      "history_too_large": "Repository history is too large for this operation",
       "path_not_found": "Path not found",
       "empty_repository": "Repository is empty",
       "invalid_json": "Invalid JSON",
@@ -232,6 +256,8 @@
       "not_found": "Not found",
       "invalid_token_id": "Invalid token id",
       "token_name_required": "Enter a token name",
+      "token_name_too_long": "Token name is too long (max 64 characters)",
+      "too_many_tokens": "Too many tokens (max 50); revoke one first",
       "token_not_found": "Token not found",
       "invalid_repo_move_path": "Use POST /api/repos/{owner}/.../{name}/move",
       "issue_title_required": "Enter an issue title",
@@ -300,6 +326,7 @@
     "searchFailed": "Search failed",
     "loadTokens": "Could not load tokens",
     "createToken": "Could not create token",
+    "loadSessions": "Could not load sessions",
     "loadUsers": "Could not load users",
     "loadAccessLogs": "Could not load access logs",
     "createUser": "Could not create user",

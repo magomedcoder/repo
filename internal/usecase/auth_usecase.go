@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -27,6 +28,7 @@ var (
 	ErrCurrentPasswordWrong = NewError(KindValidation, "current_password_wrong")
 	ErrUnauthorized         = NewError(KindUnauthorized, "unauthorized")
 	ErrSessionExpired       = NewError(KindUnauthorized, "session_expired")
+	ErrSessionNotFound      = NewError(KindNotFound, "session_not_found")
 	ErrRegistrationClosed   = NewError(KindForbidden, "registration_closed")
 	ErrTooManyAttempts      = NewError(KindRateLimited, "too_many_attempts")
 	ErrReservedSlug         = NewError(KindValidation, "reserved_slug")
@@ -36,8 +38,8 @@ var (
 )
 
 var reservedSlugs = map[string]struct{}{
-	"admin":    {},
 	"api":      {},
+	"cp":       {},
 	"data":     {},
 	"login":    {},
 	"register": {},
@@ -74,7 +76,10 @@ const (
 	sessionIdleTTL     = 14 * 24 * time.Hour
 	minUsernameLen     = 3
 	maxUsernameLen     = 39
+	userMaxFails       = 20
 )
+
+const dummyPasswordHash = "argon2id$v=19$m=65536,t=1,p=4$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 type AuthOutput struct {
 	User  *domain.User
@@ -82,16 +87,30 @@ type AuthOutput struct {
 }
 
 type RegisterInput struct {
-	Username string
-	Email    string
-	Password string
-	Role     domain.Role
+	Username  string
+	Email     string
+	Password  string
+	Role      domain.Role
+	IP        string
+	UserAgent string
 }
 
 type LoginInput struct {
-	Login    string
-	Password string
-	Key      string
+	Login     string
+	Password  string
+	Key       string
+	IP        string
+	UserAgent string
+}
+
+type SessionItem struct {
+	ID         uint      `json:"id"`
+	IP         string    `json:"ip"`
+	UserAgent  string    `json:"user_agent"`
+	Current    bool      `json:"current"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
 type ChangePasswordInput struct {
@@ -104,9 +123,11 @@ type ChangePasswordInput struct {
 type AuthUseCase struct {
 	users             domain.UserStore
 	sessions          domain.SessionStore
+	accessTokens      domain.AccessTokenStore
 	hasher            domain.PasswordHasher
 	tokens            domain.TokenGenerator
 	attempts          attempts.Counter
+	userAttempts      attempts.Counter
 	secret            string
 	allowRegistration bool
 	now               func() time.Time
@@ -115,16 +136,19 @@ type AuthUseCase struct {
 func NewAuthUseCase(
 	users domain.UserStore,
 	sessions domain.SessionStore,
+	accessTokens domain.AccessTokenStore,
 	hasher domain.PasswordHasher,
 	tokens domain.TokenGenerator,
 ) *AuthUseCase {
 	return &AuthUseCase{
-		users:    users,
-		sessions: sessions,
-		hasher:   hasher,
-		tokens:   tokens,
-		attempts: attempts.New(),
-		now:      time.Now,
+		users:        users,
+		sessions:     sessions,
+		accessTokens: accessTokens,
+		hasher:       hasher,
+		tokens:       tokens,
+		attempts:     attempts.New(),
+		userAttempts: attempts.New(attempts.Config{MaxFails: userMaxFails}),
+		now:          time.Now,
 	}
 }
 
@@ -137,7 +161,10 @@ func (uc *AuthUseCase) SetAllowRegistration(allow bool) {
 }
 
 func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (*AuthOutput, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if !uc.allowRegistration {
 		return nil, ErrRegistrationClosed
 	}
@@ -148,7 +175,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (*AuthOut
 		return nil, err
 	}
 
-	token, err := uc.createSession(user.ID)
+	token, err := uc.createSession(user.ID, in.IP, in.UserAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +184,9 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (*AuthOut
 }
 
 func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domain.User, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	username := strings.ToLower(strings.TrimSpace(in.Username))
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	password := in.Password
@@ -226,13 +255,17 @@ func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domai
 }
 
 func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	login := strings.ToLower(strings.TrimSpace(in.Login))
 	if login == "" || in.Password == "" {
 		return nil, ErrInvalidCredentials
 	}
 
-	if in.Key != "" && uc.attempts != nil && uc.attempts.Locked(in.Key) {
+	userKey := "login-user\n" + login
+	if uc.loginLocked(in.Key, userKey) {
 		return nil, ErrTooManyAttempts
 	}
 
@@ -245,17 +278,15 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 	} else {
 		user, err = uc.users.FindByUsername(login)
 	}
+
 	if err != nil {
-		if in.Key != "" && uc.attempts != nil {
-			uc.attempts.Fail(in.Key)
-		}
+		_ = uc.hasher.Compare(dummyPasswordHash, in.Password)
+		uc.loginFailed(in.Key, userKey)
 		return nil, ErrInvalidCredentials
 	}
 
 	if err := uc.hasher.Compare(user.PasswordHash, in.Password); err != nil {
-		if in.Key != "" && uc.attempts != nil {
-			uc.attempts.Fail(in.Key)
-		}
+		uc.loginFailed(in.Key, userKey)
 		return nil, ErrInvalidCredentials
 	}
 
@@ -263,7 +294,11 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 		uc.attempts.Reset(in.Key)
 	}
 
-	token, err := uc.createSession(user.ID)
+	if uc.userAttempts != nil {
+		uc.userAttempts.Reset(userKey)
+	}
+
+	token, err := uc.createSession(user.ID, in.IP, in.UserAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -271,8 +306,28 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 	return &AuthOutput{User: sanitizeUser(user), Token: token}, nil
 }
 
+func (uc *AuthUseCase) loginLocked(key, userKey string) bool {
+	if key != "" && uc.attempts != nil && uc.attempts.Locked(key) {
+		return true
+	}
+
+	return uc.userAttempts != nil && uc.userAttempts.Locked(userKey)
+}
+
+func (uc *AuthUseCase) loginFailed(key, userKey string) {
+	if key != "" && uc.attempts != nil {
+		uc.attempts.Fail(key)
+	}
+
+	if uc.userAttempts != nil {
+		uc.userAttempts.Fail(userKey)
+	}
+}
+
 func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInput) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if in.UserID == 0 {
 		return ErrUnauthorized
 	}
@@ -304,11 +359,19 @@ func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInpu
 		return fmt.Errorf("revoke sessions: %w", err)
 	}
 
+	if uc.accessTokens != nil {
+		if err := uc.accessTokens.DeleteByUserID(in.UserID); err != nil {
+			return fmt.Errorf("revoke access tokens: %w", err)
+		}
+	}
+
 	return nil
 }
 
 func (uc *AuthUseCase) Logout(ctx context.Context, token string) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if token == "" {
 		return nil
 	}
@@ -317,13 +380,17 @@ func (uc *AuthUseCase) Logout(ctx context.Context, token string) error {
 }
 
 func (uc *AuthUseCase) Me(ctx context.Context, token string) (*domain.User, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	user, _, err := uc.Authenticate(ctx, token)
 	return user, err
 }
 
 func (uc *AuthUseCase) Authenticate(ctx context.Context, token string) (*domain.User, *domain.Session, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	if token == "" {
 		return nil, nil, ErrUnauthorized
 	}
@@ -381,7 +448,7 @@ func (uc *AuthUseCase) Authenticate(ctx context.Context, token string) (*domain.
 	return sanitizeUser(user), session, nil
 }
 
-func (uc *AuthUseCase) createSession(userID uint) (string, error) {
+func (uc *AuthUseCase) createSession(userID uint, ip, userAgent string) (string, error) {
 	token, err := uc.tokens.Generate()
 	if err != nil {
 		return "", fmt.Errorf("generate session token: %w", err)
@@ -392,6 +459,8 @@ func (uc *AuthUseCase) createSession(userID uint) (string, error) {
 	session := &domain.Session{
 		Token:      token,
 		UserID:     userID,
+		IP:         strings.TrimSpace(ip),
+		UserAgent:  strings.TrimSpace(userAgent),
 		ExpiresAt:  now.Add(sessionIdleTTL),
 		LastSeenAt: now,
 		CreatedAt:  now,
@@ -401,6 +470,101 @@ func (uc *AuthUseCase) createSession(userID uint) (string, error) {
 	}
 
 	return token, nil
+}
+
+func (uc *AuthUseCase) ListSessions(ctx context.Context, userID uint, currentToken string) ([]SessionItem, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if userID == 0 {
+		return nil, ErrUnauthorized
+	}
+
+	sessions, err := uc.sessions.ListByUserID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+
+	var currentID uint
+	if currentToken != "" {
+		if cur, err := uc.sessions.FindByToken(currentToken); err == nil && cur.UserID == userID {
+			currentID = cur.ID
+		}
+	}
+
+	out := make([]SessionItem, 0, len(sessions))
+	now := uc.now()
+	for _, s := range sessions {
+		if !s.ExpiresAt.IsZero() && !s.ExpiresAt.After(now) {
+			_ = uc.sessions.DeleteByUserAndID(userID, s.ID)
+			continue
+		}
+		out = append(out, SessionItem{
+			ID:         s.ID,
+			IP:         s.IP,
+			UserAgent:  s.UserAgent,
+			Current:    s.ID == currentID && currentID != 0,
+			CreatedAt:  s.CreatedAt,
+			LastSeenAt: s.LastSeenAt,
+			ExpiresAt:  s.ExpiresAt,
+		})
+	}
+	return out, nil
+}
+
+func (uc *AuthUseCase) RevokeSession(ctx context.Context, userID, sessionID uint, currentToken string) (revokedCurrent bool, err error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	if userID == 0 || sessionID == 0 {
+		return false, ErrUnauthorized
+	}
+
+	var currentID uint
+	if currentToken != "" {
+		if cur, ferr := uc.sessions.FindByToken(currentToken); ferr == nil && cur.UserID == userID {
+			currentID = cur.ID
+		}
+	}
+
+	if err := uc.sessions.DeleteByUserAndID(userID, sessionID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return false, ErrSessionNotFound
+		}
+		return false, err
+	}
+
+	return currentID != 0 && sessionID == currentID, nil
+}
+
+func (uc *AuthUseCase) RevokeOtherSessions(ctx context.Context, userID uint, keepToken string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if userID == 0 {
+		return ErrUnauthorized
+	}
+
+	if keepToken == "" {
+		return ErrUnauthorized
+	}
+
+	return uc.sessions.DeleteByUserIDExcept(userID, keepToken)
+}
+
+func (uc *AuthUseCase) RevokeAllSessions(ctx context.Context, userID uint) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if userID == 0 {
+		return ErrUnauthorized
+	}
+
+	return uc.sessions.DeleteByUserID(userID)
 }
 
 func validateUsername(username string) error {

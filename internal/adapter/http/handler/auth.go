@@ -63,15 +63,17 @@ func (h *AuthHandler) Register(c *httpx.Context) error {
 	}
 
 	out, err := h.auth.Register(c.Ctx(), usecase.RegisterInput{
-		Username: req.Username,
-		Email:    req.Email,
-		Password: req.Password,
+		Username:  req.Username,
+		Email:     req.Email,
+		Password:  req.Password,
+		IP:        middleware.ClientIP(c.R),
+		UserAgent: c.R.UserAgent(),
 	})
 	if err != nil {
 		return mapError(c, err)
 	}
 
-	h.setSessionCookie(c.W, out.Token)
+	h.setSessionCookie(c.W, c.R, out.Token)
 	if h.access != nil {
 		h.access.Register(c.R, out.User)
 	}
@@ -85,9 +87,11 @@ func (h *AuthHandler) Login(c *httpx.Context) error {
 	}
 
 	out, err := h.auth.Login(c.Ctx(), usecase.LoginInput{
-		Login:    req.Login,
-		Password: req.Password,
-		Key:      middleware.ClientIP(c.R) + "\n" + strings.ToLower(strings.TrimSpace(req.Login)),
+		Login:     req.Login,
+		Password:  req.Password,
+		Key:       middleware.ClientIPKey(c.R) + "\n" + strings.ToLower(strings.TrimSpace(req.Login)),
+		IP:        middleware.ClientIP(c.R),
+		UserAgent: c.R.UserAgent(),
 	})
 	if err != nil {
 		if h.access != nil {
@@ -96,7 +100,7 @@ func (h *AuthHandler) Login(c *httpx.Context) error {
 		return mapError(c, err)
 	}
 
-	h.setSessionCookie(c.W, out.Token)
+	h.setSessionCookie(c.W, c.R, out.Token)
 	if h.access != nil {
 		h.access.Login(c.R, out.User)
 	}
@@ -131,7 +135,7 @@ func (h *AuthHandler) Logout(c *httpx.Context) error {
 	token := middleware.SessionToken(c.R)
 	user, _ := h.auth.Me(c.Ctx(), token)
 	_ = h.auth.Logout(c.Ctx(), token)
-	h.clearSessionCookie(c.W)
+	h.clearSessionCookie(c.W, c.R)
 	if h.access != nil {
 		h.access.Logout(c.R, user)
 	}
@@ -148,25 +152,94 @@ func (h *AuthHandler) Me(c *httpx.Context) error {
 	return httpx.OK(c, userResponse(user))
 }
 
-func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, token string) {
+type sessionsResponse struct {
+	Sessions []usecase.SessionItem `json:"sessions"`
+}
+
+func (h *AuthHandler) ListSessions(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	items, err := h.auth.ListSessions(c.Ctx(), user.ID, middleware.SessionToken(c.R))
+	if err != nil {
+		return mapError(c, err)
+	}
+
+	return httpx.OK(c, sessionsResponse{Sessions: items})
+}
+
+func (h *AuthHandler) RevokeSession(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	id, err := parseID(c.Param("id"))
+	if err != nil || id == 0 {
+		return c.Error(http.StatusBadRequest, "invalid_json")
+	}
+
+	revokedCurrent, err := h.auth.RevokeSession(c.Ctx(), user.ID, id, middleware.SessionToken(c.R))
+	if err != nil {
+		return mapError(c, err)
+	}
+
+	if revokedCurrent {
+		h.clearSessionCookie(c.W, c.R)
+	}
+
+	return c.NoContent()
+}
+
+func (h *AuthHandler) RevokeOtherSessions(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	token := middleware.SessionToken(c.R)
+	if err := h.auth.RevokeOtherSessions(c.Ctx(), user.ID, token); err != nil {
+		return mapError(c, err)
+	}
+	return c.NoContent()
+}
+
+func (h *AuthHandler) RevokeAllSessions(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	if err := h.auth.RevokeAllSessions(c.Ctx(), user.ID); err != nil {
+		return mapError(c, err)
+	}
+	h.clearSessionCookie(c.W, c.R)
+
+	return c.NoContent()
+}
+
+func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     middleware.SessionCookie,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.secure,
+		Secure:   h.secure || middleware.IsHTTPS(r),
 		SameSite: h.sameSite,
-		Expires:  time.Now().Add(14 * 24 * time.Hour),
+		Expires:  time.Now().Add(30 * 24 * time.Hour),
+		MaxAge:   int((30 * 24 * time.Hour).Seconds()),
 	})
 }
 
-func (h *AuthHandler) clearSessionCookie(w http.ResponseWriter) {
+func (h *AuthHandler) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     middleware.SessionCookie,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.secure,
+		Secure:   h.secure || middleware.IsHTTPS(r),
 		SameSite: h.sameSite,
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),

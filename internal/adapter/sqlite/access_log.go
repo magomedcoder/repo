@@ -104,3 +104,7 @@ func (s *AccessLogStore) List(filter domain.AccessLogFilter) ([]domain.AccessLog
 
 	return out, int(total), nil
 }
+
+func (s *AccessLogStore) DeleteOlderThan(before time.Time) error {
+	return s.db.Where("created_at < ?", before).Delete(&accessLogModel{}).Error
+}

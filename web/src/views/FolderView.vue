@@ -118,7 +118,6 @@ watch(
         <span class="flex shrink-0 gap-3 whitespace-nowrap text-ink-muted [&_a]:no-underline hover:[&_a]:underline">
           <RouterLink :to="repoLocation('repo', entry.repo_path)">{{ $t('index.summary') }}</RouterLink>
           <RouterLink :to="repoLocation('repo-commits', entry.repo_path)">{{ $t('index.log') }}</RouterLink>
-          <RouterLink :to="repoLocation('repo-tree', entry.repo_path)">{{ $t('index.tree') }}</RouterLink>
         </span>
       </div>
     </div>

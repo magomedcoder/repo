@@ -11,13 +11,17 @@ import type { PageError } from '@/i18n'
 
 const props = defineProps<{
   repoPath: string
-  tab: 'summary' | 'log' | 'tree' | 'commit' | 'refs' | 'issues' | 'pulls' | 'settings'
+  tab: 'summary' | 'log' | 'commit' | 'refs' | 'issues' | 'pulls' | 'settings'
   repo: Repository | null
   loading?: boolean
   error?: PageError | string
 }>()
 
 const { isOwner } = useCanWrite(() => props.repo)
+
+function isNotFound(error: PageError | string | null | undefined) {
+  return typeof error === 'object' && error?.kind === 'not_found'
+}
 
 const parts = computed(() => normalizeRepoPath(props.repoPath).split('/').filter(Boolean))
 const folderSlug = computed(() => {
@@ -36,7 +40,12 @@ function active(name: string) {
 </script>
 
 <template>
-  <div>
+  <PageState
+    v-if="loading || isNotFound(error) || (error && !repo)"
+    :loading="!!loading"
+    :error="error || ''"
+  />
+  <div v-else>
     <div class="mb-0 font-mono text-[90%] text-ink">
       <RouterLink to="/" class="text-ink-muted no-underline hover:underline">{{ $t('nav.root') }}</RouterLink>
       <template v-if="folderSlug">
@@ -63,9 +72,6 @@ function active(name: string) {
       <RouterLink :to="repoLocation('repo-commits', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('log') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
         {{ $t('index.log') }}
       </RouterLink>
-      <RouterLink :to="repoLocation('repo-tree', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('tree') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
-        {{ $t('index.tree') }}
-      </RouterLink>
       <RouterLink :to="repoLocation('repo-refs', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('refs') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">
         {{ $t('nav.refs') }}
       </RouterLink>
@@ -88,10 +94,8 @@ function active(name: string) {
       </RouterLink>
     </nav>
 
-    <div class="pt-4">
-      <PageState :loading="!!loading" :error="error || ''">
-        <slot v-if="repo" />
-      </PageState>
+    <div class="pt-1.5">
+      <slot v-if="repo" />
     </div>
   </div>
 </template>

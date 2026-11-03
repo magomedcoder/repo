@@ -10,6 +10,7 @@ const (
 	defaultLockDuration = 15 * time.Minute
 	sweepEvery          = 64
 	idleTTL             = 30 * time.Minute
+	defaultMaxKeys      = 100_000
 )
 
 type Counter interface {
@@ -21,6 +22,7 @@ type Counter interface {
 type Config struct {
 	MaxFails int
 	BaseLock time.Duration
+	MaxKeys  int
 	Now      func() time.Time
 }
 
@@ -36,6 +38,7 @@ type memory struct {
 	fails     map[string]*state
 	now       func() time.Time
 	maxFail   int
+	maxKeys   int
 	base      time.Duration
 	calls     int
 	lastSweep time.Time
@@ -55,6 +58,10 @@ func New(cfg ...Config) Counter {
 		c.BaseLock = defaultLockDuration
 	}
 
+	if c.MaxKeys <= 0 {
+		c.MaxKeys = defaultMaxKeys
+	}
+
 	if c.Now == nil {
 		c.Now = time.Now
 	}
@@ -64,6 +71,7 @@ func New(cfg ...Config) Counter {
 		fails:     map[string]*state{},
 		now:       c.Now,
 		maxFail:   c.MaxFails,
+		maxKeys:   c.MaxKeys,
 		base:      c.BaseLock,
 		lastSweep: now,
 	}
@@ -76,6 +84,11 @@ func (m *memory) Fail(key string) bool {
 	now := m.now()
 	st := m.fails[key]
 	if st == nil {
+		if len(m.fails) >= m.maxKeys {
+			m.sweep(now)
+			m.lastSweep = now
+			m.evictOldest(now)
+		}
 		st = &state{}
 		m.fails[key] = st
 	}
@@ -152,5 +165,30 @@ func (m *memory) sweep(now time.Time) {
 		if lockExpired || idle {
 			delete(m.fails, k)
 		}
+	}
+}
+
+func (m *memory) evictOldest(now time.Time) {
+	if len(m.fails) < m.maxKeys {
+		return
+	}
+
+	var (
+		oldestKey string
+		oldest    time.Time
+		found     bool
+	)
+	for k, st := range m.fails {
+		if !st.lockedUntil.IsZero() && now.Before(st.lockedUntil) {
+			continue
+		}
+
+		if !found || st.lastUsed.Before(oldest) {
+			oldestKey, oldest, found = k, st.lastUsed, true
+		}
+	}
+
+	if found {
+		delete(m.fails, oldestKey)
 	}
 }

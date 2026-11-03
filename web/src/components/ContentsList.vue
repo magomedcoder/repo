@@ -21,7 +21,7 @@ const emit = defineEmits<{
   sort: [key: string]
 }>()
 
-function repoTo(row: ReturnType<typeof toContentRow>, page: 'repo' | 'repo-commits' | 'repo-tree') {
+function repoTo(row: ReturnType<typeof toContentRow>, page: 'repo' | 'repo-commits') {
   return repoLocation(page, row.repo_path)
 }
 
@@ -43,7 +43,6 @@ function canOpenFolder(row: ReturnType<typeof toContentRow>) {
             <button type="button" class="cursor-pointer border-0 bg-transparent p-0 text-[10pt] font-medium text-ink hover:underline" @click="emit('sort', 'name')">{{ $t('index.name') }}</button>
           </th>
           <th><button type="button" class="cursor-pointer border-0 bg-transparent p-0 text-[10pt] font-medium text-ink hover:underline" @click="emit('sort', 'description')">{{ $t('index.description') }}</button></th>
-          <th class="w-[12%]">{{ $t('index.owner') }}</th>
           <th class="w-[12%]"><button type="button" class="cursor-pointer border-0 bg-transparent p-0 text-[10pt] font-medium text-ink hover:underline" @click="emit('sort', 'idle')">{{ $t('index.idle') }}</button></th>
           <th class="w-[22%]">{{ $t('index.links') }}</th>
         </tr>
@@ -59,16 +58,14 @@ function canOpenFolder(row: ReturnType<typeof toContentRow>) {
             <RouterLink :to="repoTo(row, 'repo')">{{ row.name }}</RouterLink>
           </td>
           <td class="truncate" :title="row.description || undefined">{{ row.description }}</td>
-          <td class="truncate">{{ row.owner }}</td>
           <td class="whitespace-nowrap">{{ idleOf(row) }}</td>
           <td class="whitespace-nowrap [&_a]:mr-[0.6em]">
             <RouterLink :to="repoTo(row, 'repo')">{{ $t('index.summary') }}</RouterLink>
             <RouterLink :to="repoTo(row, 'repo-commits')">{{ $t('index.log') }}</RouterLink>
-            <RouterLink :to="repoTo(row, 'repo-tree')">{{ $t('index.tree') }}</RouterLink>
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td colspan="5">{{ $t('list.noRepos') }}</td>
+          <td colspan="4">{{ $t('list.noRepos') }}</td>
         </tr>
       </tbody>
     </table>

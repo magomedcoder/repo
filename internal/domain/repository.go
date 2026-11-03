@@ -27,6 +27,13 @@ type Repository struct {
 	UpdatedAt            time.Time
 }
 
+type RepoOrder string
+
+const (
+	RepoOrderUpdated RepoOrder = ""
+	RepoOrderName    RepoOrder = "name"
+)
+
 type RepositoryStore interface {
 	Create(repo *Repository) error
 
@@ -36,15 +43,19 @@ type RepositoryStore interface {
 
 	FindByRepoPath(repoPath string) (*Repository, error)
 
-	ListByOwnerID(ownerKind string, ownerID uint, limit, offset int) ([]Repository, error)
+	ListByOwnerID(ownerKind string, ownerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
+
+	CountByOwnerID(ownerKind string, ownerID uint) (int64, error)
+
+	ListPublicIDsByOwner(ownerKind string, ownerID uint) ([]uint, error)
 
 	ListByOwnerAndFolderID(ownerKind string, ownerID uint, folderID *uint) ([]Repository, error)
 
-	ListPublic(limit, offset int) ([]Repository, error)
+	ListPublic(limit, offset int, order RepoOrder) ([]Repository, error)
 
-	ListHome(limit, offset int) ([]Repository, error)
+	ListHome(limit, offset int, order RepoOrder) ([]Repository, error)
 
-	SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int) ([]Repository, error)
+	SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order RepoOrder) ([]Repository, error)
 
 	ExistsByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (bool, error)
 
@@ -73,13 +84,16 @@ type CommitInfo struct {
 }
 
 type TreeEntry struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Type string `json:"type"` // tree | blob
-	Mode string `json:"mode"`
-	Size int64  `json:"size"`
-	SHA  string `json:"sha"`
+	Name       string    `json:"name"`
+	Path       string    `json:"path"`
+	Type       string    `json:"type"` // tree | blob
+	Mode       string    `json:"mode"`
+	Size       int64     `json:"size"`
+	SHA        string    `json:"sha"`
+	ModifiedAt time.Time `json:"modified_at,omitzero"`
 }
+
+const MaxBlobReadBytes = 2 << 20
 
 type BlobContent struct {
 	Path     string `json:"path"`
@@ -122,6 +136,11 @@ type RepoStats struct {
 	Languages   map[string]int64 `json:"languages"`
 }
 
+type ReceivePackOptions struct {
+	ProtectDefaultBranch bool
+	DefaultBranch        string
+}
+
 type GitRepository interface {
 	GetReposRoot() string
 
@@ -135,7 +154,9 @@ type GitRepository interface {
 
 	AdvertiseRefs(ctx context.Context, repoPath, service string, w io.Writer) error
 
-	ServePack(ctx context.Context, repoPath, service string, stdin io.Reader, stdout io.Writer) error
+	ServePack(ctx context.Context, repoPath, service string, stdin io.Reader, stdout io.Writer, receive *ReceivePackOptions) error
+
+	LockRepo(repoPath string) func()
 
 	EnsureDefaultBranch(repoPath, branch string) error
 

@@ -95,7 +95,10 @@ func (uc *FolderUseCase) resolveOwner(viewerID, ownerID uint, write bool) (kind 
 }
 
 func (uc *FolderUseCase) Create(ctx context.Context, in CreateFolderInput) (*FolderItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	viewerID := in.ViewerID
 	if viewerID == 0 {
 		viewerID = in.OwnerID
@@ -140,7 +143,10 @@ func (uc *FolderUseCase) Create(ctx context.Context, in CreateFolderInput) (*Fol
 }
 
 func (uc *FolderUseCase) List(ctx context.Context, viewerID, ownerID uint) ([]FolderItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
 	if err != nil {
 		return nil, err
@@ -164,7 +170,10 @@ func (uc *FolderUseCase) List(ctx context.Context, viewerID, ownerID uint) ([]Fo
 }
 
 func (uc *FolderUseCase) GetContents(ctx context.Context, viewerID, ownerID uint, path string) (*FolderContents, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
 	if err != nil {
 		return nil, err
@@ -208,7 +217,10 @@ func (uc *FolderUseCase) folderContents(ownerKind string, ownerID uint, folder *
 }
 
 func (uc *FolderUseCase) Rename(ctx context.Context, in RenameFolderInput) (*FolderItem, error) {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	viewerID := in.ViewerID
 	if viewerID == 0 {
 		viewerID = in.OwnerID
@@ -293,7 +305,10 @@ func (uc *FolderUseCase) Rename(ctx context.Context, in RenameFolderInput) (*Fol
 }
 
 func (uc *FolderUseCase) Delete(ctx context.Context, viewerID, ownerID uint, path string) error {
-	_ = ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, true)
 	if err != nil {
 		return err

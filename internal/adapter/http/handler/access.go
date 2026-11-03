@@ -32,11 +32,21 @@ func (h *AccessHandler) Visit(c *httpx.Context) error {
 	}
 
 	path := strings.TrimSpace(req.Path)
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+
 	if path == "" {
 		path = "/"
 	}
+
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
+	}
+
+	if len(path) > 512 || strings.Contains(path, "..") || strings.Contains(path, "//") ||
+		strings.ContainsAny(path, "\\%") || strings.IndexFunc(path, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return c.NoContent()
 	}
 
 	if path == "/api" || strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/assets/") {

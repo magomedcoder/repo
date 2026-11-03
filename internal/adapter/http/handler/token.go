@@ -46,6 +46,8 @@ func (h *TokenHandler) Create(c *httpx.Context) error {
 		h.access.TokenCreate(c.R, user, req.Name)
 	}
 
+	c.W.Header().Set("Cache-Control", "no-store")
+
 	return httpx.Created(c, out)
 }
 

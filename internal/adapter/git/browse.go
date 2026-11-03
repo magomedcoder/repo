@@ -28,20 +28,19 @@ func (r *Repository) open(repoPath string) (*gogit.Repository, error) {
 	}
 
 	if r.opens != nil {
-		if cached, ok := r.opens.get(safe); ok {
-			return cached, nil
-		}
+		return r.opens.getOrOpen(safe, func() (*gogit.Repository, error) {
+			repo, err := gogit.PlainOpen(safe)
+			if err != nil {
+				return nil, fmt.Errorf("open repository: %w", err)
+			}
+			return repo, nil
+		})
 	}
 
 	repo, err := gogit.PlainOpen(safe)
 	if err != nil {
 		return nil, fmt.Errorf("open repository: %w", err)
 	}
-
-	if r.opens != nil {
-		r.opens.put(safe, repo)
-	}
-
 	return repo, nil
 }
 
@@ -121,6 +120,14 @@ func (r *Repository) ListCommits(repoPath, ref string, offset, limit int) ([]dom
 		limit = 30
 	}
 
+	if offset < 0 {
+		offset = 0
+	}
+
+	if offset > maxCommitOffset {
+		offset = maxCommitOffset
+	}
+
 	var out []domain.CommitInfo
 	i := 0
 	err = iter.ForEach(func(c *object.Commit) error {
@@ -192,6 +199,7 @@ func (r *Repository) ListTree(repoPath, ref, dirPath string) ([]domain.TreeEntry
 		}
 	}
 
+	sizeCache := make(map[plumbing.Hash]int64)
 	out := make([]domain.TreeEntry, 0, len(tree.Entries))
 	for _, e := range tree.Entries {
 		entryPath := e.Name
@@ -209,6 +217,8 @@ func (r *Repository) ListTree(repoPath, ref, dirPath string) ([]domain.TreeEntry
 		switch e.Mode {
 		case filemode.Dir:
 			item.Type = "tree"
+			budget := &treeSizeBudget{remaining: maxTreeSizeNodes}
+			item.Size = treeSizeCached(repo, e.Hash, sizeCache, 0, budget)
 		default:
 			item.Type = "blob"
 			if blob, err := repo.BlobObject(e.Hash); err == nil {
@@ -218,7 +228,149 @@ func (r *Repository) ListTree(repoPath, ref, dirPath string) ([]domain.TreeEntry
 		out = append(out, item)
 	}
 
+	_ = fillTreeModifiedAt(commit, out)
 	return out, nil
+}
+
+const (
+	maxTreeHistoryWalk = 100
+	maxTreeSizeDepth   = 8
+	maxTreeSizeNodes   = 5000
+	maxStatsCommits    = 10000
+	maxStatsLangFiles  = 20000
+	maxBlameLines      = 20000
+	maxDiffFiles       = 500
+	maxDiffPatchBytes  = 1 << 20
+	maxCommitOffset    = 10000
+	maxDiskStatFiles   = 50000
+)
+
+type treeSizeBudget struct {
+	remaining int
+}
+
+func treeSizeCached(repo *gogit.Repository, hash plumbing.Hash, cache map[plumbing.Hash]int64, depth int, budget *treeSizeBudget) int64 {
+	if size, ok := cache[hash]; ok {
+		return size
+	}
+	if depth > maxTreeSizeDepth || budget == nil || budget.remaining <= 0 {
+		return 0
+	}
+
+	tree, err := repo.TreeObject(hash)
+	if err != nil {
+		return 0
+	}
+
+	budget.remaining--
+	var total int64
+	for _, e := range tree.Entries {
+		if budget.remaining <= 0 {
+			break
+		}
+		switch e.Mode {
+		case filemode.Dir:
+			total += treeSizeCached(repo, e.Hash, cache, depth+1, budget)
+		default:
+			budget.remaining--
+			if blob, err := repo.BlobObject(e.Hash); err == nil {
+				total += blob.Size
+			}
+		}
+	}
+
+	cache[hash] = total
+	return total
+}
+
+func fillTreeModifiedAt(start *object.Commit, entries []domain.TreeEntry) error {
+	if len(entries) == 0 || start == nil {
+		return nil
+	}
+
+	tipWhen := start.Author.When
+	pending := make(map[string]int, len(entries))
+	for i := range entries {
+		entries[i].ModifiedAt = tipWhen
+		pending[entries[i].Path] = i
+	}
+
+	current := start
+	for walked := 0; len(pending) > 0 && walked < maxTreeHistoryWalk; walked++ {
+		currTree, err := current.Tree()
+		if err != nil {
+			break
+		}
+
+		when := current.Author.When
+		if current.NumParents() == 0 {
+			for _, idx := range pending {
+				entries[idx].ModifiedAt = when
+			}
+			return nil
+		}
+
+		parent, err := current.Parent(0)
+		if err != nil {
+			for _, idx := range pending {
+				entries[idx].ModifiedAt = when
+			}
+			return nil
+		}
+
+		parentTree, err := parent.Tree()
+		if err != nil {
+			for _, idx := range pending {
+				entries[idx].ModifiedAt = when
+			}
+			return nil
+		}
+
+		for p, idx := range pending {
+			if pathChangedSinceParent(currTree, parentTree, p) {
+				entries[idx].ModifiedAt = when
+				delete(pending, p)
+			}
+		}
+
+		current = parent
+	}
+
+	if len(pending) > 0 && current != nil {
+		when := current.Author.When
+		for _, idx := range pending {
+			entries[idx].ModifiedAt = when
+		}
+	}
+
+	return nil
+}
+
+func pathChangedSinceParent(curr, parent *object.Tree, entryPath string) bool {
+	currHash, currOK := treeEntryHash(curr, entryPath)
+	if !currOK {
+		return false
+	}
+
+	parentHash, parentOK := treeEntryHash(parent, entryPath)
+	if !parentOK {
+		return true
+	}
+
+	return currHash != parentHash
+}
+
+func treeEntryHash(tree *object.Tree, entryPath string) (plumbing.Hash, bool) {
+	if tree == nil {
+		return plumbing.ZeroHash, false
+	}
+
+	entry, err := tree.FindEntry(entryPath)
+	if err != nil {
+		return plumbing.ZeroHash, false
+	}
+
+	return entry.Hash, true
 }
 
 func (r *Repository) GetBlob(repoPath, ref, filePath string) (*domain.BlobContent, error) {
@@ -249,7 +401,7 @@ func (r *Repository) GetBlob(repoPath, ref, filePath string) (*domain.BlobConten
 
 	defer reader.Close()
 
-	data, err := io.ReadAll(io.LimitReader(reader, 2<<20)) // 2MB
+	data, err := io.ReadAll(io.LimitReader(reader, domain.MaxBlobReadBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -275,11 +427,11 @@ func (r *Repository) GetBlame(repoPath, ref, filePath string) (*domain.BlameResu
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		return r.getBlame(repoPath, ref, filePath)
+		return r.getBlame(ctx, repoPath, ref, filePath)
 	})
 }
 
-func (r *Repository) getBlame(repoPath, ref, filePath string) (*domain.BlameResult, error) {
+func (r *Repository) getBlame(ctx context.Context, repoPath, ref, filePath string) (*domain.BlameResult, error) {
 	filePath = strings.Trim(filePath, "/")
 	if filePath == "" {
 		return nil, fmt.Errorf("path required")
@@ -299,13 +451,49 @@ func (r *Repository) getBlame(repoPath, ref, filePath string) (*domain.BlameResu
 		return nil, err
 	}
 
-	blamed, err := gogit.Blame(commit, filePath)
+	file, err := commit.File(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("blame: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrFileNotFound, err)
+	}
+
+	if file.Size > maxBlameFileBytes {
+		return nil, ErrBlameTooLarge
+	}
+
+	select {
+	case blameSem <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	type blameRes struct {
+		b   *gogit.BlameResult
+		err error
+	}
+
+	done := make(chan blameRes, 1)
+	go func() {
+		defer func() { <-blameSem }()
+		b, err := gogit.Blame(commit, filePath)
+		done <- blameRes{b, err}
+	}()
+
+	var blamed *gogit.BlameResult
+	select {
+	case res := <-done:
+		if res.err != nil {
+			return nil, fmt.Errorf("blame: %w", res.err)
+		}
+		blamed = res.b
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 
 	result := &domain.BlameResult{Path: filePath, Ref: ref, Lines: []domain.BlameLine{}}
 	for i, line := range blamed.Lines {
+		if i >= maxBlameLines {
+			break
+		}
 		if line == nil {
 			continue
 		}
@@ -327,11 +515,11 @@ func (r *Repository) GetCommitDiff(repoPath, sha string) (*domain.CommitDiff, er
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		return r.getCommitDiff(repoPath, sha)
+		return r.getCommitDiff(ctx, repoPath, sha)
 	})
 }
 
-func (r *Repository) getCommitDiff(repoPath, sha string) (*domain.CommitDiff, error) {
+func (r *Repository) getCommitDiff(ctx context.Context, repoPath, sha string) (*domain.CommitDiff, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return nil, err
@@ -373,39 +561,17 @@ func (r *Repository) getCommitDiff(repoPath, sha string) (*domain.CommitDiff, er
 	}
 
 	for _, change := range changes {
-		action, err := change.Action()
-		if err != nil {
-			continue
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 
-		fd := domain.FileDiff{}
-		switch action.String() {
-		case "Insert":
-			fd.Status = "added"
-			fd.Path = change.To.Name
-		case "Delete":
-			fd.Status = "deleted"
-			fd.Path = change.From.Name
-		case "Modify":
-			fd.Status = "modified"
-			fd.Path = change.To.Name
-			if change.From.Name != "" && change.From.Name != change.To.Name {
-				fd.Status = "renamed"
-				fd.OldPath = change.From.Name
-			}
-		default:
-			fd.Status = strings.ToLower(action.String())
-			if change.To.Name != "" {
-				fd.Path = change.To.Name
-			} else {
-				fd.Path = change.From.Name
-			}
+		if len(diff.Files) >= maxDiffFiles {
+			break
 		}
 
-		if patch, err := change.Patch(); err == nil {
-			fd.Patch = patch.String()
+		if fd, ok := fileDiffFromChange(ctx, change); ok {
+			diff.Files = append(diff.Files, fd)
 		}
-		diff.Files = append(diff.Files, fd)
 	}
 
 	return diff, nil
@@ -417,8 +583,13 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 		return nil, err
 	}
 
+	safe, err := fsutil.SafePath(r.Root, repoPath)
+	if err != nil {
+		return nil, err
+	}
+
 	hash, herr := r.resolveHash(repo, ref)
-	cacheKey := repoPath + "@" + hash.String()
+	cacheKey := safe + "@" + hash.String()
 	if herr == nil && r.stats != nil {
 		if cached, ok := r.stats.get(cacheKey); ok {
 			return cached, nil
@@ -429,11 +600,18 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 		Languages: map[string]int64{},
 	}
 
-	_ = filepath.Walk(repoPath, func(p string, info os.FileInfo, err error) error {
+	fileCount := 0
+	_ = filepath.Walk(safe, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
+
 		stats.SizeBytes += info.Size()
+		fileCount++
+		if fileCount >= maxDiskStatFiles {
+			return filepath.SkipAll
+		}
+
 		return nil
 	})
 
@@ -449,6 +627,10 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 
 	_ = iter.ForEach(func(c *object.Commit) error {
 		stats.CommitCount++
+		if stats.CommitCount >= maxStatsCommits {
+			return stoplist
+		}
+
 		return nil
 	})
 
@@ -462,7 +644,13 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 		return stats, nil
 	}
 
+	langFiles := 0
 	_ = tree.Files().ForEach(func(f *object.File) error {
+		langFiles++
+		if langFiles > maxStatsLangFiles {
+			return stoplist
+		}
+
 		lang := languageFromPath(f.Name)
 		if lang == "" {
 			return nil
@@ -493,6 +681,10 @@ func (r *Repository) FindReadme(repoPath, ref string) (*domain.BlobContent, erro
 
 func (r *Repository) resolveHash(repo *gogit.Repository, ref string) (plumbing.Hash, error) {
 	ref = strings.TrimSpace(ref)
+	if err := validateRefName(ref); err != nil {
+		return plumbing.ZeroHash, err
+	}
+
 	if ref == "" {
 		head, err := repo.Head()
 		if err != nil {

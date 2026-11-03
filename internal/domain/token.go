@@ -21,5 +21,7 @@ type AccessTokenStore interface {
 
 	DeleteByUserAndID(userID, id uint) error
 
+	DeleteByUserID(userID uint) error
+
 	TouchLastUsed(id uint, at time.Time) error
 }

@@ -34,6 +34,36 @@ func (c *openCache) get(path string) (*gogit.Repository, bool) {
 	return repo, ok
 }
 
+func (c *openCache) getOrOpen(path string, open func() (*gogit.Repository, error)) (*gogit.Repository, error) {
+	c.mu.Lock()
+	if repo, ok := c.entries[path]; ok {
+		c.mu.Unlock()
+		return repo, nil
+	}
+	c.mu.Unlock()
+
+	repo, err := open()
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if existing, ok := c.entries[path]; ok {
+		return existing, nil
+	}
+
+	c.entries[path] = repo
+	c.order = append(c.order, path)
+	for len(c.order) > c.max {
+		oldest := c.order[0]
+		c.order = c.order[1:]
+		delete(c.entries, oldest)
+	}
+
+	return repo, nil
+}
+
 func (c *openCache) put(path string, repo *gogit.Repository) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -68,11 +98,16 @@ func (c *openCache) evict(path string) {
 
 type statsCache struct {
 	mu      sync.Mutex
+	max     int
 	entries map[string]*domain.RepoStats
+	order   []string
 }
 
 func newStatsCache() *statsCache {
-	return &statsCache{entries: make(map[string]*domain.RepoStats)}
+	return &statsCache{
+		max:     256,
+		entries: make(map[string]*domain.RepoStats),
+	}
 }
 
 func (c *statsCache) get(key string) (*domain.RepoStats, bool) {
@@ -89,19 +124,41 @@ func (c *statsCache) put(key string, stats *domain.RepoStats) {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if _, exists := c.entries[key]; exists {
+		cp := *stats
+		if stats.Languages != nil {
+			cp.Languages = maps.Clone(stats.Languages)
+		}
+
+		c.entries[key] = &cp
+		return
+	}
+
 	cp := *stats
 	if stats.Languages != nil {
 		cp.Languages = maps.Clone(stats.Languages)
 	}
+
 	c.entries[key] = &cp
+	c.order = append(c.order, key)
+	for len(c.order) > c.max {
+		oldest := c.order[0]
+		c.order = c.order[1:]
+		delete(c.entries, oldest)
+	}
 }
 
 func (c *statsCache) evictPrefix(path string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for key := range c.entries {
+	kept := c.order[:0]
+	for _, key := range c.order {
 		if len(key) >= len(path) && key[:len(path)] == path {
 			delete(c.entries, key)
+			continue
 		}
+		kept = append(kept, key)
 	}
+
+	c.order = kept
 }

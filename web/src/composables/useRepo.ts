@@ -7,7 +7,7 @@ import { normalizeRepoPath, repositoryPath } from '@/lib/repoPath'
 
 type CacheEntry = { repo: Repository; at: number }
 const cache = new Map<string, CacheEntry>()
-const CACHE_TTL_MS = 30_000
+const CACHE_TTL_MS = 5_000
 
 function cacheKey(path: string) {
   return normalizeRepoPath(path)

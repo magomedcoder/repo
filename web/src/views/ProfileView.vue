@@ -252,6 +252,10 @@ onMounted(load)
 
         <p class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           <RouterLink
+            :to="{ name: 'sessions' }"
+            class="text-ink hover:underline"
+          >{{ $t('nav.sessions') }}</RouterLink>
+          <RouterLink
             :to="{ name: 'tokens' }"
             class="text-ink hover:underline"
           >{{ $t('nav.accessTokens') }}</RouterLink>

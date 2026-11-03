@@ -8,6 +8,7 @@ export type AppLocale = 'en' | 'ru'
 
 export type PageError =
   | { kind: 'unauthorized' }
+  | { kind: 'not_found' }
   | { kind: 'message'; text: string }
 
 const STORAGE_KEY = 'repo.locale'
@@ -54,6 +55,10 @@ export function localizeError(err: unknown, fallbackKey: Parameters<typeof i18n.
 export function pageError(err: unknown, fallbackKey: Parameters<typeof i18n.global.t>[0]): PageError {
   if (err instanceof ApiError && err.status === 401) {
     return { kind: 'unauthorized' }
+  }
+
+  if (err instanceof ApiError && err.status === 404 && err.code === 'repository_not_found') {
+    return { kind: 'not_found' }
   }
 
   return { kind: 'message', text: localizeError(err, fallbackKey) }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -70,7 +71,7 @@ func runServe() {
 
 	middleware.SetTrustedProxies(cfg.TrustedProxyNets)
 
-	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
+	authUC := usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret(cfg.SessionSecret)
 	authUC.SetAllowRegistration(cfg.AllowRegistration)
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo)
@@ -81,7 +82,7 @@ func runServe() {
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
 	profileUC := usecase.NewProfileUseCase(userStore, cfg.DataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
-	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, authUC, hasher)
+	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 	accessUC := usecase.NewAccessLogUseCase(accessStore)
 
 	authHandler := handler.NewAuthHandler(authUC)
@@ -95,6 +96,7 @@ func runServe() {
 	tokenHandler.SetAccessLogger(accessLog)
 	gitHandler := handler.NewGitHandler(gitUC)
 	gitHandler.SetReceiveMaxBytes(cfg.ReceiveMaxBytes)
+	gitHandler.SetTempDir(filepath.Join(cfg.DataDir, "tmp"))
 	gitHandler.SetAccessLogger(accessLog)
 	issueHandler := handler.NewIssueHandler(issueUC)
 	pullHandler := handler.NewPullRequestHandler(pullUC)
@@ -113,7 +115,7 @@ func runServe() {
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Minute,
 		WriteTimeout:      15 * time.Minute,
-		IdleTimeout:       2 * time.Minute,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -144,18 +146,7 @@ func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth mid
 		os.Exit(1)
 	}
 
-	return middleware.SecurityHeaders(cookieSecure)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if handler.IsGitHTTPPath(path) || isAPIPath(path) {
-			api.ServeHTTP(w, r)
-			return
-		}
-
-		if isDataPath(path, dataDir) {
-			http.NotFound(w, r)
-			return
-		}
-
+	spa := middleware.SecurityHeaders(cookieSecure)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if access != nil && audit.IsPageVisit(r) {
 			var user *domain.User
 			if auth != nil {
@@ -167,21 +158,21 @@ func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth mid
 			}
 			access.Visit(r, user)
 		}
-
 		frontend.ServeHTTP(w, r)
 	}))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if handler.IsGitHTTPPath(path) || isAPIPath(path) {
+			api.ServeHTTP(w, r)
+			return
+		}
+
+		_ = dataDir
+		spa.ServeHTTP(w, r)
+	})
 }
 
 func isAPIPath(urlPath string) bool {
 	return urlPath == "/api" || strings.HasPrefix(urlPath, "/api/")
-}
-
-func isDataPath(urlPath, dataDir string) bool {
-	dataDir = strings.Trim(dataDir, "/")
-	if dataDir == "" || strings.Contains(dataDir, "/") {
-		return false
-	}
-
-	prefix := "/" + dataDir
-	return urlPath == prefix || strings.HasPrefix(urlPath, prefix+"/")
 }

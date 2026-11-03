@@ -58,7 +58,7 @@ func TestPullRequestFlow(t *testing.T) {
 	tokens := token.NewGenerator()
 
 	activityStore := sqlite.NewActivityStore(db)
-	authUC := usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
+	authUC := usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
@@ -68,7 +68,7 @@ func TestPullRequestFlow(t *testing.T) {
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
 	profileUC := usecase.NewProfileUseCase(userStore, dataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
-	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, authUC, hasher)
+	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 
 	router := deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),

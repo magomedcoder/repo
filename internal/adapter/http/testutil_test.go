@@ -85,7 +85,7 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 	hasher := argon2id.NewHasher()
 	tokens := token.NewGenerator()
 
-	authUC = usecase.NewAuthUseCase(userStore, sessionStore, hasher, tokens)
+	authUC = usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
@@ -95,7 +95,7 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
 	profileUC := usecase.NewProfileUseCase(userStore, dataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
-	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, authUC, hasher)
+	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 
 	router = deliveryhttp.NewRouter(
 		handler.NewAuthHandler(authUC),
@@ -142,12 +142,16 @@ type jsonResp struct {
 
 func doJSON(t *testing.T, srv *httptest.Server, method, path, body string, cookies []*http.Cookie) jsonResp {
 	t.Helper()
+	client := srv.Client()
+	if method != http.MethodGet && method != http.MethodHead {
+		cookies = withCSRF(t, srv, cookies)
+	}
+
 	var reader io.Reader
 	if body != "" {
 		reader = bytes.NewReader([]byte(body))
 	}
 
-	client := srv.Client()
 	req, err := http.NewRequestWithContext(t.Context(), method, srv.URL+path, reader)
 	if err != nil {
 		t.Fatal(err)
@@ -174,6 +178,52 @@ func doJSON(t *testing.T, srv *httptest.Server, method, path, body string, cooki
 	return jsonResp{
 		StatusCode: res.StatusCode,
 		Body:       string(raw),
-		Cookies:    res.Cookies(),
+		Cookies:    mergeCookies(cookies, res.Cookies()),
 	}
+}
+
+func withCSRF(t *testing.T, srv *httptest.Server, cookies []*http.Cookie) []*http.Cookie {
+	t.Helper()
+	for _, c := range cookies {
+		if c.Name == "repo_csrf" && c.Value != "" {
+			return cookies
+		}
+	}
+
+	client := srv.Client()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/api/site", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, res.Body)
+
+	return mergeCookies(cookies, res.Cookies())
+}
+
+func mergeCookies(existing, newer []*http.Cookie) []*http.Cookie {
+	byName := make(map[string]*http.Cookie, len(existing)+len(newer))
+	for _, c := range existing {
+		byName[c.Name] = c
+	}
+
+	for _, c := range newer {
+		byName[c.Name] = c
+	}
+
+	out := make([]*http.Cookie, 0, len(byName))
+	for _, c := range byName {
+		out = append(out, c)
+	}
+
+	return out
 }

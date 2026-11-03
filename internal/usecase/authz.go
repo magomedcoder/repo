@@ -15,11 +15,7 @@ func CanReadRepo(repo *domain.Repository, viewerID uint) error {
 		return nil
 	}
 
-	if viewerID == 0 {
-		return ErrUnauthorized
-	}
-
-	return ErrRepoForbidden
+	return ErrRepoNotFound
 }
 
 func CanReadPrivateRepo(repo *domain.Repository, viewerID uint) bool {

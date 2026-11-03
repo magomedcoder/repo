@@ -78,6 +78,26 @@ func (s *ActivityStore) ListByOwner(ownerKind string, ownerID uint, limit int) (
 	return activityModelsToDomain(models), nil
 }
 
+func (s *ActivityStore) ListPublicByOwner(ownerKind string, ownerID uint, limit int) ([]domain.ActivityEvent, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+
+	var models []activityModel
+	err := s.db.Model(&activityModel{}).
+		Select("activity_events.*").
+		Joins("JOIN repositories ON repositories.id = activity_events.repo_id AND repositories.deleted_at IS NULL AND repositories.is_private = ?", false).
+		Where("activity_events.owner_kind = ? AND activity_events.owner_id = ?", ownerKind, ownerID).
+		Order("activity_events.created_at DESC, activity_events.id DESC").
+		Limit(limit).
+		Find(&models).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return activityModelsToDomain(models), nil
+}
+
 func activityModelsToDomain(models []activityModel) []domain.ActivityEvent {
 	out := make([]domain.ActivityEvent, 0, len(models))
 	for _, m := range models {

@@ -13,25 +13,19 @@ const props = defineProps<{
 type Crumb = {
   label: string
   to: RouteLocationRaw | null
+  branch?: boolean
 }
 
 const crumbs = computed((): Crumb[] => {
   const parts = (props.path || '').split('/').filter(Boolean)
   const items: Crumb[] = []
 
-  if (!parts.length) {
-    items.push({ 
-      label: props.refName, 
-      to: null
-    })
-    return items
-  }
-
   items.push({
     label: props.refName,
-    to: repoLocation('repo-tree', props.repoPath, {
-      query: { ref: props.refName },
-    }),
+    branch: true,
+    to: parts.length
+      ? repoLocation('repo', props.repoPath, { query: { ref: props.refName } })
+      : null,
   })
 
   let acc = ''
@@ -39,19 +33,13 @@ const crumbs = computed((): Crumb[] => {
     const part = parts[i]!
     acc = acc ? `${acc}/${part}` : part
     const isLast = i === parts.length - 1
-    if (isLast) {
-      items.push({ label: part, to: null })
-      continue
-    }
-
     items.push({
       label: part,
-      to: repoLocation('repo-tree', props.repoPath, {
-        query: {
-          ref: props.refName,
-          path: acc,
-        },
-      }),
+      to: isLast
+        ? null
+        : repoLocation('repo', props.repoPath, {
+            query: { ref: props.refName, path: acc },
+          }),
     })
   }
 
@@ -61,19 +49,32 @@ const crumbs = computed((): Crumb[] => {
 
 <template>
   <nav
-    class="flex min-w-0 flex-wrap items-baseline gap-x-1 font-mono text-[90%]"
+    class="flex min-w-0 flex-wrap items-center gap-x-1 text-[12px] leading-none"
     :aria-label="$t('index.tree')"
   >
     <template v-for="(crumb, i) in crumbs" :key="`${i}-${crumb.label}`">
-      <span v-if="i" class="text-ink-muted">/</span>
+      <span v-if="i" class="select-none text-ink-muted">/</span>
       <RouterLink
-        v-if="crumb.to"
+        v-if="crumb.to && crumb.branch"
         :to="crumb.to"
-        class="text-ink-muted no-underline hover:text-ink hover:underline"
+        class="inline-flex items-center border border-line bg-paper px-1.5 py-0.5 font-semibold text-ink no-underline hover:bg-row-hover hover:no-underline"
       >
         {{ crumb.label }}
       </RouterLink>
-      <span v-else class="font-bold text-ink">{{ crumb.label }}</span>
+      <span
+        v-else-if="crumb.branch"
+        class="inline-flex items-center border border-line bg-paper px-1.5 py-0.5 font-semibold text-ink"
+      >
+        {{ crumb.label }}
+      </span>
+      <RouterLink
+        v-else-if="crumb.to"
+        :to="crumb.to"
+        class="font-semibold text-link no-underline hover:underline"
+      >
+        {{ crumb.label }}
+      </RouterLink>
+      <span v-else class="font-semibold text-ink">{{ crumb.label }}</span>
     </template>
   </nav>
 </template>

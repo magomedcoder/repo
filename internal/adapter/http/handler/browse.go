@@ -4,17 +4,19 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/httpx"
 )
 
 func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	ref := c.Query("ref")
-	path := c.Query("path")
+	filePath := c.Query("path")
 
 	switch action {
 	case "branches":
@@ -67,21 +69,21 @@ func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveR
 		return c.Error(http.StatusNotFound, "not_found")
 
 	case "tree":
-		items, err := h.repos.ListTree(c.Ctx(), in, ref, path)
+		items, err := h.repos.ListTree(c.Ctx(), in, ref, filePath)
 		if err != nil {
 			return mapError(c, err)
 		}
-		return httpx.OK(c, treeResponse{Ref: ref, Path: path, Tree: items})
+		return httpx.OK(c, treeResponse{Ref: ref, Path: filePath, Tree: items})
 
 	case "blob":
-		item, err := h.repos.GetBlob(c.Ctx(), in, ref, path)
+		item, err := h.repos.GetBlob(c.Ctx(), in, ref, filePath)
 		if err != nil {
 			return mapError(c, err)
 		}
 		return httpx.OK(c, item)
 
 	case "blame":
-		item, err := h.repos.GetBlame(c.Ctx(), in, ref, path)
+		item, err := h.repos.GetBlame(c.Ctx(), in, ref, filePath)
 		if err != nil {
 			return mapError(c, err)
 		}
@@ -89,11 +91,15 @@ func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveR
 		return httpx.OK(c, item)
 
 	case "raw":
-		item, err := h.repos.GetBlob(c.Ctx(), in, ref, path)
+		item, err := h.repos.GetBlob(c.Ctx(), in, ref, filePath)
 		if err != nil {
 			return mapError(c, err)
 		}
 		var data []byte
+		if item.Size > domain.MaxBlobReadBytes {
+			return c.Error(http.StatusRequestEntityTooLarge, "file_too_large")
+		}
+
 		if item.Encoding == "base64" {
 			decoded, err := base64.StdEncoding.DecodeString(item.Content)
 			if err != nil {
@@ -104,12 +110,21 @@ func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveR
 			data = []byte(item.Content)
 		}
 
-		if item.IsBinary {
-			c.W.Header().Set("Content-Type", "application/octet-stream")
-		} else {
-			c.W.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		ctype := rawContentType(filePath, item.IsBinary)
+		c.W.Header().Set("Content-Type", ctype)
+
+		name := path.Base(strings.TrimSpace(filePath))
+		if name == "" || name == "." || name == "/" {
+			name = "download"
 		}
 
+		name = strings.ReplaceAll(name, `"`, "")
+		disposition := "attachment"
+		if strings.HasPrefix(ctype, "image/") && !strings.EqualFold(ctype, "image/svg+xml") {
+			disposition = "inline"
+		}
+
+		c.W.Header().Set("Content-Disposition", disposition+`; filename="`+name+`"`)
 		c.W.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		c.W.WriteHeader(http.StatusOK)
 		_, _ = c.W.Write(data)
@@ -121,7 +136,7 @@ func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveR
 
 		if h.access != nil {
 			user, _ := middleware.UserFromContext(c.Ctx())
-			h.access.Download(c.R, repoPath, ref, path, user)
+			h.access.Download(c.R, repoPath, ref, filePath, user)
 		}
 
 		return nil
@@ -190,4 +205,29 @@ func folderAndName(parts []string) (folderPath, name string, err error) {
 	}
 
 	return folderPath, name, nil
+}
+
+func rawContentType(filePath string, isBinary bool) string {
+	switch strings.ToLower(path.Ext(filePath)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".bmp":
+		return "image/bmp"
+	case ".avif":
+		return "image/avif"
+	}
+	if isBinary {
+		return "application/octet-stream"
+	}
+	return "text/plain; charset=utf-8"
 }
