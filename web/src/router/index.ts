@@ -74,6 +74,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/ProfileView.vue'),
       },
       {
+        path: 'settings/profile/email',
+        name: 'profile-email',
+        component: () => import('@/views/ProfileEmailView.vue'),
+      },
+      {
+        path: 'settings/profile/password',
+        name: 'profile-password',
+        component: () => import('@/views/ProfilePasswordView.vue'),
+      },
+      {
         path: 'settings/users',
         name: 'users',
         meta: { requiresAdmin: true },
@@ -258,6 +268,10 @@ let skipNextVisitBeacon = true
 router.afterEach((to) => {
   if (skipNextVisitBeacon) {
     skipNextVisitBeacon = false
+    return
+  }
+  const auth = useAuth()
+  if (!auth.isAuthenticated.value) {
     return
   }
   void accessApi.visit(to.path)

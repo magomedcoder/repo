@@ -34,6 +34,9 @@ func (d *RepoDispatcher) DispatchGet(c *httpx.Context) error {
 
 	switch {
 	case action == "collaborators":
+		if _, ok := middleware.UserFromContext(c.Ctx()); !ok {
+			return c.Error(http.StatusUnauthorized, "unauthorized")
+		}
 		return d.Membership.ListCollaborators(c, in)
 	case isPullAction(action):
 		return d.Pulls.get(c, in, action, extra)

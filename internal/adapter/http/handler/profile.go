@@ -21,7 +21,8 @@ func NewProfileHandler(profiles *usecase.ProfileUseCase) *ProfileHandler {
 }
 
 type updateProfileRequest struct {
-	Email string `json:"email"`
+	Email           string `json:"email"`
+	CurrentPassword string `json:"current_password"`
 }
 
 func (h *ProfileHandler) Get(c *httpx.Context) error {
@@ -50,7 +51,7 @@ func (h *ProfileHandler) UpdateMe(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.profiles.UpdateEmail(c.Ctx(), user.ID, req.Email)
+	out, err := h.profiles.UpdateEmail(c.Ctx(), user.ID, req.Email, req.CurrentPassword)
 	if err != nil {
 		return mapError(c, err)
 	}

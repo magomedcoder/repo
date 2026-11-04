@@ -8,6 +8,7 @@
 - Collaborators: на репозиторий роли `admin` / `write` / `read`; те же правила для Git HTTP и API; членство в папке не даёт write во все репо
 - Git: защита default-ветки при push после unpack; fast-forward разрешён, force-push и удаление запрещены; безопаснее одновременный merge и push; gzip-тела запросов; для private - challenge Basic auth
 - Security: CSP и HSTS за доверенным HTTPS; CSRF привязан к session cookie; санитизация HTML README без проксирования картинок
+- Security: ограничение caps при UpdateMember (нет эскалации admin->owner / delete_folder); отзыв сессий и токенов при смене пароля или роли админом; единый Git HTTP 401 для анонимных missing/private; запрет повторного username/email после soft-delete; auth для списка collaborators и visit-beacon; escape LIKE в админ-поиске; пароль при смене email
 - Access: гости видят только публичные activity, home и search; сортировка репозиториев по имени в базе; ограничение пагинации списков
 - Access-токены: опциональный срок действия при создании; просроченные отклоняются в Git auth
 - Issues и pull requests: монотонные номера на репозиторий

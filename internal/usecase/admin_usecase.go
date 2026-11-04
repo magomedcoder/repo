@@ -178,6 +178,9 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 			}
 
 			user.Role = role
+			if err := uc.revokeCredentials(id); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -197,8 +200,8 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 		}
 
 		user.PasswordHash = hash
-		if err := uc.sessions.DeleteByUserID(id); err != nil {
-			return nil, fmt.Errorf("revoke sessions: %w", err)
+		if err := uc.revokeCredentials(id); err != nil {
+			return nil, err
 		}
 	}
 
@@ -238,6 +241,20 @@ func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint) error {
 
 	if err := uc.users.Delete(id); err != nil {
 		return fmt.Errorf("delete user: %w", err)
+	}
+
+	return nil
+}
+
+func (uc *AdminUseCase) revokeCredentials(userID uint) error {
+	if err := uc.sessions.DeleteByUserID(userID); err != nil {
+		return fmt.Errorf("revoke sessions: %w", err)
+	}
+
+	if uc.tokens != nil {
+		if err := uc.tokens.DeleteByUserID(userID); err != nil {
+			return fmt.Errorf("revoke access tokens: %w", err)
+		}
 	}
 
 	return nil

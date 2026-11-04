@@ -33,12 +33,14 @@ type ProfileItem struct {
 
 type ProfileUseCase struct {
 	users     domain.UserStore
+	hasher    domain.PasswordHasher
 	avatarDir string
 }
 
-func NewProfileUseCase(users domain.UserStore, dataDir string) *ProfileUseCase {
+func NewProfileUseCase(users domain.UserStore, hasher domain.PasswordHasher, dataDir string) *ProfileUseCase {
 	return &ProfileUseCase{
 		users:     users,
+		hasher:    hasher,
 		avatarDir: filepath.Join(dataDir, "avatars"),
 	}
 }
@@ -56,7 +58,7 @@ func (uc *ProfileUseCase) GetByUsername(ctx context.Context, username string, vi
 	return toProfileItem(user, viewerID == user.ID), nil
 }
 
-func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email string) (*ProfileItem, error) {
+func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email, currentPassword string) (*ProfileItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -75,23 +77,33 @@ func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email st
 		return nil, ErrUnauthorized
 	}
 
-	if !strings.EqualFold(user.Email, email) {
-		taken, err := uc.users.ExistsByEmail(email)
-		if err != nil {
-			return nil, err
-		}
+	if strings.EqualFold(user.Email, email) {
+		return toProfileItem(user, true), nil
+	}
 
-		if taken {
+	if strings.TrimSpace(currentPassword) == "" {
+		return nil, ErrPasswordRequired
+	}
+
+	if uc.hasher == nil || uc.hasher.Compare(user.PasswordHash, currentPassword) != nil {
+		return nil, ErrCurrentPasswordWrong
+	}
+
+	taken, err := uc.users.ExistsByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+
+	if taken {
+		return nil, ErrEmailTaken
+	}
+
+	user.Email = email
+	if err := uc.users.Update(user); err != nil {
+		if isUniqueViolation(err) {
 			return nil, ErrEmailTaken
 		}
-
-		user.Email = email
-		if err := uc.users.Update(user); err != nil {
-			if isUniqueViolation(err) {
-				return nil, ErrEmailTaken
-			}
-			return nil, fmt.Errorf("update user: %w", err)
-		}
+		return nil, fmt.Errorf("update user: %w", err)
 	}
 
 	return toProfileItem(user, true), nil

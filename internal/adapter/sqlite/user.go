@@ -123,13 +123,15 @@ func (s *UserStore) FindByEmail(ctx context.Context, email string) (*domain.User
 
 func (s *UserStore) ExistsByUsername(username string) (bool, error) {
 	var count int64
-	err := s.db.Model(&userModel{}).Where("username = ?", username).Count(&count).Error
+	err := s.db.Unscoped().Model(&userModel{}).Where("username = ?", username).Count(&count).Error
+
 	return count > 0, err
 }
 
 func (s *UserStore) ExistsByEmail(email string) (bool, error) {
 	var count int64
-	err := s.db.Model(&userModel{}).Where("email = ?", email).Count(&count).Error
+	err := s.db.Unscoped().Model(&userModel{}).Where("email = ?", email).Count(&count).Error
+
 	return count > 0, err
 }
 
@@ -160,8 +162,8 @@ func (s *UserStore) List(filter domain.UserListFilter) ([]domain.User, int, erro
 
 	q := s.db.Model(&userModel{})
 	if query := strings.TrimSpace(filter.Query); query != "" {
-		like := "%" + strings.ToLower(query) + "%"
-		q = q.Where("lower(username) LIKE ? OR lower(email) LIKE ?", like, like)
+		like := "%" + escapeLike(strings.ToLower(query)) + "%"
+		q = q.Where(`lower(username) LIKE ? ESCAPE '\' OR lower(email) LIKE ? ESCAPE '\'`, like, like)
 	}
 
 	var total int64

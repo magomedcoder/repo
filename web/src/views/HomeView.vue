@@ -9,6 +9,7 @@ import { localizeError } from '@/i18n'
 const PAGE_SIZE = 50
 
 const auth = useAuth()
+
 const ownRepos = ref<Repository[]>([])
 const homeRepos = ref<Repository[]>([])
 const error = ref('')
@@ -106,15 +107,26 @@ onMounted(() => load())
 
 <template>
   <div>
+    <div class="mb-2 border-b border-line pb-1.5">
+      <h1 class="font-bold text-ink">{{ $t('home.pinned') }}</h1>
+      <p class="text-[85%] text-ink-muted">{{ $t('home.pinnedHint') }}</p>
+    </div>
+
     <p v-if="loading" class="text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-warn">{{ error }}</p>
     <template v-else>
-      <ContentsList :repos="repos" show-folder @sort="onSort" />
+      <ContentsList
+        :repos="repos"
+        :sort="sort"
+        :empty-text="$t('home.emptyPinned')"
+        show-folder
+        @sort="onSort"
+      />
       <p v-if="hasMore" class="mt-3">
-        <button 
-          type="button" 
-          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50" 
-          :disabled="loadingMore" 
+        <button
+          type="button"
+          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="loadingMore"
           @click="loadMore"
         >
           {{ loadingMore ? $t('common.loading') : $t('common.loadMore') }}

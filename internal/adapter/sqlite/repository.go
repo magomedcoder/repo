@@ -164,8 +164,7 @@ func (s *RepositoryStore) ListHome(ctx context.Context, limit, offset int, order
 }
 
 func (s *RepositoryStore) SearchByName(ctx context.Context, query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
-	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
-	q := "%" + escaped + "%"
+	q := "%" + escapeLike(query) + "%"
 	db := s.db.WithContext(ctx).Model(&repositoryModel{}).Where(`name LIKE ? ESCAPE '\'`, q)
 	if publicOnly {
 		db = db.Where("is_private = ?", false)

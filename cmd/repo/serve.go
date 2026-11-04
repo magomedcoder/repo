@@ -86,7 +86,7 @@ func runServe() {
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore, authz)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore, authz)
 	membershipUC := usecase.NewAccessUseCase(folderStore, repoStore, userStore, folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore, authz)
-	profileUC := usecase.NewProfileUseCase(userStore, cfg.DataDir)
+	profileUC := usecase.NewProfileUseCase(userStore, hasher, cfg.DataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 	accessUC := usecase.NewAccessLogUseCase(accessStore)

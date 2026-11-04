@@ -34,6 +34,13 @@ async function resolve() {
   }
 
   try {
+    const listed = await foldersApi.list()
+    const isFolder = (listed.folders ?? []).some((f) => f.path === path || f.slug === path)
+    if (!isFolder) {
+      kind.value = 'repo'
+      return
+    }
+
     folderContents.value = await foldersApi.get(path)
     kind.value = 'folder'
   } catch (err) {

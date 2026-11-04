@@ -139,27 +139,21 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 }
 
 func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repoPath string, service usecase.GitService) (*domain.Repository, *domain.User, error) {
+	viewer, authErr := h.authenticateRequest(r)
 	repo, err := h.git.ResolveClonePath(r.Context(), repoPath)
 	if err != nil {
+		if authErr != nil {
+			h.challengeGitAuth(w, r, authErr)
+			return nil, nil, authErr
+		}
 		http.Error(w, "not found", http.StatusNotFound)
+
 		return nil, nil, err
 	}
 
-	viewer, authErr := h.authenticateRequest(r)
 	needAuth := repo.IsPrivate || service == usecase.GitReceivePack
 	if needAuth && authErr != nil {
-		if h.access != nil {
-			login, _, _ := r.BasicAuth()
-			h.access.FailedAuth(r, login)
-		}
-
-		if errors.Is(authErr, usecase.ErrTooManyAttempts) {
-			http.Error(w, "too many attempts", http.StatusTooManyRequests)
-			return nil, nil, authErr
-		}
-
-		w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		h.challengeGitAuth(w, r, authErr)
 		return nil, nil, authErr
 	}
 
@@ -179,6 +173,21 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 	}
 
 	return repo, viewer, nil
+}
+
+func (h *GitHandler) challengeGitAuth(w http.ResponseWriter, r *http.Request, authErr error) {
+	if h.access != nil {
+		login, _, _ := r.BasicAuth()
+		h.access.FailedAuth(r, login)
+	}
+
+	if errors.Is(authErr, usecase.ErrTooManyAttempts) {
+		http.Error(w, "too many attempts", http.StatusTooManyRequests)
+		return
+	}
+
+	w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
 }
 
 func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) {

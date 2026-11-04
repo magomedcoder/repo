@@ -49,7 +49,11 @@ func TestGitHTTPPrivateRepoChallengesWithoutAuth(t *testing.T) {
 		t.Fatalf("private git WWW-Authenticate=%q", privRes.Header.Get("WWW-Authenticate"))
 	}
 
-	if missRes.StatusCode != http.StatusNotFound {
+	if missRes.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("missing git status=%d body=%s", missRes.StatusCode, missBody)
+	}
+
+	if missRes.Header.Get("WWW-Authenticate") != `Basic realm="git"` {
+		t.Fatalf("missing git WWW-Authenticate=%q", missRes.Header.Get("WWW-Authenticate"))
 	}
 }

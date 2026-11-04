@@ -158,13 +158,9 @@ func (uc *AccessUseCase) AddMember(ctx context.Context, in UpsertMemberInput) (*
 		return nil, err
 	}
 
-	role, caps, err := normalizeMemberRoleCaps(in.Role, in.Caps)
+	role, caps, err := uc.normalizeGrantedMemberCaps(folder.ID, in.ViewerID, in.Role, in.Caps)
 	if err != nil {
 		return nil, err
-	}
-
-	if role == domain.FolderRoleOwner && !uc.authz.HasFolderCap(folder.ID, in.ViewerID, domain.CapDeleteFolder) {
-		return nil, ErrFolderForbidden
 	}
 
 	user, err := uc.users.FindByUsername(ctx, strings.ToLower(strings.TrimSpace(in.Username)))
@@ -210,7 +206,7 @@ func (uc *AccessUseCase) UpdateMember(ctx context.Context, in UpsertMemberInput)
 		return nil, err
 	}
 
-	role, caps, err := normalizeMemberRoleCaps(in.Role, in.Caps)
+	role, caps, err := uc.normalizeGrantedMemberCaps(folder.ID, in.ViewerID, in.Role, in.Caps)
 	if err != nil {
 		return nil, err
 	}
@@ -229,9 +225,6 @@ func (uc *AccessUseCase) UpdateMember(ctx context.Context, in UpsertMemberInput)
 		if err := uc.ensureOtherOwner(folder.ID, user.ID); err != nil {
 			return nil, err
 		}
-	}
-	if role == domain.FolderRoleOwner {
-		caps = domain.CapsForRole(domain.FolderRoleOwner)
 	}
 
 	m.Role = role
@@ -302,6 +295,35 @@ func (uc *AccessUseCase) ensureOtherOwner(folderID, exceptUserID uint) error {
 	return ErrLastOwner
 }
 
+func (uc *AccessUseCase) normalizeGrantedMemberCaps(folderID, viewerID uint, roleRaw string, capsMap map[string]bool) (domain.FolderRole, domain.FolderCap, error) {
+	role, caps, err := normalizeMemberRoleCaps(roleRaw, capsMap)
+	if err != nil {
+		return "", 0, err
+	}
+
+	actorCaps, _, err := uc.authz.FolderCaps(folderID, viewerID)
+	if err != nil {
+		return "", 0, err
+	}
+
+	if role == domain.FolderRoleOwner || caps&domain.CapDeleteFolder != 0 {
+		if actorCaps&domain.CapDeleteFolder == 0 {
+			return "", 0, ErrFolderForbidden
+		}
+	}
+
+	caps &= actorCaps
+	if caps&domain.CapView == 0 {
+		caps |= domain.CapView
+	}
+
+	if role == domain.FolderRoleOwner {
+		caps = domain.CapsForRole(domain.FolderRoleOwner)
+	}
+
+	return role, caps, nil
+}
+
 func normalizeMemberRoleCaps(roleRaw string, capsMap map[string]bool) (domain.FolderRole, domain.FolderCap, error) {
 	role, ok := domain.ParseFolderRole(roleRaw)
 	if !ok {
@@ -325,8 +347,11 @@ func normalizeMemberRoleCaps(roleRaw string, capsMap map[string]bool) (domain.Fo
 			caps |= domain.CapView
 		}
 
-		if role == domain.FolderRoleMember && caps == 0 {
-			caps = domain.CapView
+		if role == domain.FolderRoleMember {
+			caps &^= domain.CapDeleteFolder
+			if caps == 0 {
+				caps = domain.CapView
+			}
 		}
 
 		if caps&domain.CapView == 0 {

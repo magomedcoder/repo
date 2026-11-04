@@ -192,7 +192,7 @@ export const usersApi = {
   get(username: string) {
     return api<Profile>(`/api/users/${username}`)
   },
-  updateMe(body: { email: string }) {
+  updateMe(body: { email: string; current_password: string }) {
     return api<Profile>('/api/users/me', {
       method: 'PATCH',
       body: JSON.stringify(body),

@@ -43,11 +43,10 @@ func NewRouter(
 	authed := api.Group("", require)
 	pub := api.Group("", optional)
 
-	if accessHandler != nil {
-		pub.POST("/access/visit", accessHandler.Visit)
-	}
-
 	authed.POST("/auth/password", authHandler.Password)
+	if accessHandler != nil {
+		authed.POST("/access/visit", accessHandler.Visit)
+	}
 	authed.GET("/auth/sessions", authHandler.ListSessions)
 	authed.DELETE("/auth/sessions/{id}", authHandler.RevokeSession)
 	authed.POST("/auth/sessions/revoke-others", authHandler.RevokeOtherSessions)

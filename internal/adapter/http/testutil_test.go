@@ -100,7 +100,7 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore, authz)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore, authz)
 	membershipUC := usecase.NewAccessUseCase(folderStore, repoStore, userStore, folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore, authz)
-	profileUC := usecase.NewProfileUseCase(userStore, dataDir)
+	profileUC := usecase.NewProfileUseCase(userStore, hasher, dataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 

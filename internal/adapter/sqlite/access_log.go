@@ -66,11 +66,13 @@ func (s *AccessLogStore) List(filter domain.AccessLogFilter) ([]domain.AccessLog
 	}
 
 	if ip := strings.TrimSpace(filter.IP); ip != "" {
-		q = q.Where("ip LIKE ?", "%"+ip+"%")
+		like := "%" + escapeLike(ip) + "%"
+		q = q.Where(`ip LIKE ? ESCAPE '\'`, like)
 	}
 
 	if username := strings.TrimSpace(filter.Username); username != "" {
-		q = q.Where("username LIKE ?", "%"+username+"%")
+		like := "%" + escapeLike(username) + "%"
+		q = q.Where(`username LIKE ? ESCAPE '\'`, like)
 	}
 
 	var total int64

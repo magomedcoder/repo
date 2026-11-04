@@ -41,6 +41,7 @@
     "logout": "Log out",
     "repo": "Repository",
     "folders": "Folders",
+    "create": "Create",
     "language": "Language",
     "settings": "Settings",
     "issues": "Issues",
@@ -57,7 +58,14 @@
   },
   "home": {
     "newFolder": "New folder",
-    "newRepository": "New repository"
+    "newRepository": "New repository",
+    "pinned": "Pinned repositories",
+    "pinnedHint": "Repositories highlighted on the home page.",
+    "welcome": "Welcome, {name}",
+    "guestIntro": "Browse public repositories. Sign in to create folders and push code.",
+    "emptyPinned": "Nothing pinned yet.",
+    "private": "private",
+    "public": "public"
   },
   "folder": {
     "fallback": "Folder",
@@ -426,7 +434,15 @@
     "saving": "Saving...",
     "changeAvatar": "Change avatar",
     "removeAvatar": "Remove avatar",
-    "uploading": "Uploading..."
+    "uploading": "Uploading...",
+    "folders": "Folders",
+    "noFolders": "No folders yet.",
+    "folderRole": "Role",
+    "account": "Account",
+    "security": "Password",
+    "memberSince": "Joined {date}",
+    "updateEmail": "Update email",
+    "changePasswordTitle": "Change password"
   },
   "pulls": {
     "open": "Open",

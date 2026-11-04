@@ -8,6 +8,7 @@
 - Collaborators: per-repository `admin` / `write` / `read`; Git HTTP and API use the same rules; folder membership does not imply repo write
 - Git: enforce protected default branch on push after unpack; allow fast-forward, block force-push and delete; safer concurrent merge and push; gzip request bodies; private repos challenge with Basic auth
 - Security: CSP and HSTS behind trusted HTTPS; CSRF bound to the session cookie; sanitize README HTML without rewriting images through a proxy
+- Security: clamp folder member caps on update (no admin->owner / delete_folder escalation); revoke sessions and tokens on admin password or role change; uniform Git HTTP 401 for anonymous missing/private probes; block username/email reuse after soft-delete; require auth for collaborator list and visit beacons; escape admin LIKE wildcards; require password to change email
 - Access: guests see only public activity, home, and search; sort repositories by name in the database; clamp list pagination
 - Access tokens: optional expiry on create; expired tokens rejected for Git auth
 - Issues and pull requests: monotonic number counters per repository

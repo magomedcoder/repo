@@ -41,6 +41,7 @@
     "logout": "Выйти",
     "repo": "Репозиторий",
     "folders": "Папки",
+    "create": "Создать",
     "language": "Язык",
     "settings": "Настройки",
     "issues": "Задачи",
@@ -57,7 +58,14 @@
   },
   "home": {
     "newFolder": "Новая папка",
-    "newRepository": "Новый репозиторий"
+    "newRepository": "Новый репозиторий",
+    "pinned": "Закреплённые репозитории",
+    "pinnedHint": "Репозитории, выделенные на главной странице.",
+    "welcome": "Здравствуйте, {name}",
+    "guestIntro": "Смотрите публичные репозитории. Войдите, чтобы создавать папки и пушить код.",
+    "emptyPinned": "Пока ничего не закреплено.",
+    "private": "private",
+    "public": "public"
   },
   "folder": {
     "fallback": "Папка",
@@ -426,7 +434,15 @@
     "saving": "Сохранение...",
     "changeAvatar": "Сменить аватар",
     "removeAvatar": "Удалить аватар",
-    "uploading": "Загрузка..."
+    "uploading": "Загрузка...",
+    "folders": "Папки",
+    "noFolders": "Папок пока нет",
+    "folderRole": "Роль",
+    "account": "Аккаунт",
+    "security": "Пароль",
+    "memberSince": "С {date}",
+    "updateEmail": "Сменить email",
+    "changePasswordTitle": "Сменить пароль"
   },
   "pulls": {
     "open": "Открытые",
