@@ -60,43 +60,6 @@ func (r *Repository) InitBare(path string, opts domain.BareInitOptions) error {
 		return err
 	}
 
-	if opts.DenyForcePushDefault {
-		if err := r.SetReceiveDenyNonFastForwards(path, true); err != nil {
-			_ = os.RemoveAll(path)
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (r *Repository) SetReceiveDenyNonFastForwards(path string, deny bool) error {
-	repo, err := gogit.PlainOpen(path)
-	if err != nil {
-		return fmt.Errorf("open repository: %w", err)
-	}
-
-	cfg, err := repo.Config()
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-
-	val := "false"
-	if deny {
-		val = "true"
-	}
-
-	if cfg.Raw == nil {
-		if _, err := cfg.Marshal(); err != nil {
-			return fmt.Errorf("marshal config: %w", err)
-		}
-	}
-
-	cfg.Raw.Section("receive").SetOption("denyNonFastForwards", val)
-	if err := repo.SetConfig(cfg); err != nil {
-		return fmt.Errorf("write config: %w", err)
-	}
-
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,7 +47,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	}
 
 	store := NewRepositoryStore(db)
-	repo, err := store.FindByRepoPath("missing.git")
+	repo, err := store.FindByRepoPath(context.Background(), "missing.git")
 	if err == nil || repo != nil {
 		t.Fatal("expected missing repository")
 	}
@@ -102,7 +103,7 @@ func TestMigrateIdempotentOnExistingDB(t *testing.T) {
 	}
 	defer sqlDB2.Close()
 
-	got, err := NewUserStore(db2).FindByID(u.ID)
+	got, err := NewUserStore(db2).FindByID(context.Background(), u.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -64,6 +64,7 @@ type PullRequestUseCase struct {
 	users    domain.UserStore
 	git      domain.GitRepository
 	activity domain.ActivityStore
+	authz    *Authz
 }
 
 func NewPullRequestUseCase(
@@ -73,6 +74,7 @@ func NewPullRequestUseCase(
 	users domain.UserStore,
 	git domain.GitRepository,
 	activity domain.ActivityStore,
+	authz *Authz,
 ) *PullRequestUseCase {
 	return &PullRequestUseCase{
 		pulls:    pulls,
@@ -81,6 +83,7 @@ func NewPullRequestUseCase(
 		users:    users,
 		git:      git,
 		activity: activity,
+		authz:    authz,
 	}
 }
 
@@ -139,7 +142,7 @@ func (uc *PullRequestUseCase) Get(ctx context.Context, in ResolveRepositoryInput
 		Comments: mapped,
 	}
 	if pr.State == "open" {
-		cmp, cerr := uc.git.Compare(repo.Path, pr.BaseBranch, pr.HeadBranch)
+		cmp, cerr := uc.git.Compare(ctx, repo.Path, pr.BaseBranch, pr.HeadBranch)
 		if cerr == nil {
 			detail.CanFastForward = cmp.CanFastForward
 			detail.Commits = len(cmp.Commits)
@@ -227,7 +230,7 @@ func (uc *PullRequestUseCase) Update(ctx context.Context, in ResolveRepositoryIn
 		return nil, err
 	}
 
-	if pr.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
+	if pr.AuthorID != in.ViewerID && !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -265,7 +268,7 @@ func (uc *PullRequestUseCase) Update(ctx context.Context, in ResolveRepositoryIn
 	}
 
 	if base != nil || head != nil {
-		if !CanAdminRepo(repo, in.ViewerID) {
+		if !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 			return nil, ErrPullForbidden
 		}
 
@@ -331,7 +334,7 @@ func (uc *PullRequestUseCase) Delete(ctx context.Context, in ResolveRepositoryIn
 		return err
 	}
 
-	if pr.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
+	if pr.AuthorID != in.ViewerID && !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return ErrPullForbidden
 	}
 
@@ -353,7 +356,7 @@ func (uc *PullRequestUseCase) Diff(ctx context.Context, in ResolveRepositoryInpu
 		return nil, err
 	}
 
-	cmp, err := uc.git.Compare(repo.Path, pr.BaseBranch, pr.HeadBranch)
+	cmp, err := uc.git.Compare(ctx, repo.Path, pr.BaseBranch, pr.HeadBranch)
 	if err != nil {
 		return nil, mapGitCompareErr(err)
 	}
@@ -394,7 +397,7 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 		return nil, err
 	}
 
-	if !CanAdminRepo(repo, in.ViewerID) {
+	if !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -416,14 +419,14 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 		return nil, ErrInvalidMergeStrategy
 	}
 
-	user, err := uc.users.FindByID(in.ViewerID)
+	user, err := uc.users.FindByID(ctx, in.ViewerID)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
 
 	msg := fmt.Sprintf("Merge pull request #%d from %s", pr.Number, pr.HeadBranch)
 	noreply := fmt.Sprintf("%d+%s@users.noreply.local", user.ID, user.Username)
-	_, err = uc.git.Merge(repo.Path, pr.BaseBranch, pr.HeadBranch, strategy, user.Username, noreply, msg)
+	_, err = uc.git.Merge(ctx, repo.Path, pr.BaseBranch, pr.HeadBranch, strategy, user.Username, noreply, msg)
 	if err != nil {
 		return nil, mapGitMergeErr(err)
 	}
@@ -434,7 +437,7 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 	viewer := in.ViewerID
 	pr.MergedBy = &viewer
 	var updateErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		updateErr = uc.pulls.Update(pr)
 		if updateErr == nil {
 			break
@@ -509,7 +512,7 @@ func (uc *PullRequestUseCase) UpdateComment(ctx context.Context, in ResolveRepos
 		return nil, ErrCommentNotFound
 	}
 
-	if c.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
+	if c.AuthorID != in.ViewerID && !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
 	}
 
@@ -550,7 +553,7 @@ func (uc *PullRequestUseCase) DeleteComment(ctx context.Context, in ResolveRepos
 		return ErrCommentNotFound
 	}
 
-	if c.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
+	if c.AuthorID != in.ViewerID && !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return ErrPullForbidden
 	}
 
@@ -558,7 +561,7 @@ func (uc *PullRequestUseCase) DeleteComment(ctx context.Context, in ResolveRepos
 }
 
 func (uc *PullRequestUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	return ResolveReadable(uc.repos, uc.folders, uc.users, in)
+	return ResolveReadable(uc.repos, uc.authz, in)
 }
 
 func (uc *PullRequestUseCase) findPull(repoID uint, number int) (*domain.PullRequest, error) {
@@ -601,7 +604,7 @@ func (uc *PullRequestUseCase) mapPulls(items []domain.PullRequest) ([]PullItem, 
 
 	ids := slices.Collect(maps.Keys(idSet))
 
-	usersByID, err := uc.users.FindByIDs(ids)
+	usersByID, err := uc.users.FindByIDs(context.Background(), ids)
 	if err != nil {
 		return nil, fmt.Errorf("load pull users: %w", err)
 	}
@@ -626,7 +629,7 @@ func (uc *PullRequestUseCase) mapPull(pr *domain.PullRequest, usersByID map[uint
 			ids = append(ids, *pr.MergedBy)
 		}
 		var err error
-		usersByID, err = uc.users.FindByIDs(ids)
+		usersByID, err = uc.users.FindByIDs(context.Background(), ids)
 		if err != nil {
 			return nil, fmt.Errorf("find pull users: %w", err)
 		}
@@ -674,7 +677,7 @@ func (uc *PullRequestUseCase) mapComments(comments []domain.PullRequestComment) 
 
 	ids := slices.Collect(maps.Keys(idSet))
 
-	usersByID, err := uc.users.FindByIDs(ids)
+	usersByID, err := uc.users.FindByIDs(context.Background(), ids)
 	if err != nil {
 		return nil, fmt.Errorf("load comment authors: %w", err)
 	}
@@ -694,7 +697,7 @@ func (uc *PullRequestUseCase) mapComments(comments []domain.PullRequestComment) 
 func (uc *PullRequestUseCase) mapComment(c *domain.PullRequestComment, usersByID map[uint]*domain.User) (*CommentItem, error) {
 	if usersByID == nil {
 		var err error
-		usersByID, err = uc.users.FindByIDs([]uint{c.AuthorID})
+		usersByID, err = uc.users.FindByIDs(context.Background(), []uint{c.AuthorID})
 		if err != nil {
 			return nil, fmt.Errorf("find author: %w", err)
 		}

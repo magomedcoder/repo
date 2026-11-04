@@ -422,8 +422,8 @@ func (r *Repository) GetBlob(repoPath, ref, filePath string) (*domain.BlobConten
 	return out, nil
 }
 
-func (r *Repository) GetBlame(repoPath, ref, filePath string) (*domain.BlameResult, error) {
-	return r.withTimeout(context.Background(), func(ctx context.Context) (*domain.BlameResult, error) {
+func (r *Repository) GetBlame(ctx context.Context, repoPath, ref, filePath string) (*domain.BlameResult, error) {
+	return r.withTimeout(ctx, func(ctx context.Context) (*domain.BlameResult, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -510,8 +510,8 @@ func (r *Repository) getBlame(ctx context.Context, repoPath, ref, filePath strin
 	return result, nil
 }
 
-func (r *Repository) GetCommitDiff(repoPath, sha string) (*domain.CommitDiff, error) {
-	return r.withTimeout(context.Background(), func(ctx context.Context) (*domain.CommitDiff, error) {
+func (r *Repository) GetCommitDiff(ctx context.Context, repoPath, sha string) (*domain.CommitDiff, error) {
+	return r.withTimeout(ctx, func(ctx context.Context) (*domain.CommitDiff, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

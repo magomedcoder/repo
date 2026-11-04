@@ -17,8 +17,8 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 )
 
-func (r *Repository) Compare(repoPath, base, head string) (*domain.CompareResult, error) {
-	return r.withTimeout(context.Background(), func(ctx context.Context) (*domain.CompareResult, error) {
+func (r *Repository) Compare(ctx context.Context, repoPath, base, head string) (*domain.CompareResult, error) {
+	return r.withTimeout(ctx, func(ctx context.Context) (*domain.CompareResult, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -145,8 +145,8 @@ func (r *Repository) logRange(ctx context.Context, repoPath, base, head string) 
 	return out, nil
 }
 
-func (r *Repository) CanFastForward(repoPath, base, head string) (bool, error) {
-	return r.withTimeout(context.Background(), func(ctx context.Context) (bool, error) {
+func (r *Repository) CanFastForward(ctx context.Context, repoPath, base, head string) (bool, error) {
+	return r.withTimeout(ctx, func(ctx context.Context) (bool, error) {
 		return r.canFastForward(ctx, repoPath, base, head)
 	})
 }
@@ -175,8 +175,8 @@ func (r *Repository) canFastForward(ctx context.Context, repoPath, base, head st
 	return seen[baseCommit.Hash], nil
 }
 
-func (r *Repository) Merge(repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
-	return r.withTimeout(context.Background(), func(ctx context.Context) (string, error) {
+func (r *Repository) Merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
+	return r.withTimeout(ctx, func(ctx context.Context) (string, error) {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}

@@ -16,6 +16,7 @@ type AuthHandler struct {
 	access            *audit.Logger
 	secure            bool
 	sameSite          http.SameSite
+	csrfSecret        string
 	allowRegistration bool
 }
 
@@ -35,6 +36,10 @@ func (h *AuthHandler) SetCookiePolicy(secure bool, sameSite http.SameSite) {
 	if sameSite != 0 {
 		h.sameSite = sameSite
 	}
+}
+
+func (h *AuthHandler) SetCSRFSecret(secret string) {
+	h.csrfSecret = secret
 }
 
 func (h *AuthHandler) SetAllowRegistration(allow bool) {
@@ -74,6 +79,7 @@ func (h *AuthHandler) Register(c *httpx.Context) error {
 	}
 
 	h.setSessionCookie(c.W, c.R, out.Token)
+	h.rotateSessionCSRF(c.W, c.R, out.Token)
 	if h.access != nil {
 		h.access.Register(c.R, out.User)
 	}
@@ -101,6 +107,7 @@ func (h *AuthHandler) Login(c *httpx.Context) error {
 	}
 
 	h.setSessionCookie(c.W, c.R, out.Token)
+	h.rotateSessionCSRF(c.W, c.R, out.Token)
 	if h.access != nil {
 		h.access.Login(c.R, out.User)
 	}
@@ -136,6 +143,7 @@ func (h *AuthHandler) Logout(c *httpx.Context) error {
 	user, _ := h.auth.Me(c.Ctx(), token)
 	_ = h.auth.Logout(c.Ctx(), token)
 	h.clearSessionCookie(c.W, c.R)
+	h.rotateAnonymousCSRF(c.W, c.R)
 	if h.access != nil {
 		h.access.Logout(c.R, user)
 	}
@@ -188,6 +196,7 @@ func (h *AuthHandler) RevokeSession(c *httpx.Context) error {
 
 	if revokedCurrent {
 		h.clearSessionCookie(c.W, c.R)
+		h.rotateAnonymousCSRF(c.W, c.R)
 	}
 
 	return c.NoContent()
@@ -216,8 +225,20 @@ func (h *AuthHandler) RevokeAllSessions(c *httpx.Context) error {
 		return mapError(c, err)
 	}
 	h.clearSessionCookie(c.W, c.R)
+	h.rotateAnonymousCSRF(c.W, c.R)
 
 	return c.NoContent()
+}
+
+func (h *AuthHandler) rotateSessionCSRF(w http.ResponseWriter, r *http.Request, sessionToken string) {
+	if h.csrfSecret == "" || sessionToken == "" {
+		return
+	}
+	middleware.RotateSessionCSRF(w, r, h.secure, h.csrfSecret, sessionToken)
+}
+
+func (h *AuthHandler) rotateAnonymousCSRF(w http.ResponseWriter, r *http.Request) {
+	middleware.RotateAnonymousCSRF(w, r, h.secure)
 }
 
 func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {

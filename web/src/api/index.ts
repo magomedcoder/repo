@@ -1,6 +1,6 @@
 import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
-import type { AccessLog, AccessToken, ActivityEvent, AdminUser, AuthSession, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderContents, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoStats, Repository, RepoSummary, TreeEntry, User, UserRole } from './types'
+import type { AccessLog, AccessToken, ActivityEvent, AdminUser, AuthSession, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderCaps, FolderContents, FolderMember, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, RepoStats, Repository, RepoSummary, Team, TeamMember, TeamRepoGrant, TreeEntry, User, UserRole } from './types'
 
 export const siteApi = {
   get() {
@@ -96,6 +96,74 @@ export const foldersApi = {
       method: 'DELETE',
     })
   },
+  listMembers(path: string) {
+    return api<{ members: FolderMember[] }>(`/api/folders/${encodeRepoPath(path)}/members`)
+  },
+  addMember(path: string, body: { username: string; role: string; caps?: FolderCaps }) {
+    return api<FolderMember>(`/api/folders/${encodeRepoPath(path)}/members`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  updateMember(path: string, username: string, body: { role: string; caps?: FolderCaps }) {
+    return api<FolderMember>(`/api/folders/${encodeRepoPath(path)}/members/${encodeURIComponent(username)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+  removeMember(path: string, username: string) {
+    return api<void>(`/api/folders/${encodeRepoPath(path)}/members/${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+    })
+  },
+  listTeams(path: string) {
+    return api<{ teams: Team[] }>(`/api/folders/${encodeRepoPath(path)}/teams`)
+  },
+  createTeam(path: string, body: { name: string; caps?: FolderCaps }) {
+    return api<Team>(`/api/folders/${encodeRepoPath(path)}/teams`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  updateTeam(path: string, slug: string, body: { name?: string; caps?: FolderCaps }) {
+    return api<Team>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+  removeTeam(path: string, slug: string) {
+    return api<void>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}`, {
+      method: 'DELETE',
+    })
+  },
+  listTeamMembers(path: string, slug: string) {
+    return api<{ members: TeamMember[] }>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}/members`)
+  },
+  addTeamMember(path: string, slug: string, body: { username: string }) {
+    return api<TeamMember>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}/members`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  removeTeamMember(path: string, slug: string, username: string) {
+    return api<void>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}/members/${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+    })
+  },
+  listTeamRepos(path: string, slug: string) {
+    return api<{ repos: TeamRepoGrant[] }>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}/repos`)
+  },
+  setTeamRepo(path: string, slug: string, body: { repo: string; role: RepoCollabRole | string }) {
+    return api<TeamRepoGrant>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}/repos`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  removeTeamRepo(path: string, slug: string, repo: string) {
+    return api<void>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}/repos/${encodeURIComponent(repo)}`, {
+      method: 'DELETE',
+    })
+  },
 }
 
 export const activityApi = {
@@ -109,7 +177,7 @@ export const tokensApi = {
   list() {
     return api<{ tokens: AccessToken[] }>('/api/tokens')
   },
-  create(body: { name: string }) {
+  create(body: { name: string; expires_in?: number; expires_at?: string }) {
     return api<CreateAccessTokenResponse>('/api/tokens', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -245,6 +313,20 @@ export const reposApi = {
   remove(path: string) {
     return api<void>(`/api/repos/${encodeRepoPath(path)}`, {
       method: 'DELETE'
+    })
+  },
+  listCollaborators(path: string) {
+    return api<{ collaborators: RepoCollaborator[] }>(`/api/repos/${encodeRepoPath(path)}/collaborators`)
+  },
+  addCollaborator(path: string, body: { username: string; role: RepoCollabRole | string }) {
+    return api<RepoCollaborator>(`/api/repos/${encodeRepoPath(path)}/collaborators`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  removeCollaborator(path: string, username: string) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}/collaborators/${encodeURIComponent(username)}`, {
+      method: 'DELETE',
     })
   },
   branches(path: string) {

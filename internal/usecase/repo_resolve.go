@@ -14,7 +14,7 @@ func (uc *RepositoryUseCase) ResolveRepository(ctx context.Context, in ResolveRe
 	return uc.resolve(in)
 }
 
-func ResolveReadable(repos domain.RepositoryStore, _ domain.FolderStore, _ domain.UserStore, in ResolveRepositoryInput) (*domain.Repository, error) {
+func ResolveReadable(repos domain.RepositoryStore, authz *Authz, in ResolveRepositoryInput) (*domain.Repository, error) {
 	name, err := normalizeRepoName(in.Name)
 	if err != nil {
 		return nil, err
@@ -30,12 +30,16 @@ func ResolveReadable(repos domain.RepositoryStore, _ domain.FolderStore, _ domai
 		return nil, ErrRepoNotFound
 	}
 
-	repo, err := repos.FindByRepoPath(logical)
+	repo, err := repos.FindByRepoPath(context.Background(), logical)
 	if err != nil {
 		return nil, ErrRepoNotFound
 	}
 
-	if err := CanReadRepo(repo, in.ViewerID); err != nil {
+	if authz == nil {
+		authz = &Authz{}
+	}
+
+	if err := authz.CanReadRepo(repo, in.ViewerID); err != nil {
 		return nil, err
 	}
 

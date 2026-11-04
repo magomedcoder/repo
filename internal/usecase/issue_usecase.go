@@ -61,6 +61,7 @@ type IssueUseCase struct {
 	folders  domain.FolderStore
 	users    domain.UserStore
 	activity domain.ActivityStore
+	authz    *Authz
 }
 
 func NewIssueUseCase(
@@ -69,6 +70,7 @@ func NewIssueUseCase(
 	folders domain.FolderStore,
 	users domain.UserStore,
 	activity domain.ActivityStore,
+	authz *Authz,
 ) *IssueUseCase {
 	return &IssueUseCase{
 		issues:   issues,
@@ -76,6 +78,7 @@ func NewIssueUseCase(
 		folders:  folders,
 		users:    users,
 		activity: activity,
+		authz:    authz,
 	}
 }
 
@@ -199,14 +202,14 @@ func (uc *IssueUseCase) Update(ctx context.Context, in ResolveRepositoryInput, n
 		return nil, err
 	}
 
-	if issue.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
+	if issue.AuthorID != in.ViewerID && !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
 	prevState := issue.State
 
 	if labelIDs != nil {
-		if !CanAdminRepo(repo, in.ViewerID) {
+		if !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 			return nil, ErrIssueForbidden
 		}
 
@@ -269,7 +272,7 @@ func (uc *IssueUseCase) Delete(ctx context.Context, in ResolveRepositoryInput, n
 		return err
 	}
 
-	if issue.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
+	if issue.AuthorID != in.ViewerID && !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return ErrIssueForbidden
 	}
 
@@ -336,7 +339,7 @@ func (uc *IssueUseCase) UpdateComment(ctx context.Context, in ResolveRepositoryI
 		return nil, err
 	}
 
-	if comment.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
+	if comment.AuthorID != in.ViewerID && !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
@@ -377,7 +380,7 @@ func (uc *IssueUseCase) DeleteComment(ctx context.Context, in ResolveRepositoryI
 		return err
 	}
 
-	if comment.AuthorID != in.ViewerID && !CanAdminRepo(repo, in.ViewerID) {
+	if comment.AuthorID != in.ViewerID && !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return ErrIssueForbidden
 	}
 
@@ -513,7 +516,7 @@ func (uc *IssueUseCase) DeleteLabel(ctx context.Context, in ResolveRepositoryInp
 }
 
 func (uc *IssueUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	repo, err := ResolveReadable(uc.repos, uc.folders, uc.users, in)
+	repo, err := ResolveReadable(uc.repos, uc.authz, in)
 	if err != nil {
 		return nil, err
 	}
@@ -535,7 +538,7 @@ func (uc *IssueUseCase) ownerRepo(in ResolveRepositoryInput) (*domain.Repository
 		return nil, err
 	}
 
-	if !CanAdminRepo(repo, in.ViewerID) {
+	if !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return nil, ErrIssueForbidden
 	}
 
@@ -675,7 +678,7 @@ func (uc *IssueUseCase) username(id uint, cache map[uint]string) (string, error)
 		return name, nil
 	}
 
-	user, err := uc.users.FindByID(id)
+	user, err := uc.users.FindByID(context.Background(), id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			cache[id] = ""

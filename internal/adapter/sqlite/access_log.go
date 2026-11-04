@@ -58,10 +58,7 @@ func (s *AccessLogStore) List(filter domain.AccessLogFilter) ([]domain.AccessLog
 		limit = 50
 	}
 
-	offset := filter.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(filter.Offset, 0)
 
 	q := s.db.Model(&accessLogModel{})
 	if action := strings.TrimSpace(filter.Action); action != "" {

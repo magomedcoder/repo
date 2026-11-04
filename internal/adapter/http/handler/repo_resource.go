@@ -24,6 +24,14 @@ func ParseRepoResource(rest string) (action string, repoParts, extra []string, o
 		return "move", parts[:len(parts)-1], nil, true
 	}
 
+	if parts[len(parts)-1] == "collaborators" {
+		return "collaborators", parts[:len(parts)-1], nil, true
+	}
+
+	if len(parts) >= 2 && parts[len(parts)-2] == "collaborators" {
+		return "collaborator", parts[:len(parts)-2], []string{parts[len(parts)-1]}, true
+	}
+
 	return "", nil, nil, false
 }
 

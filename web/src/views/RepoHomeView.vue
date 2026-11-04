@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { cloneUrl, reposApi } from '@/api'
-import { ApiError } from '@/api/client'
 import type { BlobContent, RefInfo, RepoStats, TreeEntry } from '@/api/types'
 import FileTable from '@/components/repo/FileTable.vue'
 import LanguageBar from '@/components/repo/LanguageBar.vue'
@@ -49,49 +48,12 @@ const parentTo = computed(() => {
 
 const hasReadme = () => !!readme.value?.content && !readme.value.is_binary
 
-function summaryAllowsLegacyFallback(err: unknown): boolean {
-  if (!(err instanceof ApiError)) {
-    return false
-  }
-
-  if (err.status === 404) {
-    return true
-  }
-
-  const code = err.code
-  if (code === 'not_found' || code === 'unimplemented') {
-    return true
-  }
-
-  return !!code && code.endsWith('_not_found')
-}
-
 async function loadRoot(ref: string) {
-  try {
-    const summary = await reposApi.summary(props.repoPath, ref)
-    branches.value = summary.branches ?? []
-    tree.value = summary.tree ?? []
-    stats.value = summary.stats ?? null
-    readme.value = summary.readme ?? null
-  } catch (err) {
-    if (!summaryAllowsLegacyFallback(err)) {
-      throw err
-    }
-
-    const [branchRes, treeRes, statsRes] = await Promise.all([
-      reposApi.branches(props.repoPath),
-      reposApi.tree(props.repoPath, { ref }),
-      reposApi.stats(props.repoPath, ref),
-    ])
-    branches.value = branchRes.branches ?? []
-    tree.value = treeRes.tree ?? []
-    stats.value = statsRes
-    try {
-      readme.value = await reposApi.readme(props.repoPath, ref)
-    } catch {
-      readme.value = null
-    }
-  }
+  const summary = await reposApi.summary(props.repoPath, ref)
+  branches.value = summary.branches ?? []
+  tree.value = summary.tree ?? []
+  stats.value = summary.stats ?? null
+  readme.value = summary.readme ?? null
 }
 
 async function loadDir(ref: string, path: string) {

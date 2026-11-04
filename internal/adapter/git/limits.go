@@ -127,8 +127,8 @@ func (r *Repository) lockRepos(paths ...string) func() {
 	}
 
 	return func() {
-		for i := len(unlocks) - 1; i >= 0; i-- {
-			unlocks[i]()
+		for _, unlock := range slices.Backward(unlocks) {
+			unlock()
 		}
 	}
 }

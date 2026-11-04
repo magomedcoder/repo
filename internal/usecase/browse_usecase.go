@@ -186,7 +186,7 @@ func (uc *RepositoryUseCase) GetBlame(ctx context.Context, in ResolveRepositoryI
 		ref = repo.DefaultBranch
 	}
 
-	blame, err := uc.git.GetBlame(repo.Path, ref, path)
+	blame, err := uc.git.GetBlame(ctx, repo.Path, ref, path)
 	if err != nil {
 		return nil, mapGitBrowseErr(err)
 	}
@@ -231,7 +231,7 @@ func (uc *RepositoryUseCase) GetCommitDiff(ctx context.Context, in ResolveReposi
 		return nil, ErrPathNotFound
 	}
 
-	diff, err := uc.git.GetCommitDiff(repo.Path, sha)
+	diff, err := uc.git.GetCommitDiff(ctx, repo.Path, sha)
 	if err != nil {
 		return nil, mapGitBrowseErr(err)
 	}
@@ -274,7 +274,7 @@ func (uc *RepositoryUseCase) resolveReadable(in ResolveRepositoryInput) (*domain
 		return nil, err
 	}
 
-	if err := CanReadRepo(repo, in.ViewerID); err != nil {
+	if err := uc.authz.CanReadRepo(repo, in.ViewerID); err != nil {
 		return nil, err
 	}
 

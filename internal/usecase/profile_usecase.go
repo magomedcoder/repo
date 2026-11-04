@@ -48,7 +48,7 @@ func (uc *ProfileUseCase) GetByUsername(ctx context.Context, username string, vi
 		return nil, err
 	}
 
-	user, err := uc.users.FindByUsername(strings.TrimSpace(username))
+	user, err := uc.users.FindByUsername(ctx, strings.TrimSpace(username))
 	if err != nil {
 		return nil, ErrUserNotFound
 	}
@@ -70,7 +70,7 @@ func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email st
 		return nil, ErrInvalidEmail
 	}
 
-	user, err := uc.users.FindByID(userID)
+	user, err := uc.users.FindByID(ctx, userID)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
@@ -111,7 +111,7 @@ func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reade
 		return nil, err
 	}
 
-	user, err := uc.users.FindByID(userID)
+	user, err := uc.users.FindByID(ctx, userID)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
@@ -167,7 +167,7 @@ func (uc *ProfileUseCase) ClearAvatar(ctx context.Context, userID uint) (*Profil
 		return nil, err
 	}
 
-	user, err := uc.users.FindByID(userID)
+	user, err := uc.users.FindByID(ctx, userID)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
@@ -188,7 +188,7 @@ func (uc *ProfileUseCase) OpenAvatar(ctx context.Context, username string) (io.R
 		return nil, "", err
 	}
 
-	user, err := uc.users.FindByUsername(strings.TrimSpace(username))
+	user, err := uc.users.FindByUsername(ctx, strings.TrimSpace(username))
 	if err != nil || user.AvatarPath == "" {
 		return nil, "", ErrAvatarNotFound
 	}

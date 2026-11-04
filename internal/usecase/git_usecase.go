@@ -25,6 +25,7 @@ type GitUseCase struct {
 	hasher   domain.PasswordHasher
 	git      domain.GitRepository
 	activity domain.ActivityStore
+	authz    *Authz
 	attempts attempts.Counter
 }
 
@@ -35,6 +36,7 @@ func NewGitUseCase(
 	hasher domain.PasswordHasher,
 	git domain.GitRepository,
 	activity domain.ActivityStore,
+	authz *Authz,
 ) *GitUseCase {
 	return &GitUseCase{
 		repos:    repos,
@@ -43,6 +45,7 @@ func NewGitUseCase(
 		hasher:   hasher,
 		git:      git,
 		activity: activity,
+		authz:    authz,
 		attempts: attempts.New(),
 	}
 }
@@ -68,7 +71,7 @@ func (uc *GitUseCase) ResolveClonePath(ctx context.Context, path string) (*domai
 		return nil, ErrRepoNotFound
 	}
 
-	repo, err := uc.repos.FindByRepoPath(path)
+	repo, err := uc.repos.FindByRepoPath(ctx, path)
 	if err != nil {
 		return nil, ErrRepoNotFound
 	}
@@ -110,7 +113,7 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 		return nil, ErrTooManyAttempts
 	}
 
-	user, err := uc.users.FindByUsername(username)
+	user, err := uc.users.FindByUsername(ctx, username)
 	if err != nil {
 		_ = uc.hasher.Compare(dummyPasswordHash, secret)
 		if uc.attempts != nil {
@@ -160,7 +163,11 @@ func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 		return nil, ErrUnauthorized
 	}
 
-	user, err := uc.users.FindByID(token.UserID)
+	if AccessTokenExpired(token, time.Now()) {
+		return nil, ErrUnauthorized
+	}
+
+	user, err := uc.users.FindByID(context.Background(), token.UserID)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
@@ -184,7 +191,7 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 			return ErrUnauthorized
 		}
 
-		if !CanReadPrivateRepo(repo, viewer.ID) {
+		if !uc.authz.CanReadPrivateRepo(repo, viewer.ID) {
 			return ErrRepoForbidden
 		}
 
@@ -194,7 +201,7 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 			return ErrUnauthorized
 		}
 
-		if !CanWriteGit(repo, viewer.ID) {
+		if !uc.authz.CanWriteGit(repo, viewer.ID) {
 			return ErrRepoForbidden
 		}
 
@@ -237,7 +244,7 @@ func (uc *GitUseCase) Ancestor(ctx context.Context, repoPath, oldRev, newRev str
 		return false, err
 	}
 
-	return uc.git.CanFastForward(repoPath, oldRev, newRev)
+	return uc.git.CanFastForward(ctx, repoPath, oldRev, newRev)
 }
 
 func (uc *GitUseCase) TouchActivity(ctx context.Context, repo *domain.Repository, actorID uint) error {

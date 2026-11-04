@@ -3,9 +3,14 @@
 # dev
 
 - Sessions: store hashed tokens; list devices with IP and user agent; revoke one, other, or all sessions in settings
-- Git: enforce protected default branch on push after unpack; allow fast-forward, block force-push and delete; safer concurrent merge and push
-- Security: CSP and HSTS behind trusted HTTPS; CSRF on mutating API routes; sanitize README HTML without rewriting images through a proxy
+- Folders: shared org spaces with members (`owner` / `admin` / `member`), configurable capabilities, invite/edit/remove in the UI
+- Teams: create teams inside a folder, add members, grant read/write/admin on selected repositories
+- Collaborators: per-repository `admin` / `write` / `read`; Git HTTP and API use the same rules; folder membership does not imply repo write
+- Git: enforce protected default branch on push after unpack; allow fast-forward, block force-push and delete; safer concurrent merge and push; gzip request bodies; private repos challenge with Basic auth
+- Security: CSP and HSTS behind trusted HTTPS; CSRF bound to the session cookie; sanitize README HTML without rewriting images through a proxy
 - Access: guests see only public activity, home, and search; sort repositories by name in the database; clamp list pagination
+- Access tokens: optional expiry on create; expired tokens rejected for Git auth
+- Issues and pull requests: monotonic number counters per repository
 - Reliability: safer git repository open cache; create repository row before bare init; separate audit queues for security and visits; cancel browse work on request context
 
 ## v0.1.0 - November 1, 2026

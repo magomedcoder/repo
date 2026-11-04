@@ -10,6 +10,7 @@ type AccessToken struct {
 	Prefix     string
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
+	ExpiresAt  *time.Time
 }
 
 type AccessTokenStore interface {

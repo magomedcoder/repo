@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { foldersApi } from '@/api'
 import type { Folder, FolderContents, RepoSummary } from '@/api/types'
+import FolderAccessPanel from '@/components/FolderAccessPanel.vue'
 import { useAuth } from '@/composables/useAuth'
 import { folderKey } from '@/lib/folderNav'
 import { idleAge } from '@/lib/idle'
@@ -121,5 +122,7 @@ watch(
         </span>
       </div>
     </div>
+
+    <FolderAccessPanel v-if="folder" :folder="folder" />
   </div>
 </template>

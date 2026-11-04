@@ -94,6 +94,28 @@ func (s *FolderStore) Delete(id uint) error {
 	return s.db.Delete(&folderModel{}, id).Error
 }
 
+func (s *FolderStore) FindByID(id uint) (*domain.Folder, error) {
+	var model folderModel
+	err := s.db.First(&model, id).Error
+	if err != nil {
+		return nil, mapDBErr(err)
+	}
+
+	f := model.toDomain()
+	return &f, nil
+}
+
+func (s *FolderStore) FindByPath(path string) (*domain.Folder, error) {
+	var model folderModel
+	err := s.db.Where("path = ?", path).First(&model).Error
+	if err != nil {
+		return nil, mapDBErr(err)
+	}
+
+	f := model.toDomain()
+	return &f, nil
+}
+
 func (s *FolderStore) FindByOwnerAndID(ownerKind string, ownerID, id uint) (*domain.Folder, error) {
 	if ownerKind == "" {
 		ownerKind = domain.OwnerKindUser
@@ -138,16 +160,32 @@ func (s *FolderStore) ListByOwner(ownerKind string, ownerID uint) ([]domain.Fold
 	return folderModelsToDomain(models), nil
 }
 
-func (s *FolderStore) ExistsByOwnerSlug(ownerKind string, ownerID uint, slug string) (bool, error) {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
+func (s *FolderStore) ListForMember(userID uint) ([]domain.Folder, error) {
+	var models []folderModel
+	err := s.db.Model(&folderModel{}).
+		Joins("JOIN folder_members ON folder_members.folder_id = folders.id AND folder_members.deleted_at IS NULL").
+		Where("folder_members.user_id = ? AND folders.parent_id IS NULL", userID).
+		Order("folders.name ASC").
+		Find(&models).Error
+	if err != nil {
+		return nil, err
 	}
 
+	return folderModelsToDomain(models), nil
+}
+
+func (s *FolderStore) ExistsBySlug(slug string) (bool, error) {
 	var count int64
 	err := s.db.Model(&folderModel{}).
-		Where("owner_kind = ? AND owner_id = ? AND parent_id IS NULL AND slug = ?", ownerKind, ownerID, slug).
+		Where("parent_id IS NULL AND slug = ?", slug).
 		Count(&count).Error
 	return count > 0, err
+}
+
+func (s *FolderStore) ExistsByOwnerSlug(ownerKind string, ownerID uint, slug string) (bool, error) {
+	_ = ownerKind
+	_ = ownerID
+	return s.ExistsBySlug(slug)
 }
 
 func folderModelsToDomain(models []folderModel) []domain.Folder {

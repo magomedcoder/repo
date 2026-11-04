@@ -58,22 +58,32 @@ func TestPullRequestFlow(t *testing.T) {
 	tokens := token.NewGenerator()
 
 	activityStore := sqlite.NewActivityStore(db)
+	folderMemberStore := sqlite.NewFolderMemberStore(db)
+	teamStore := sqlite.NewTeamStore(db)
+	teamMemberStore := sqlite.NewTeamMemberStore(db)
+	teamRepoGrantStore := sqlite.NewTeamRepoGrantStore(db)
+	collabStore := sqlite.NewRepoCollaboratorStore(db)
+	authz := usecase.NewAuthz(folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore)
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
-	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo)
-	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
+	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, folderMemberStore, gitRepo, authz)
+	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore, authz)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
-	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore)
-	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore)
-	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
+	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
+	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore, authz)
+	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore, authz)
+	membershipUC := usecase.NewAccessUseCase(folderStore, repoStore, userStore, folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore, authz)
 	profileUC := usecase.NewProfileUseCase(userStore, dataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 
+	authHandler := handler.NewAuthHandler(authUC)
+	authHandler.SetCSRFSecret("0123456789abcdef0123456789abcdef")
 	router := deliveryhttp.NewRouter(
-		handler.NewAuthHandler(authUC),
+		authHandler,
 		handler.NewRepositoryHandler(repoUC),
 		handler.NewFolderHandler(folderUC),
+		handler.NewMembershipHandler(membershipUC),
 		handler.NewTokenHandler(tokenUC),
 		handler.NewGitHandler(gitUC),
 		handler.NewIssueHandler(issueUC),
@@ -85,8 +95,9 @@ func TestPullRequestFlow(t *testing.T) {
 		nil,
 		authUC,
 		false,
+		"0123456789abcdef0123456789abcdef",
 	)
-	srv := httptest.NewServer(router)
+	srv := httptest.NewTestServer(t, router)
 	t.Cleanup(srv.Close)
 
 	if _, err := authUC.CreateUser(t.Context(), usecase.RegisterInput{

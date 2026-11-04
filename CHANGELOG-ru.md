@@ -3,9 +3,14 @@
 # dev
 
 - Сессии: хранение хешированных токенов; список устройств с IP и user agent; отзыв одной, остальных или всех сессий в настройках
-- Git: защита default-ветки при push после unpack; fast-forward разрешён, force-push и удаление запрещены; безопаснее одновременный merge и push
-- Security: CSP и HSTS за доверенным HTTPS; CSRF на мутирующие API-маршруты; санитизация HTML README без проксирования картинок
+- Папки: общие org-пространства с участниками (`owner` / `admin` / `member`), настраиваемые capabilities, invite/edit/remove в UI
+- Команды: создание teams внутри папки, участники команды, права read/write/admin на выбранные репозитории
+- Collaborators: на репозиторий роли `admin` / `write` / `read`; те же правила для Git HTTP и API; членство в папке не даёт write во все репо
+- Git: защита default-ветки при push после unpack; fast-forward разрешён, force-push и удаление запрещены; безопаснее одновременный merge и push; gzip-тела запросов; для private - challenge Basic auth
+- Security: CSP и HSTS за доверенным HTTPS; CSRF привязан к session cookie; санитизация HTML README без проксирования картинок
 - Access: гости видят только публичные activity, home и search; сортировка репозиториев по имени в базе; ограничение пагинации списков
+- Access-токены: опциональный срок действия при создании; просроченные отклоняются в Git auth
+- Issues и pull requests: монотонные номера на репозиторий
 - Надёжность: безопаснее кэш открытых git-репозиториев; создание записи репо до bare init; отдельные очереди audit для security и visits; отмена browse по контексту запроса
 
 ## v0.1.0 - 1 ноября 2026

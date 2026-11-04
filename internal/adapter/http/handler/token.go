@@ -3,6 +3,8 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"magomedcoder.ru/repo/internal/adapter/http/audit"
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
@@ -24,7 +26,9 @@ func (h *TokenHandler) SetAccessLogger(log *audit.Logger) {
 }
 
 type createTokenRequest struct {
-	Name string `json:"name"`
+	Name      string  `json:"name"`
+	ExpiresIn *int    `json:"expires_in"`
+	ExpiresAt *string `json:"expires_at"`
 }
 
 func (h *TokenHandler) Create(c *httpx.Context) error {
@@ -38,7 +42,17 @@ func (h *TokenHandler) Create(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.tokens.Create(c.Ctx(), usecase.CreateTokenInput{UserID: user.ID, Name: req.Name})
+	in := usecase.CreateTokenInput{UserID: user.ID, Name: req.Name, ExpiresIn: req.ExpiresIn}
+	if req.ExpiresAt != nil && strings.TrimSpace(*req.ExpiresAt) != "" {
+		t, perr := time.Parse(time.RFC3339, strings.TrimSpace(*req.ExpiresAt))
+		if perr != nil {
+			return c.Error(http.StatusBadRequest, "token_expiry_invalid")
+		}
+
+		in.ExpiresAt = &t
+	}
+
+	out, err := h.tokens.Create(c.Ctx(), in)
 	if err != nil {
 		return mapError(c, err)
 	}

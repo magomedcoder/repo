@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { foldersApi, reposApi } from '@/api'
-import type { RefInfo } from '@/api/types'
+import type { RefInfo, RepoCollaborator, RepoCollabRole } from '@/api/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { useCanWrite } from '@/composables/useCanWrite'
@@ -19,7 +19,14 @@ const props = defineProps<{
 
 const router = useRouter()
 const { repo, loading: repoLoading, error: repoError, reload } = useRepo(() => props.repoPath)
-const { isOwner } = useCanWrite(repo)
+const { canAdmin } = useCanWrite(repo)
+
+const collaborators = ref<RepoCollaborator[]>([])
+const collabUsername = ref('')
+const collabRole = ref<RepoCollabRole>('write')
+const collabBusy = ref(false)
+const collabError = ref('')
+const showCollabForm = ref(false)
 
 const name = ref('')
 const description = ref('')
@@ -90,7 +97,7 @@ async function load() {
     return
   }
 
-  if (!isOwner.value) {
+  if (!canAdmin.value) {
     await denyNonOwner()
     return
   }
@@ -98,12 +105,15 @@ async function load() {
   dataLoading.value = true
   loadError.value = ''
   message.value = ''
+  collabError.value = ''
   try {
     syncFormFromRepo()
-    const [folderRes, branchRes] = await Promise.all([
+    const [folderRes, branchRes, collabRes] = await Promise.all([
       foldersApi.list(),
       reposApi.branches(props.repoPath),
+      reposApi.listCollaborators(props.repoPath),
     ])
+    collaborators.value = collabRes.collaborators ?? []
     folderOptions.value = [
       {
         path: '',
@@ -126,7 +136,7 @@ async function load() {
 }
 
 async function save() {
-  if (!repo.value || !isOwner.value) {
+  if (!repo.value || !canAdmin.value) {
     return
   }
 
@@ -178,7 +188,7 @@ async function save() {
 }
 
 async function remove() {
-  if (!isOwner.value) {
+  if (!canAdmin.value) {
     return
   }
   
@@ -197,6 +207,40 @@ async function remove() {
   }
 }
 
+async function addCollaborator() {
+  collabBusy.value = true
+  collabError.value = ''
+
+  try {
+    await reposApi.addCollaborator(props.repoPath, {
+      username: collabUsername.value.trim(),
+      role: collabRole.value,
+    })
+    collabUsername.value = ''
+    showCollabForm.value = false
+    const res = await reposApi.listCollaborators(props.repoPath)
+    collaborators.value = res.collaborators ?? []
+  } catch (err) {
+    collabError.value = localizeError(err, 'errors.saveFailed')
+  } finally {
+    collabBusy.value = false
+  }
+}
+
+async function removeCollaborator(username: string) {
+  if (!confirm(i18n.global.t('collaborators.confirmRemove', { username }))) {
+    return
+  }
+
+  collabError.value = ''
+  try {
+    await reposApi.removeCollaborator(props.repoPath, username)
+    collaborators.value = collaborators.value.filter((c) => c.username !== username)
+  } catch (err) {
+    collabError.value = localizeError(err, 'errors.deleteFailed')
+  }
+}
+
 watch(
   () => props.repoPath,
   () => {
@@ -204,7 +248,7 @@ watch(
   },
 )
 
-watch([() => props.repoPath, repo, isOwner], load, { immediate: true })
+watch([() => props.repoPath, repo, canAdmin], load, { immediate: true })
 </script>
 
 <template>
@@ -215,7 +259,7 @@ watch([() => props.repoPath, repo, isOwner], load, { immediate: true })
     :loading="repoLoading"
     :error="repoError"
   >
-    <PageState v-if="isOwner" :loading="loading" :error="loadError">
+    <PageState v-if="canAdmin" :loading="loading" :error="loadError">
       <form class="overflow-hidden border border-line bg-paper" @submit.prevent="save">
         <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('settings.title') }}</div>
         <div class="p-3 sm:p-4 space-y-4">
@@ -278,6 +322,47 @@ watch([() => props.repoPath, repo, isOwner], load, { immediate: true })
           </button>
         </div>
       </form>
+
+      <div class="overflow-hidden border border-line bg-paper mt-6">
+        <div class="flex items-center justify-between gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">
+          <span>{{ $t('collaborators.title') }}</span>
+          <button type="button" class="inline-flex items-center justify-center border border-ink bg-ink px-2 py-0.5 text-[10pt] text-paper hover:bg-ink-muted" @click="showCollabForm = !showCollabForm">
+            {{ $t('collaborators.add') }}
+          </button>
+        </div>
+        <form v-if="showCollabForm" class="space-y-3 border-b border-line p-3 sm:p-4" @submit.prevent="addCollaborator">
+          <label class="block text-sm">
+            <span class="mb-1 block font-semibold">{{ $t('collaborators.username') }}</span>
+            <input v-model="collabUsername" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" required />
+          </label>
+          <label class="block text-sm">
+            <span class="mb-1 block font-semibold">{{ $t('collaborators.role') }}</span>
+            <select v-model="collabRole" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
+              <option value="read">{{ $t('collaborators.roles.read') }}</option>
+              <option value="write">{{ $t('collaborators.roles.write') }}</option>
+              <option value="admin">{{ $t('collaborators.roles.admin') }}</option>
+            </select>
+          </label>
+          <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:opacity-50" :disabled="collabBusy">
+            {{ $t('collaborators.submit') }}
+          </button>
+        </form>
+        <p v-if="collabError" class="px-3 pt-3 text-sm text-warn">{{ collabError }}</p>
+        <ul class="divide-y divide-line">
+          <li v-for="c in collaborators" :key="c.user_id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
+            <div>
+              <p class="font-semibold">{{ c.username }}</p>
+              <p class="text-xs text-ink-muted">{{ $t(`collaborators.roles.${c.role}`) }}</p>
+            </div>
+            <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-warn hover:bg-warn-soft" @click="removeCollaborator(c.username)">
+              {{ $t('collaborators.remove') }}
+            </button>
+          </li>
+          <li v-if="!collaborators.length" class="px-3 py-6 text-center text-sm text-ink-muted sm:px-4">
+            {{ $t('collaborators.empty') }}
+          </li>
+        </ul>
+      </div>
 
       <div class="overflow-hidden border border-line bg-paper mt-6">
         <h2 class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink text-warn">{{ $t('settings.danger') }}</h2>

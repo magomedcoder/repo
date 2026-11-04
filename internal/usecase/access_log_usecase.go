@@ -12,7 +12,7 @@ type AccessLogItem struct {
 	Action    string    `json:"action"`
 	IP        string    `json:"ip"`
 	UserAgent string    `json:"user_agent"`
-	UserID    *uint     `json:"user_id,omitempty"`
+	UserID    *uint     `json:"user_id,omitzero"`
 	Username  string    `json:"username"`
 	Path      string    `json:"path"`
 	Repo      string    `json:"repo"`

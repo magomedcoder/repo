@@ -15,6 +15,7 @@ type accessTokenModel struct {
 	TokenHash  string `gorm:"uniqueIndex;size:64;not null"`
 	Prefix     string `gorm:"size:16;not null"`
 	LastUsedAt *time.Time
+	ExpiresAt  *time.Time
 }
 
 func (accessTokenModel) TableName() string {
@@ -30,6 +31,7 @@ func (m accessTokenModel) toDomain() domain.AccessToken {
 		Prefix:     m.Prefix,
 		CreatedAt:  m.CreatedAt,
 		LastUsedAt: m.LastUsedAt,
+		ExpiresAt:  m.ExpiresAt,
 	}
 }
 
@@ -47,6 +49,7 @@ func (s *AccessTokenStore) Create(token *domain.AccessToken) error {
 		Name:      token.Name,
 		TokenHash: token.TokenHash,
 		Prefix:    token.Prefix,
+		ExpiresAt: token.ExpiresAt,
 	}
 	if err := s.db.Create(model).Error; err != nil {
 		return err

@@ -66,6 +66,59 @@
     "delete": "Delete",
     "confirmDelete": "Delete folder “{name}”? This cannot be undone."
   },
+  "folderAccess": {
+    "members": "Members",
+    "teams": "Teams",
+    "addMember": "Add member",
+    "edit": "Edit",
+    "addTeam": "Add team",
+    "username": "Username",
+    "role": "Role",
+    "teamName": "Team name",
+    "submitMember": "Invite",
+    "saveMember": "Save",
+    "submitTeam": "Create team",
+    "remove": "Remove",
+    "noMembers": "No members yet.",
+    "noTeams": "No teams yet.",
+    "confirmRemoveMember": "Remove {username} from this folder?",
+    "confirmRemoveTeam": "Delete team “{slug}”?",
+    "teamDetail": "Team: {name}",
+    "addTeamMember": "Add to team",
+    "noTeamMembers": "No team members.",
+    "repoName": "Repository name",
+    "grantRepo": "Grant access",
+    "noRepoGrants": "No repository grants.",
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "member": "Member"
+    },
+    "caps": {
+      "view": "View contents",
+      "create_repos": "Create repositories",
+      "create_folders": "Create folders",
+      "manage_members": "Manage members",
+      "manage_settings": "Manage settings",
+      "delete_folder": "Delete folder",
+      "delete_repos": "Delete repositories"
+    }
+  },
+  "collaborators": {
+    "title": "Collaborators",
+    "add": "Add",
+    "username": "Username",
+    "role": "Role",
+    "submit": "Add collaborator",
+    "remove": "Remove",
+    "empty": "No collaborators yet.",
+    "confirmRemove": "Remove collaborator {username}?",
+    "roles": {
+      "read": "Read",
+      "write": "Write",
+      "admin": "Admin"
+    }
+  },
   "list": {
     "noRepos": "No repositories yet.",
     "noFolders": "No folders yet."
@@ -199,7 +252,10 @@
     "lastUsed": "Last used",
     "confirmRevoke": "Revoke this token?",
     "createdTitle": "Token created",
-    "createdHint": "Copy the token now. It will not be shown again."
+    "createdHint": "Copy the token now. It will not be shown again.",
+    "expiresIn": "Expires in (days)",
+    "expiresInPlaceholder": "Optional - leave empty for no expiry",
+    "expiresAt": "Expires"
   },
   "sessions": {
     "title": "Sessions",
@@ -245,6 +301,21 @@
       "folder_already_exists": "A folder with this name already exists",
       "folder_not_found": "Folder not found",
       "folder_not_empty": "Folder is not empty",
+      "folder_access_denied": "No access to this folder",
+      "member_not_found": "Member not found",
+      "member_already_exists": "User is already a folder member",
+      "invalid_folder_role": "Role must be owner, admin, or member",
+      "invalid_collaborator_role": "Role must be admin, write, or read",
+      "cannot_remove_owner": "Cannot remove this owner",
+      "last_folder_owner": "Cannot remove or demote the last folder owner",
+      "team_not_found": "Team not found",
+      "team_already_exists": "A team with this name already exists",
+      "team_name_required": "Enter a team name",
+      "invalid_team_name": "Invalid team name",
+      "team_member_already_exists": "User is already on this team",
+      "team_member_not_found": "Team member not found",
+      "collaborator_not_found": "Collaborator not found",
+      "cannot_collaborator_self": "Repository owner is already an admin",
       "ref_not_found": "Ref not found",
       "blame_too_large": "File is too large to blame",
       "history_too_large": "Repository history is too large for this operation",

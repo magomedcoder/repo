@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -62,6 +61,11 @@ func runServe() {
 	pullStore := sqlite.NewPullRequestStore(db)
 	activityStore := sqlite.NewActivityStore(db)
 	accessStore := sqlite.NewAccessLogStore(db)
+	folderMemberStore := sqlite.NewFolderMemberStore(db)
+	teamStore := sqlite.NewTeamStore(db)
+	teamMemberStore := sqlite.NewTeamMemberStore(db)
+	teamRepoGrantStore := sqlite.NewTeamRepoGrantStore(db)
+	collabStore := sqlite.NewRepoCollaboratorStore(db)
 	accessLog := audit.New(accessStore)
 
 	gitRepo := git.NewRepository(cfg.DataDir)
@@ -71,15 +75,17 @@ func runServe() {
 
 	middleware.SetTrustedProxies(cfg.TrustedProxyNets)
 
+	authz := usecase.NewAuthz(folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore)
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret(cfg.SessionSecret)
 	authUC.SetAllowRegistration(cfg.AllowRegistration)
-	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, gitRepo)
-	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore)
+	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, folderMemberStore, gitRepo, authz)
+	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore, authz)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
-	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore)
-	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore)
-	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore)
+	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
+	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore, authz)
+	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore, authz)
+	membershipUC := usecase.NewAccessUseCase(folderStore, repoStore, userStore, folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore, authz)
 	profileUC := usecase.NewProfileUseCase(userStore, cfg.DataDir)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
@@ -87,16 +93,17 @@ func runServe() {
 
 	authHandler := handler.NewAuthHandler(authUC)
 	authHandler.SetCookiePolicy(cfg.CookieSecure, http.SameSiteLaxMode)
+	authHandler.SetCSRFSecret(cfg.SessionSecret)
 	authHandler.SetAllowRegistration(cfg.AllowRegistration)
 	authHandler.SetAccessLogger(accessLog)
 	folderHandler := handler.NewFolderHandler(folderUC)
+	membershipHandler := handler.NewMembershipHandler(membershipUC)
 	repoHandler := handler.NewRepositoryHandler(repoUC)
 	repoHandler.SetAccessLogger(accessLog)
 	tokenHandler := handler.NewTokenHandler(tokenUC)
 	tokenHandler.SetAccessLogger(accessLog)
 	gitHandler := handler.NewGitHandler(gitUC)
 	gitHandler.SetReceiveMaxBytes(cfg.ReceiveMaxBytes)
-	gitHandler.SetTempDir(filepath.Join(cfg.DataDir, "tmp"))
 	gitHandler.SetAccessLogger(accessLog)
 	issueHandler := handler.NewIssueHandler(issueUC)
 	pullHandler := handler.NewPullRequestHandler(pullUC)
@@ -107,7 +114,7 @@ func runServe() {
 	adminHandler.SetAccessLogger(accessLog)
 	accessHandler := handler.NewAccessHandler(accessLog)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.CookieSecure)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, membershipHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.CookieSecure, cfg.SessionSecret)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

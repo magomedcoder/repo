@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -47,7 +48,7 @@ func (s *memRepos) Update(*domain.Repository) error {
 func (s *memRepos) Delete(uint) error {
 	return nil
 }
-func (s *memRepos) FindByRepoPath(repoPath string) (*domain.Repository, error) {
+func (s *memRepos) FindByRepoPath(_ context.Context, repoPath string) (*domain.Repository, error) {
 	for i := range s.items {
 		r := s.items[i]
 		if r.RepoPath == repoPath {
@@ -59,7 +60,7 @@ func (s *memRepos) FindByRepoPath(repoPath string) (*domain.Repository, error) {
 	return nil, errors.New("not found")
 }
 
-func (s *memRepos) ListByOwnerID(ownerKind string, ownerID uint, limit, offset int, _ domain.RepoOrder) ([]domain.Repository, error) {
+func (s *memRepos) ListByOwnerID(_ context.Context, ownerKind string, ownerID uint, limit, offset int, _ domain.RepoOrder) ([]domain.Repository, error) {
 	_ = limit
 	_ = offset
 	var out []domain.Repository
@@ -83,7 +84,7 @@ func (s *memRepos) CountByOwnerID(ownerKind string, ownerID uint) (int64, error)
 	return n, nil
 }
 
-func (s *memRepos) ListPublicIDsByOwner(ownerKind string, ownerID uint) ([]uint, error) {
+func (s *memRepos) ListPublicIDsByOwner(_ context.Context, ownerKind string, ownerID uint) ([]uint, error) {
 	var out []uint
 	for _, r := range s.items {
 		if r.OwnerKind == ownerKind && r.OwnerID == ownerID && !r.IsPrivate {
@@ -94,19 +95,23 @@ func (s *memRepos) ListPublicIDsByOwner(ownerKind string, ownerID uint) ([]uint,
 	return out, nil
 }
 
-func (s *memRepos) ListByOwnerAndFolderID(string, uint, *uint) ([]domain.Repository, error) {
+func (s *memRepos) ListByOwnerAndFolderID(context.Context, string, uint, *uint) ([]domain.Repository, error) {
 	return nil, nil
 }
 
-func (s *memRepos) ListPublic(int, int, domain.RepoOrder) ([]domain.Repository, error) {
+func (s *memRepos) ListByFolderID(context.Context, uint) ([]domain.Repository, error) {
 	return nil, nil
 }
 
-func (s *memRepos) ListHome(int, int, domain.RepoOrder) ([]domain.Repository, error) {
+func (s *memRepos) ListPublic(context.Context, int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
 }
 
-func (s *memRepos) SearchByName(string, string, uint, bool, int, int, domain.RepoOrder) ([]domain.Repository, error) {
+func (s *memRepos) ListHome(context.Context, int, int, domain.RepoOrder) ([]domain.Repository, error) {
+	return nil, nil
+}
+
+func (s *memRepos) SearchByName(context.Context, string, string, uint, bool, int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
 }
 

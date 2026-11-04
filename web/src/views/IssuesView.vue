@@ -26,7 +26,7 @@ watch(repo, (value) => {
     void router.replace(repoLocation('repo', props.repoPath))
   }
 })
-const { isAuthenticated, isOwner } = useCanWrite(repo)
+const { isAuthenticated, canAdmin } = useCanWrite(repo)
 const state = ref<'open' | 'closed'>('open')
 const issues = ref<Issue[]>([])
 const labels = ref<Label[]>([])
@@ -167,7 +167,7 @@ watch([() => props.repoPath, () => state.value], loadIssues, { immediate: true }
           <li v-if="!issues.length" class="px-4 py-10 text-center text-sm text-ink-muted">{{ $t('issues.empty') }}</li>
         </ul>
         <LabelManager
-          v-if="isOwner"
+          v-if="canAdmin"
           :labels="labels"
           @create="addLabel"
           @remove="removeLabel"

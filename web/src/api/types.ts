@@ -52,10 +52,63 @@ export interface AuthSession {
   expires_at: string
 }
 
+export type FolderCaps = {
+  view?: boolean
+  create_repos?: boolean
+  create_folders?: boolean
+  manage_members?: boolean
+  manage_settings?: boolean
+  delete_folder?: boolean
+  delete_repos?: boolean
+}
+
+export type FolderRole = 'owner' | 'admin' | 'member'
+export type RepoCollabRole = 'admin' | 'write' | 'read'
+
 export interface Folder {
   name: string
   slug: string
   path: string
+  role?: FolderRole | string
+  caps?: FolderCaps
+  created_at: string
+  updated_at: string
+}
+
+export interface FolderMember {
+  user_id: number
+  username: string
+  role: FolderRole
+  caps: FolderCaps
+  created_at: string
+  updated_at: string
+}
+
+export interface Team {
+  name: string
+  slug: string
+  caps: FolderCaps
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamMember {
+  user_id: number
+  username: string
+  created_at: string
+}
+
+export interface TeamRepoGrant {
+  repo_id: number
+  repo_name: string
+  repo_path: string
+  role: RepoCollabRole | string
+}
+
+export interface RepoCollaborator {
+  user_id: number
+  username: string
+  role: RepoCollabRole | string
   created_at: string
   updated_at: string
 }
@@ -86,6 +139,9 @@ export interface Repository {
   issues_enabled?: boolean
   default_branch: string
   last_activity_at?: string
+  can_read?: boolean
+  can_write?: boolean
+  can_admin?: boolean
   created_at: string
   updated_at: string
 }
@@ -190,6 +246,7 @@ export interface AccessToken {
   prefix: string
   created_at: string
   last_used_at?: string
+  expires_at?: string
 }
 
 export interface CreateAccessTokenResponse extends AccessToken {

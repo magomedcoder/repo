@@ -23,41 +23,6 @@ func (issueModel) TableName() string {
 	return "issues"
 }
 
-type issueCommentModel struct {
-	ID        uint `gorm:"primaryKey"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	IssueID   uint   `gorm:"not null;index"`
-	AuthorID  uint   `gorm:"not null"`
-	Body      string `gorm:"not null"`
-}
-
-func (issueCommentModel) TableName() string {
-	return "issue_comments"
-}
-
-type labelModel struct {
-	ID           uint `gorm:"primaryKey"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	RepositoryID uint   `gorm:"not null;uniqueIndex:idx_label_name"`
-	Name         string `gorm:"size:50;not null;uniqueIndex:idx_label_name"`
-	Color        string `gorm:"size:16;not null"`
-}
-
-func (labelModel) TableName() string {
-	return "labels"
-}
-
-type issueLabelModel struct {
-	IssueID uint `gorm:"primaryKey"`
-	LabelID uint `gorm:"primaryKey"`
-}
-
-func (issueLabelModel) TableName() string {
-	return "issue_labels"
-}
-
 type IssueStore struct {
 	db *gorm.DB
 }
@@ -67,41 +32,28 @@ func NewIssueStore(db *gorm.DB) *IssueStore {
 }
 
 func (s *IssueStore) Create(issue *domain.Issue) error {
-	const maxAttempts = 5
-	var last error
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		last = s.db.Transaction(func(tx *gorm.DB) error {
-			var maxNum int
-			if err := tx.Model(&issueModel{}).
-				Where("repository_id = ?", issue.RepositoryID).
-				Select("COALESCE(MAX(number), 0)").
-				Scan(&maxNum).Error; err != nil {
-				return err
-			}
-
-			issue.Number = maxNum + 1
-			if issue.State == "" {
-				issue.State = "open"
-			}
-
-			model := issueFromDomain(issue)
-			if err := tx.Create(model).Error; err != nil {
-				return err
-			}
-
-			*issue = model.toDomain()
-			return nil
-		})
-		if last == nil {
-			return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var seq int
+		if err := tx.Raw(`UPDATE repositories SET issue_seq = issue_seq + 1 WHERE id = ? RETURNING issue_seq`, issue.RepositoryID).Scan(&seq).Error; err != nil {
+			return err
+		}
+		if seq == 0 {
+			return domain.ErrNotFound
 		}
 
-		if !isUniqueViolation(last) {
-			return last
+		issue.Number = seq
+		if issue.State == "" {
+			issue.State = "open"
 		}
-	}
 
-	return last
+		model := issueFromDomain(issue)
+		if err := tx.Create(model).Error; err != nil {
+			return err
+		}
+
+		*issue = model.toDomain()
+		return nil
+	})
 }
 
 func (s *IssueStore) Update(issue *domain.Issue) error {
@@ -161,184 +113,6 @@ func (s *IssueStore) ListByRepo(repoID uint, state string, offset, limit int) ([
 	return out, nil
 }
 
-func (s *IssueStore) CountComments(issueID uint) (int, error) {
-	var n int64
-	if err := s.db.Model(&issueCommentModel{}).Where("issue_id = ?", issueID).Count(&n).Error; err != nil {
-		return 0, err
-	}
-
-	return int(n), nil
-}
-
-func (s *IssueStore) CreateComment(comment *domain.IssueComment) error {
-	model := commentFromDomain(comment)
-	if err := s.db.Create(model).Error; err != nil {
-		return err
-	}
-
-	*comment = model.toDomain()
-	return nil
-}
-
-func (s *IssueStore) UpdateComment(comment *domain.IssueComment) error {
-	model := commentFromDomain(comment)
-	if err := s.db.Save(model).Error; err != nil {
-		return err
-	}
-
-	*comment = model.toDomain()
-	return nil
-}
-
-func (s *IssueStore) DeleteComment(id uint) error {
-	return s.db.Delete(&issueCommentModel{}, id).Error
-}
-
-func (s *IssueStore) FindComment(id uint) (*domain.IssueComment, error) {
-	var model issueCommentModel
-	if err := s.db.First(&model, id).Error; err != nil {
-		return nil, mapDBErr(err)
-	}
-
-	c := model.toDomain()
-	return &c, nil
-}
-
-func (s *IssueStore) ListComments(issueID uint) ([]domain.IssueComment, error) {
-	var models []issueCommentModel
-	if err := s.db.Where("issue_id = ?", issueID).Order("created_at asc").Find(&models).Error; err != nil {
-		return nil, err
-	}
-
-	out := make([]domain.IssueComment, 0, len(models))
-	for _, m := range models {
-		out = append(out, m.toDomain())
-	}
-
-	return out, nil
-}
-
-func (s *IssueStore) CreateLabel(label *domain.Label) error {
-	model := labelFromDomain(label)
-	if err := s.db.Create(model).Error; err != nil {
-		return err
-	}
-
-	*label = model.toDomain()
-	return nil
-}
-
-func (s *IssueStore) UpdateLabel(label *domain.Label) error {
-	model := labelFromDomain(label)
-	if err := s.db.Save(model).Error; err != nil {
-		return err
-	}
-
-	*label = model.toDomain()
-	return nil
-}
-
-func (s *IssueStore) DeleteLabel(id uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("label_id = ?", id).Delete(&issueLabelModel{}).Error; err != nil {
-			return err
-		}
-
-		return tx.Delete(&labelModel{}, id).Error
-	})
-}
-
-func (s *IssueStore) FindLabel(id uint) (*domain.Label, error) {
-	var model labelModel
-	if err := s.db.First(&model, id).Error; err != nil {
-		return nil, mapDBErr(err)
-	}
-
-	l := model.toDomain()
-	return &l, nil
-}
-
-func (s *IssueStore) ListLabels(repoID uint) ([]domain.Label, error) {
-	var models []labelModel
-	if err := s.db.Where("repository_id = ?", repoID).Order("name asc").Find(&models).Error; err != nil {
-		return nil, err
-	}
-
-	return labelsToDomain(models), nil
-}
-
-func (s *IssueStore) FindLabelByRepoName(repoID uint, name string) (*domain.Label, error) {
-	var model labelModel
-	if err := s.db.Where("repository_id = ? AND name = ?", repoID, name).First(&model).Error; err != nil {
-		return nil, mapDBErr(err)
-	}
-
-	l := model.toDomain()
-	return &l, nil
-}
-
-func (s *IssueStore) SetIssueLabels(issueID uint, labelIDs []uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("issue_id = ?", issueID).Delete(&issueLabelModel{}).Error; err != nil {
-			return err
-		}
-
-		for _, id := range labelIDs {
-			row := issueLabelModel{IssueID: issueID, LabelID: id}
-			if err := tx.Create(&row).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-}
-
-func (s *IssueStore) ListLabelsByIssues(issueIDs []uint) (map[uint][]domain.Label, error) {
-	out := map[uint][]domain.Label{}
-	if len(issueIDs) == 0 {
-		return out, nil
-	}
-
-	var links []issueLabelModel
-	if err := s.db.Where("issue_id IN ?", issueIDs).Find(&links).Error; err != nil {
-		return nil, err
-	}
-
-	if len(links) == 0 {
-		return out, nil
-	}
-
-	ids := make([]uint, 0, len(links))
-	seen := map[uint]struct{}{}
-	for _, link := range links {
-		if _, ok := seen[link.LabelID]; ok {
-			continue
-		}
-
-		seen[link.LabelID] = struct{}{}
-		ids = append(ids, link.LabelID)
-	}
-
-	var models []labelModel
-	if err := s.db.Where("id IN ?", ids).Find(&models).Error; err != nil {
-		return nil, err
-	}
-
-	byID := map[uint]domain.Label{}
-	for _, m := range models {
-		byID[m.ID] = m.toDomain()
-	}
-
-	for _, link := range links {
-		if label, ok := byID[link.LabelID]; ok {
-			out[link.IssueID] = append(out[link.IssueID], label)
-		}
-	}
-
-	return out, nil
-}
-
 func issueFromDomain(issue *domain.Issue) *issueModel {
 	return &issueModel{
 		ID:           issue.ID,
@@ -365,57 +139,4 @@ func (m issueModel) toDomain() domain.Issue {
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 	}
-}
-
-func commentFromDomain(c *domain.IssueComment) *issueCommentModel {
-	return &issueCommentModel{
-		ID:        c.ID,
-		IssueID:   c.IssueID,
-		AuthorID:  c.AuthorID,
-		Body:      c.Body,
-		CreatedAt: c.CreatedAt,
-		UpdatedAt: c.UpdatedAt,
-	}
-}
-
-func (m issueCommentModel) toDomain() domain.IssueComment {
-	return domain.IssueComment{
-		ID:        m.ID,
-		IssueID:   m.IssueID,
-		AuthorID:  m.AuthorID,
-		Body:      m.Body,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
-	}
-}
-
-func labelFromDomain(l *domain.Label) *labelModel {
-	return &labelModel{
-		ID:           l.ID,
-		RepositoryID: l.RepositoryID,
-		Name:         l.Name,
-		Color:        l.Color,
-		CreatedAt:    l.CreatedAt,
-		UpdatedAt:    l.UpdatedAt,
-	}
-}
-
-func (m labelModel) toDomain() domain.Label {
-	return domain.Label{
-		ID:           m.ID,
-		RepositoryID: m.RepositoryID,
-		Name:         m.Name,
-		Color:        m.Color,
-		CreatedAt:    m.CreatedAt,
-		UpdatedAt:    m.UpdatedAt,
-	}
-}
-
-func labelsToDomain(models []labelModel) []domain.Label {
-	out := make([]domain.Label, 0, len(models))
-	for _, m := range models {
-		out = append(out, m.toDomain())
-	}
-
-	return out
 }

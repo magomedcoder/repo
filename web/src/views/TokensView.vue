@@ -7,6 +7,7 @@ import { formatDate, i18n, localizeError } from '@/i18n'
 
 const tokens = ref<AccessToken[]>([])
 const name = ref('')
+const expiresInDays = ref<number | null>(null)
 const error = ref('')
 const loading = ref(true)
 const creating = ref(false)
@@ -31,11 +32,18 @@ async function create() {
   error.value = ''
   createdToken.value = ''
   try {
-    const res = await tokensApi.create({ 
-      name: name.value.trim() 
-    })
+    const body: { name: string; expires_in?: number } = {
+      name: name.value.trim(),
+    }
+
+    if (expiresInDays.value != null && expiresInDays.value > 0) {
+      body.expires_in = expiresInDays.value
+    }
+
+    const res = await tokensApi.create(body)
     createdToken.value = res.token
     name.value = ''
+    expiresInDays.value = null
     showForm.value = false
     await load()
   } catch (err) {
@@ -114,6 +122,17 @@ onMounted(load)
             :placeholder="$t('tokens.namePlaceholder')"
           />
         </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{{ $t('tokens.expiresIn') }}</span>
+          <input
+            v-model.number="expiresInDays"
+            type="number"
+            min="1"
+            max="3650"
+            class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
+            :placeholder="$t('tokens.expiresInPlaceholder')"
+          />
+        </label>
         <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="creating">
           {{ creating ? $t('tokens.creating') : $t('tokens.submit') }}
         </button>
@@ -134,6 +153,9 @@ onMounted(load)
               {{ $t('tokens.prefix') }}: {{ token.prefix }}...
             </p>
             <p class="mt-1 text-xs text-ink-muted">{{ formatDate(token.created_at) }}</p>
+            <p v-if="token.expires_at" class="mt-0.5 text-xs text-ink-muted">
+              {{ $t('tokens.expiresAt') }}: {{ formatDate(token.expires_at) }}
+            </p>
             <p v-if="token.last_used_at" class="mt-0.5 text-xs text-ink-muted">
               {{ $t('tokens.lastUsed') }}: {{ formatDate(token.last_used_at) }}
             </p>

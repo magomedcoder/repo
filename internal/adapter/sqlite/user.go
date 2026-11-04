@@ -1,8 +1,7 @@
 package sqlite
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -44,40 +43,6 @@ func (m userModel) toDomain() *domain.User {
 	}
 }
 
-type sessionModel struct {
-	ID         uint `gorm:"primaryKey"`
-	CreatedAt  time.Time
-	Token      string    `gorm:"uniqueIndex;size:128;not null"`
-	UserID     uint      `gorm:"index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	User       userModel `gorm:"foreignKey:UserID;references:ID"`
-	IP         string    `gorm:"size:64;not null;default:''"`
-	UserAgent  string    `gorm:"size:512;not null;default:''"`
-	ExpiresAt  time.Time
-	LastSeenAt time.Time
-}
-
-func (sessionModel) TableName() string {
-	return "sessions"
-}
-
-func (m sessionModel) toDomain() *domain.Session {
-	lastSeen := m.LastSeenAt
-	if lastSeen.IsZero() {
-		lastSeen = m.CreatedAt
-	}
-
-	return &domain.Session{
-		ID:         m.ID,
-		Token:      m.Token,
-		UserID:     m.UserID,
-		IP:         m.IP,
-		UserAgent:  m.UserAgent,
-		ExpiresAt:  m.ExpiresAt,
-		LastSeenAt: lastSeen,
-		CreatedAt:  m.CreatedAt,
-	}
-}
-
 type UserStore struct {
 	db *gorm.DB
 }
@@ -110,23 +75,23 @@ func (s *UserStore) Create(user *domain.User) error {
 	return nil
 }
 
-func (s *UserStore) FindByID(id uint) (*domain.User, error) {
+func (s *UserStore) FindByID(ctx context.Context, id uint) (*domain.User, error) {
 	var model userModel
-	if err := s.db.First(&model, id).Error; err != nil {
+	if err := s.db.WithContext(ctx).First(&model, id).Error; err != nil {
 		return nil, mapDBErr(err)
 	}
 
 	return model.toDomain(), nil
 }
 
-func (s *UserStore) FindByIDs(ids []uint) (map[uint]*domain.User, error) {
+func (s *UserStore) FindByIDs(ctx context.Context, ids []uint) (map[uint]*domain.User, error) {
 	out := make(map[uint]*domain.User)
 	if len(ids) == 0 {
 		return out, nil
 	}
 
 	var models []userModel
-	if err := s.db.Where("id IN ?", ids).Find(&models).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&models).Error; err != nil {
 		return nil, err
 	}
 
@@ -138,18 +103,18 @@ func (s *UserStore) FindByIDs(ids []uint) (map[uint]*domain.User, error) {
 	return out, nil
 }
 
-func (s *UserStore) FindByUsername(username string) (*domain.User, error) {
+func (s *UserStore) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
 	var model userModel
-	if err := s.db.Where("username = ?", username).First(&model).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("username = ?", username).First(&model).Error; err != nil {
 		return nil, mapDBErr(err)
 	}
 
 	return model.toDomain(), nil
 }
 
-func (s *UserStore) FindByEmail(email string) (*domain.User, error) {
+func (s *UserStore) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	var model userModel
-	if err := s.db.Where("email = ?", email).First(&model).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("email = ?", email).First(&model).Error; err != nil {
 		return nil, mapDBErr(err)
 	}
 
@@ -225,117 +190,4 @@ func (s *UserStore) CountByRole(role domain.Role) (int64, error) {
 	var count int64
 	err := s.db.Model(&userModel{}).Where("role = ?", role).Count(&count).Error
 	return count, err
-}
-
-type SessionStore struct {
-	db *gorm.DB
-}
-
-func NewSessionStore(db *gorm.DB) *SessionStore {
-	return &SessionStore{db: db}
-}
-
-func hashSessionToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
-}
-
-func (s *SessionStore) Create(session *domain.Session) error {
-	lastSeen := session.LastSeenAt
-	if lastSeen.IsZero() {
-		lastSeen = time.Now().UTC()
-	}
-
-	model := &sessionModel{
-		Token:      hashSessionToken(session.Token),
-		UserID:     session.UserID,
-		IP:         truncateRunes(session.IP, 64),
-		UserAgent:  truncateRunes(session.UserAgent, 512),
-		ExpiresAt:  session.ExpiresAt,
-		LastSeenAt: lastSeen,
-	}
-	if err := s.db.Create(model).Error; err != nil {
-		return err
-	}
-
-	session.ID = model.ID
-	session.CreatedAt = model.CreatedAt
-	session.LastSeenAt = model.LastSeenAt
-	session.IP = model.IP
-	session.UserAgent = model.UserAgent
-	return nil
-}
-
-func (s *SessionStore) FindByToken(token string) (*domain.Session, error) {
-	var model sessionModel
-	if err := s.db.Where("token = ?", hashSessionToken(token)).First(&model).Error; err != nil {
-		return nil, mapDBErr(err)
-	}
-
-	session := model.toDomain()
-	session.Token = token
-	return session, nil
-}
-
-func (s *SessionStore) ListByUserID(userID uint) ([]domain.Session, error) {
-	var models []sessionModel
-	if err := s.db.Where("user_id = ?", userID).Order("last_seen_at DESC, id DESC").Find(&models).Error; err != nil {
-		return nil, err
-	}
-
-	out := make([]domain.Session, 0, len(models))
-	for i := range models {
-		out = append(out, *models[i].toDomain())
-	}
-
-	return out, nil
-}
-
-func (s *SessionStore) DeleteByUserAndID(userID, sessionID uint) error {
-	res := s.db.Where("user_id = ? AND id = ?", userID, sessionID).Delete(&sessionModel{})
-	if res.Error != nil {
-		return res.Error
-	}
-
-	if res.RowsAffected == 0 {
-		return domain.ErrNotFound
-	}
-
-	return nil
-}
-
-func (s *SessionStore) Touch(session *domain.Session) error {
-	return s.db.Model(&sessionModel{}).Where("id = ?", session.ID).Updates(map[string]any{
-		"last_seen_at": session.LastSeenAt,
-		"expires_at":   session.ExpiresAt,
-	}).Error
-}
-
-func truncateRunes(s string, max int) string {
-	if max <= 0 || s == "" {
-		return s
-	}
-
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-
-	return string(r[:max])
-}
-
-func (s *SessionStore) DeleteByToken(token string) error {
-	return s.db.Where("token = ?", hashSessionToken(token)).Delete(&sessionModel{}).Error
-}
-
-func (s *SessionStore) DeleteByUserIDExcept(userID uint, keepToken string) error {
-	if keepToken == "" {
-		return s.DeleteByUserID(userID)
-	}
-
-	return s.db.Where("user_id = ? AND token <> ?", userID, hashSessionToken(keepToken)).Delete(&sessionModel{}).Error
-}
-
-func (s *SessionStore) DeleteByUserID(userID uint) error {
-	return s.db.Where("user_id = ?", userID).Delete(&sessionModel{}).Error
 }

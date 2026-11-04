@@ -25,6 +25,8 @@ type repositoryModel struct {
 	DefaultBranch        string `gorm:"size:255;not null;default:main"`
 	Path                 string `gorm:"not null"`
 	RepoPath             string `gorm:"size:512;not null;default:''"`
+	IssueSeq             int    `gorm:"not null;default:0"`
+	PullSeq              int    `gorm:"not null;default:0"`
 	LastActivityAt       *time.Time
 }
 

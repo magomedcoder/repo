@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -27,7 +28,7 @@ func (s *memUsers) Create(user *domain.User) error {
 	return nil
 }
 
-func (s *memUsers) FindByID(id uint) (*domain.User, error) {
+func (s *memUsers) FindByID(_ context.Context, id uint) (*domain.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, u := range s.items {
@@ -39,7 +40,7 @@ func (s *memUsers) FindByID(id uint) (*domain.User, error) {
 	return nil, errors.New("not found")
 }
 
-func (s *memUsers) FindByIDs(ids []uint) (map[uint]*domain.User, error) {
+func (s *memUsers) FindByIDs(_ context.Context, ids []uint) (map[uint]*domain.User, error) {
 	out := make(map[uint]*domain.User)
 	if len(ids) == 0 {
 		return out, nil
@@ -58,7 +59,7 @@ func (s *memUsers) FindByIDs(ids []uint) (map[uint]*domain.User, error) {
 	return out, nil
 }
 
-func (s *memUsers) FindByUsername(username string) (*domain.User, error) {
+func (s *memUsers) FindByUsername(_ context.Context, username string) (*domain.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, u := range s.items {
@@ -70,7 +71,7 @@ func (s *memUsers) FindByUsername(username string) (*domain.User, error) {
 	return nil, errors.New("not found")
 }
 
-func (s *memUsers) FindByEmail(email string) (*domain.User, error) {
+func (s *memUsers) FindByEmail(_ context.Context, email string) (*domain.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, u := range s.items {
@@ -83,12 +84,12 @@ func (s *memUsers) FindByEmail(email string) (*domain.User, error) {
 }
 
 func (s *memUsers) ExistsByUsername(username string) (bool, error) {
-	_, err := s.FindByUsername(username)
+	_, err := s.FindByUsername(context.Background(), username)
 	return err == nil, nil
 }
 
 func (s *memUsers) ExistsByEmail(email string) (bool, error) {
-	_, err := s.FindByEmail(email)
+	_, err := s.FindByEmail(context.Background(), email)
 	return err == nil, nil
 }
 
@@ -180,7 +181,7 @@ func (s *memSessions) Create(session *domain.Session) error {
 	return nil
 }
 
-func (s *memSessions) FindByToken(token string) (*domain.Session, error) {
+func (s *memSessions) FindByToken(_ context.Context, token string) (*domain.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, item := range s.items {
@@ -402,11 +403,11 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := sessions.FindByToken(keep); err != nil {
+	if _, err := sessions.FindByToken(context.Background(), keep); err != nil {
 		t.Fatal("kept session missing")
 	}
 
-	if _, err := sessions.FindByToken(other); err == nil {
+	if _, err := sessions.FindByToken(context.Background(), other); err == nil {
 		t.Fatal("other session still present")
 	}
 

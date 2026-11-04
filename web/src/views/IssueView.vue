@@ -21,7 +21,7 @@ const props = defineProps<{
 
 const router = useRouter()
 const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
-const { isAuthenticated, isOwner, username } = useCanWrite(repo)
+const { isAuthenticated, canAdmin, username } = useCanWrite(repo)
 const issue = ref<IssueDetail | null>(null)
 const labels = ref<Label[]>([])
 const comment = ref('')
@@ -31,10 +31,10 @@ const busy = ref(false)
 const selected = ref<number[]>([])
 
 const loading = computed(() => dataLoading.value)
-const canEdit = computed(() => isOwner.value || (!!username.value && username.value === issue.value?.author))
+const canEdit = computed(() => canAdmin.value || (!!username.value && username.value === issue.value?.author))
 
 function canEditComment(author: string) {
-  return isOwner.value || username.value === author
+  return canAdmin.value || username.value === author
 }
 
 async function load() {
@@ -236,7 +236,7 @@ watch([() => props.repoPath, () => props.number], load, { immediate: true })
                   <LabelPill v-for="label in issue.labels" :key="label.id" :label="label" />
                   <span v-if="!issue.labels.length" class="text-xs text-ink-muted">{{ $t('repo.noneYet') }}</span>
                 </div>
-                <form v-if="isOwner" class="space-y-2" @submit.prevent="saveLabels">
+                <form v-if="canAdmin" class="space-y-2" @submit.prevent="saveLabels">
                   <LabelPicker v-model="selected" :labels="labels" />
                   <button type="submit" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50" :disabled="busy">{{ $t('issues.saveLabels') }}</button>
                 </form>

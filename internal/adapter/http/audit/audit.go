@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
@@ -35,24 +36,12 @@ type Logger struct {
 	visitLast map[string]time.Time
 	visitIP   map[string]visitWindow
 
-	writes atomicCounter
+	writes atomic.Uint64
 }
 
 type visitWindow struct {
 	start time.Time
 	n     int
-}
-
-type atomicCounter struct {
-	mu sync.Mutex
-	n  uint64
-}
-
-func (c *atomicCounter) add(n uint64) uint64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.n += n
-	return c.n
 }
 
 func New(store domain.AccessLogStore) *Logger {
@@ -93,7 +82,7 @@ func (l *Logger) write(ev *domain.AccessLog) {
 	if err := l.store.Create(ev); err != nil {
 		slog.Warn("access_log", "action", ev.Action, "err", err)
 	}
-	n := l.writes.add(1)
+	n := l.writes.Add(1)
 	if n%accessPurgeEveryN == 0 {
 		cutoff := time.Now().Add(-accessLogRetention)
 		if err := l.store.DeleteOlderThan(cutoff); err != nil {
@@ -119,7 +108,7 @@ func validVisitPath(p string) bool {
 		return false
 	}
 
-	for i := 0; i < len(p); i++ {
+	for i := range len(p) {
 		if p[i] < 0x20 || p[i] == 0x7f {
 			return false
 		}

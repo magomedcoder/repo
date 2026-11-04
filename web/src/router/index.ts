@@ -150,7 +150,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: ':repoPath(.*)/settings',
         name: 'repo-settings',
-        meta: { requiresOwner: true },
+        meta: { requiresRepoAdmin: true },
         component: () => import('@/views/RepoSettingsView.vue'),
         props: true,
       },
@@ -215,8 +215,8 @@ router.beforeEach(async (to) => {
     return { name: 'not-found' }
   }
 
-  const requiresOwner = to.matched.some((record) => record.meta.requiresOwner)
-  if (requiresOwner) {
+  const requiresRepoAdmin = to.matched.some((record) => record.meta.requiresRepoAdmin)
+  if (requiresRepoAdmin) {
     if (!auth.isAuthenticated.value) {
       return {
         name: 'login',
@@ -230,7 +230,7 @@ router.beforeEach(async (to) => {
     if (repoPath) {
       try {
         const repo = await reposApi.get(repoPath)
-        if (auth.user.value?.username !== repo.owner) {
+        if (!repo.can_admin) {
           return repoLocation('repo', repoPath)
         }
       } catch {

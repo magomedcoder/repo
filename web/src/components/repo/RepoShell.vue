@@ -17,7 +17,7 @@ const props = defineProps<{
   error?: PageError | string
 }>()
 
-const { isOwner } = useCanWrite(() => props.repo)
+const { canAdmin } = useCanWrite(() => props.repo)
 
 function isNotFound(error: PageError | string | null | undefined) {
   return typeof error === 'object' && error?.kind === 'not_found'
@@ -51,13 +51,11 @@ function active(name: string) {
       <template v-if="folderSlug">
         <span> / </span>
         <RouterLink
-          v-if="isOwner"
           :to="folderLocation(folderSlug)"
           class="text-ink-muted no-underline hover:underline"
         >
           {{ folderSlug }}
         </RouterLink>
-        <span v-else class="text-ink-muted">{{ folderSlug }}</span>
       </template>
       <span> / </span>
       <RouterLink class="font-bold no-underline hover:underline" :to="repoLocation('repo', repoPath)">
@@ -86,7 +84,7 @@ function active(name: string) {
         {{ $t('nav.pulls') }}
       </RouterLink>
       <RouterLink
-        v-if="isOwner"
+        v-if="canAdmin"
         :to="repoLocation('repo-settings', repoPath)"
         :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('settings') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']"
       >

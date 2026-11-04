@@ -14,8 +14,8 @@ func TestErrorIs(t *testing.T) {
 		t.Fatal("expected Is to match sentinel")
 	}
 
-	var app *usecase.Error
-	if !errors.As(err, &app) || app.Kind != usecase.KindNotFound || app.Code != "repository_not_found" {
-		t.Fatalf("As failed: %#v", app)
+	app, ok := errors.AsType[*usecase.Error](err)
+	if !ok || app.Kind != usecase.KindNotFound || app.Code != "repository_not_found" {
+		t.Fatalf("AsType failed: %#v", app)
 	}
 }

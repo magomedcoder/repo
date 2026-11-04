@@ -12,7 +12,7 @@ func SafePath(root, path string) (string, error) {
 		return "", fmt.Errorf("path outside data root")
 	}
 
-	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
+	for seg := range strings.SplitSeq(filepath.ToSlash(path), "/") {
 		if seg == ".." {
 			return "", fmt.Errorf("path outside data root")
 		}

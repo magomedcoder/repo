@@ -13,6 +13,7 @@ func NewRouter(
 	authHandler *handler.AuthHandler,
 	repoHandler *handler.RepositoryHandler,
 	folderHandler *handler.FolderHandler,
+	membershipHandler *handler.MembershipHandler,
 	tokenHandler *handler.TokenHandler,
 	gitHandler *handler.GitHandler,
 	issueHandler *handler.IssueHandler,
@@ -24,6 +25,7 @@ func NewRouter(
 	accessHandler *handler.AccessHandler,
 	auth middleware.Authenticator,
 	cookieSecure bool,
+	sessionSecret string,
 ) http.Handler {
 	r := httpx.New()
 	api := r.Group("/api")
@@ -60,22 +62,25 @@ func NewRouter(
 	pub.GET("/repos", repoHandler.List)
 
 	repoAPI := &handler.RepoDispatcher{
-		Repos:  repoHandler,
-		Issues: issueHandler,
-		Pulls:  pullHandler,
+		Repos:      repoHandler,
+		Issues:     issueHandler,
+		Pulls:      pullHandler,
+		Membership: membershipHandler,
 	}
-	pub.GET("/repos/{path...}", repoAPI.DispatchGet)
-	authed.PATCH("/repos/{path...}", repoAPI.DispatchPatch)
-	authed.DELETE("/repos/{path...}", repoAPI.DispatchDelete)
-	authed.POST("/repos/{path...}", repoAPI.DispatchPost)
+	handler.RegisterRepoRoutes(pub, authed, repoAPI)
 
 	pub.GET("/activity/{owner}", activityHandler.ListOwner)
 
+	folderAPI := &handler.FolderDispatcher{
+		Folders:    folderHandler,
+		Membership: membershipHandler,
+	}
 	authed.POST("/folders", folderHandler.Create)
 	authed.GET("/folders", folderHandler.List)
-	authed.GET("/folders/{path...}", folderHandler.Get)
-	authed.PATCH("/folders/{path...}", folderHandler.Rename)
-	authed.DELETE("/folders/{path...}", folderHandler.Delete)
+	authed.GET("/folders/{path...}", folderAPI.DispatchGet)
+	authed.POST("/folders/{path...}", folderAPI.DispatchPost)
+	authed.PATCH("/folders/{path...}", folderAPI.DispatchPatch)
+	authed.DELETE("/folders/{path...}", folderAPI.DispatchDelete)
 
 	authed.POST("/tokens", tokenHandler.Create)
 	authed.GET("/tokens", tokenHandler.List)
@@ -92,7 +97,7 @@ func NewRouter(
 	apiLimiter := middleware.NewRateLimiter(180, 60)
 	authLimiter := middleware.NewRateLimiter(30, 10)
 	gitLimiter := middleware.NewRateLimiter(60, 20)
-	apiHandler := middleware.SecurityHeaders(cookieSecure)(middleware.CSRF(cookieSecure)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(r.Handler()))))))
+	apiHandler := middleware.SecurityHeaders(cookieSecure)(middleware.CSRF(cookieSecure, sessionSecret)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(r.Handler()))))))
 	gitHTTP := middleware.SecurityHeaders(cookieSecure)(middleware.RateLimitIP(gitLimiter)(middleware.Logger(gitHandler)))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

@@ -10,9 +10,10 @@ import (
 )
 
 type RepoDispatcher struct {
-	Repos  *RepositoryHandler
-	Issues *IssueHandler
-	Pulls  *PullRequestHandler
+	Repos      *RepositoryHandler
+	Issues     *IssueHandler
+	Pulls      *PullRequestHandler
+	Membership *MembershipHandler
 }
 
 func (d *RepoDispatcher) DispatchGet(c *httpx.Context) error {
@@ -32,6 +33,8 @@ func (d *RepoDispatcher) DispatchGet(c *httpx.Context) error {
 	}
 
 	switch {
+	case action == "collaborators":
+		return d.Membership.ListCollaborators(c, in)
 	case isPullAction(action):
 		return d.Pulls.get(c, in, action, extra)
 	case isIssueAction(action):
@@ -76,6 +79,8 @@ func (d *RepoDispatcher) DispatchDelete(c *httpx.Context) error {
 	}
 
 	switch {
+	case action == "collaborator" && len(extra) == 1:
+		return d.Membership.RemoveCollaborator(c, in, extra[0])
 	case isPullAction(action):
 		return d.Pulls.delete(c, in, action, extra)
 	case isIssueAction(action):
@@ -102,6 +107,8 @@ func (d *RepoDispatcher) DispatchPost(c *httpx.Context) error {
 	}
 
 	switch {
+	case action == "collaborators":
+		return d.Membership.AddCollaborator(c, in)
 	case isPullAction(action):
 		return d.Pulls.post(c, in, action, extra)
 	case isIssueAction(action):

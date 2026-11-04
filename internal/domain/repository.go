@@ -41,21 +41,23 @@ type RepositoryStore interface {
 
 	Delete(id uint) error
 
-	FindByRepoPath(repoPath string) (*Repository, error)
+	FindByRepoPath(ctx context.Context, repoPath string) (*Repository, error)
 
-	ListByOwnerID(ownerKind string, ownerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
+	ListByOwnerID(ctx context.Context, ownerKind string, ownerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
 
 	CountByOwnerID(ownerKind string, ownerID uint) (int64, error)
 
-	ListPublicIDsByOwner(ownerKind string, ownerID uint) ([]uint, error)
+	ListPublicIDsByOwner(ctx context.Context, ownerKind string, ownerID uint) ([]uint, error)
 
-	ListByOwnerAndFolderID(ownerKind string, ownerID uint, folderID *uint) ([]Repository, error)
+	ListByOwnerAndFolderID(ctx context.Context, ownerKind string, ownerID uint, folderID *uint) ([]Repository, error)
 
-	ListPublic(limit, offset int, order RepoOrder) ([]Repository, error)
+	ListByFolderID(ctx context.Context, folderID uint) ([]Repository, error)
 
-	ListHome(limit, offset int, order RepoOrder) ([]Repository, error)
+	ListPublic(ctx context.Context, limit, offset int, order RepoOrder) ([]Repository, error)
 
-	SearchByName(query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order RepoOrder) ([]Repository, error)
+	ListHome(ctx context.Context, limit, offset int, order RepoOrder) ([]Repository, error)
+
+	SearchByName(ctx context.Context, query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order RepoOrder) ([]Repository, error)
 
 	ExistsByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (bool, error)
 
@@ -65,8 +67,7 @@ type RepositoryStore interface {
 }
 
 type BareInitOptions struct {
-	DefaultBranch        string
-	DenyForcePushDefault bool
+	DefaultBranch string
 }
 
 type RefInfo struct {
@@ -146,8 +147,6 @@ type GitRepository interface {
 
 	InitBare(path string, opts BareInitOptions) error
 
-	SetReceiveDenyNonFastForwards(path string, deny bool) error
-
 	Remove(path string) error
 
 	Move(oldPath, newPath string) error
@@ -172,15 +171,15 @@ type GitRepository interface {
 
 	GetBlob(repoPath, ref, path string) (*BlobContent, error)
 
-	GetBlame(repoPath, ref, path string) (*BlameResult, error)
+	GetBlame(ctx context.Context, repoPath, ref, path string) (*BlameResult, error)
 
-	GetCommitDiff(repoPath, sha string) (*CommitDiff, error)
+	GetCommitDiff(ctx context.Context, repoPath, sha string) (*CommitDiff, error)
 
-	Compare(repoPath, base, head string) (*CompareResult, error)
+	Compare(ctx context.Context, repoPath, base, head string) (*CompareResult, error)
 
-	CanFastForward(repoPath, base, head string) (bool, error)
+	CanFastForward(ctx context.Context, repoPath, base, head string) (bool, error)
 
-	Merge(repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error)
+	Merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error)
 
 	GetStats(repoPath, ref string) (*RepoStats, error)
 

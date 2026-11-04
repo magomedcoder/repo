@@ -21,7 +21,7 @@ const props = defineProps<{
 
 const router = useRouter()
 const { repo, loading: repoLoading, error: repoError } = useRepo(() => props.repoPath)
-const { isAuthenticated, isOwner, username } = useCanWrite(repo)
+const { isAuthenticated, canAdmin, username } = useCanWrite(repo)
 const pull = ref<PullDetail | null>(null)
 const compare = ref<PullCompare | null>(null)
 const comment = ref('')
@@ -31,10 +31,10 @@ const dataLoading = ref(false)
 const busy = ref(false)
 
 const loading = computed(() => dataLoading.value)
-const canEdit = computed(() => isOwner.value || (!!username.value && username.value === pull.value?.author))
+const canEdit = computed(() => canAdmin.value || (!!username.value && username.value === pull.value?.author))
 
 function canEditComment(author: string) {
-  return isOwner.value || username.value === author
+  return canAdmin.value || username.value === author
 }
 
 async function load() {
@@ -203,7 +203,7 @@ watch([() => props.repoPath, () => props.number], load, { immediate: true })
           <p class="whitespace-pre-wrap px-4 py-3 text-sm">{{ pull.body || $t('pulls.noBody') }}</p>
         </article>
 
-        <form v-if="isOwner && pull.state === 'open'" class="overflow-hidden border border-line bg-paper mb-4" @submit.prevent="merge">
+        <form v-if="canAdmin && pull.state === 'open'" class="overflow-hidden border border-line bg-paper mb-4" @submit.prevent="merge">
           <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('pulls.merge') }}</div>
           <div class="p-3 sm:p-4 flex flex-wrap items-end gap-3">
             <label class="block text-sm">

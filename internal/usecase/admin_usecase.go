@@ -95,7 +95,7 @@ func (uc *AdminUseCase) Get(ctx context.Context, id uint) (*AdminUserItem, error
 		return nil, err
 	}
 
-	user, err := uc.users.FindByID(id)
+	user, err := uc.users.FindByID(ctx, id)
 	if err != nil {
 		return nil, ErrUserNotFound
 	}
@@ -130,7 +130,7 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 		return nil, err
 	}
 
-	user, err := uc.users.FindByID(id)
+	user, err := uc.users.FindByID(ctx, id)
 	if err != nil {
 		return nil, ErrUserNotFound
 	}
@@ -215,7 +215,7 @@ func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	user, err := uc.users.FindByID(id)
+	user, err := uc.users.FindByID(ctx, id)
 	if err != nil {
 		return ErrUserNotFound
 	}

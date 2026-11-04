@@ -25,17 +25,20 @@ var (
 	ErrFolderExists       = NewError(KindConflict, "folder_already_exists")
 	ErrFolderNotFound     = NewError(KindNotFound, "folder_not_found")
 	ErrFolderNotEmpty     = NewError(KindConflict, "folder_not_empty")
+	ErrFolderForbidden    = NewError(KindForbidden, "folder_access_denied")
 )
 
 var nonSlugChars = regexp.MustCompile(`[^a-z0-9_-]+`)
 
 type FolderItem struct {
-	ID        uint      `json:"-"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	Path      string    `json:"path"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uint            `json:"-"`
+	Name      string          `json:"name"`
+	Slug      string          `json:"slug"`
+	Path      string          `json:"path"`
+	Role      string          `json:"role,omitzero"`
+	Caps      map[string]bool `json:"caps,omitzero"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 type FolderContents struct {
@@ -71,27 +74,19 @@ type RenameFolderInput struct {
 type FolderUseCase struct {
 	folders domain.FolderStore
 	repos   domain.RepositoryStore
+	members domain.FolderMemberStore
 	git     domain.GitRepository
+	authz   *Authz
 }
 
-func NewFolderUseCase(folders domain.FolderStore, repos domain.RepositoryStore, git domain.GitRepository) *FolderUseCase {
+func NewFolderUseCase(folders domain.FolderStore, repos domain.RepositoryStore, members domain.FolderMemberStore, git domain.GitRepository, authz *Authz) *FolderUseCase {
 	return &FolderUseCase{
 		folders: folders,
 		repos:   repos,
+		members: members,
 		git:     git,
+		authz:   authz,
 	}
-}
-
-func (uc *FolderUseCase) resolveOwner(viewerID, ownerID uint, write bool) (kind string, id uint, err error) {
-	if ownerID == 0 {
-		ownerID = viewerID
-	}
-
-	if ownerID == 0 || (write && ownerID != viewerID) {
-		return "", 0, ErrUnauthorized
-	}
-
-	return domain.OwnerKindUser, ownerID, nil
 }
 
 func (uc *FolderUseCase) Create(ctx context.Context, in CreateFolderInput) (*FolderItem, error) {
@@ -103,10 +98,8 @@ func (uc *FolderUseCase) Create(ctx context.Context, in CreateFolderInput) (*Fol
 	if viewerID == 0 {
 		viewerID = in.OwnerID
 	}
-
-	ownerKind, ownerID, err := uc.resolveOwner(viewerID, in.OwnerID, true)
-	if err != nil {
-		return nil, err
+	if viewerID == 0 {
+		return nil, ErrUnauthorized
 	}
 
 	name, slug, err := normalizeFolderName(in.Name)
@@ -118,7 +111,7 @@ func (uc *FolderUseCase) Create(ctx context.Context, in CreateFolderInput) (*Fol
 		return nil, ErrReservedSlug
 	}
 
-	exists, err := uc.folders.ExistsByOwnerSlug(ownerKind, ownerID, slug)
+	exists, err := uc.folders.ExistsBySlug(slug)
 	if err != nil {
 		return nil, fmt.Errorf("check folder existence: %w", err)
 	}
@@ -128,8 +121,8 @@ func (uc *FolderUseCase) Create(ctx context.Context, in CreateFolderInput) (*Fol
 	}
 
 	folder := &domain.Folder{
-		OwnerKind: ownerKind,
-		OwnerID:   ownerID,
+		OwnerKind: domain.OwnerKindUser,
+		OwnerID:   viewerID,
 		Name:      name,
 		Slug:      slug,
 		Path:      slug,
@@ -138,48 +131,63 @@ func (uc *FolderUseCase) Create(ctx context.Context, in CreateFolderInput) (*Fol
 		return nil, fmt.Errorf("create folder: %w", err)
 	}
 
+	if uc.members != nil {
+		member := &domain.FolderMember{
+			FolderID: folder.ID,
+			UserID:   viewerID,
+			Role:     domain.FolderRoleOwner,
+			Caps:     domain.CapsForRole(domain.FolderRoleOwner),
+		}
+
+		if err := uc.members.Create(member); err != nil {
+			_ = uc.folders.Delete(folder.ID)
+			return nil, fmt.Errorf("seed folder owner: %w", err)
+		}
+	}
+
 	item := toFolderItem(folder)
+	item.Role = string(domain.FolderRoleOwner)
+	item.Caps = CapsJSON(domain.CapsForRole(domain.FolderRoleOwner))
+
 	return &item, nil
 }
 
-func (uc *FolderUseCase) List(ctx context.Context, viewerID, ownerID uint) ([]FolderItem, error) {
+func (uc *FolderUseCase) List(ctx context.Context, viewerID, _ uint) ([]FolderItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
-	if err != nil {
-		return nil, err
-	}
-
-	if ownerID == 0 {
+	if viewerID == 0 {
 		return nil, ErrUnauthorized
 	}
 
-	folders, err := uc.folders.ListByOwner(ownerKind, ownerID)
+	folders, err := uc.folders.ListForMember(viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("list folders: %w", err)
 	}
 
 	items := make([]FolderItem, 0, len(folders))
 	for i := range folders {
-		items = append(items, toFolderItem(&folders[i]))
+		item := toFolderItem(&folders[i])
+		if uc.authz != nil {
+			caps, role, cerr := uc.authz.FolderCaps(folders[i].ID, viewerID)
+			if cerr == nil {
+				item.Role = string(role)
+				item.Caps = CapsJSON(caps)
+			}
+		}
+		items = append(items, item)
 	}
 
 	return items, nil
 }
 
-func (uc *FolderUseCase) GetContents(ctx context.Context, viewerID, ownerID uint, path string) (*FolderContents, error) {
+func (uc *FolderUseCase) GetContents(ctx context.Context, viewerID, _ uint, path string) (*FolderContents, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, false)
-	if err != nil {
-		return nil, err
-	}
-
-	if ownerID == 0 {
+	if viewerID == 0 {
 		return nil, ErrUnauthorized
 	}
 
@@ -188,28 +196,47 @@ func (uc *FolderUseCase) GetContents(ctx context.Context, viewerID, ownerID uint
 		return nil, ErrFolderNotFound
 	}
 
-	folder, err := uc.folders.FindByOwnerAndPath(ownerKind, ownerID, path)
+	folder, err := uc.folders.FindByPath(path)
 	if err != nil {
 		return nil, ErrFolderNotFound
 	}
 
-	return uc.folderContents(ownerKind, ownerID, folder)
+	if err := uc.authz.RequireFolderCap(folder.ID, viewerID, domain.CapView); err != nil {
+		return nil, ErrFolderNotFound
+	}
+
+	return uc.folderContents(viewerID, folder)
 }
 
-func (uc *FolderUseCase) folderContents(ownerKind string, ownerID uint, folder *domain.Folder) (*FolderContents, error) {
-	folderID := folder.ID
-	repos, err := uc.repos.ListByOwnerAndFolderID(ownerKind, ownerID, &folderID)
+func (uc *FolderUseCase) folderContents(viewerID uint, folder *domain.Folder) (*FolderContents, error) {
+	repos, err := uc.repos.ListByFolderID(context.Background(), folder.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list folder repos: %w", err)
 	}
 
 	folderItem := toFolderItem(folder)
+	if uc.authz != nil {
+		caps, role, cerr := uc.authz.FolderCaps(folder.ID, viewerID)
+		if cerr == nil {
+			folderItem.Role = string(role)
+			folderItem.Caps = CapsJSON(caps)
+		}
+	}
+
 	out := &FolderContents{
 		Folder: &folderItem,
 		Repos:  make([]RepositorySummaryItem, 0, len(repos)),
 	}
 
 	for _, repo := range repos {
+		if uc.authz != nil {
+			if err := uc.authz.CanReadRepo(&repo, viewerID); err != nil {
+				continue
+			}
+		} else if repo.IsPrivate && !isPersonalOwner(&repo, viewerID) {
+			continue
+		}
+
 		out.Repos = append(out.Repos, toRepoSummary(repo, folder.Path))
 	}
 
@@ -223,12 +250,7 @@ func (uc *FolderUseCase) Rename(ctx context.Context, in RenameFolderInput) (*Fol
 
 	viewerID := in.ViewerID
 	if viewerID == 0 {
-		viewerID = in.OwnerID
-	}
-
-	ownerKind, ownerID, err := uc.resolveOwner(viewerID, in.OwnerID, true)
-	if err != nil {
-		return nil, err
+		return nil, ErrUnauthorized
 	}
 
 	path := strings.Trim(in.Path, "/")
@@ -236,9 +258,13 @@ func (uc *FolderUseCase) Rename(ctx context.Context, in RenameFolderInput) (*Fol
 		return nil, ErrFolderNotFound
 	}
 
-	folder, err := uc.folders.FindByOwnerAndPath(ownerKind, ownerID, path)
+	folder, err := uc.folders.FindByPath(path)
 	if err != nil {
 		return nil, ErrFolderNotFound
+	}
+
+	if err := uc.authz.RequireFolderCap(folder.ID, viewerID, domain.CapManageSettings); err != nil {
+		return nil, err
 	}
 
 	name, slug, err := normalizeFolderName(in.Name)
@@ -250,7 +276,7 @@ func (uc *FolderUseCase) Rename(ctx context.Context, in RenameFolderInput) (*Fol
 		if IsReservedSlug(slug) {
 			return nil, ErrReservedSlug
 		}
-		exists, err := uc.folders.ExistsByOwnerSlug(ownerKind, ownerID, slug)
+		exists, err := uc.folders.ExistsBySlug(slug)
 		if err != nil {
 			return nil, fmt.Errorf("check folder existence: %w", err)
 		}
@@ -267,7 +293,7 @@ func (uc *FolderUseCase) Rename(ctx context.Context, in RenameFolderInput) (*Fol
 	var moved []folderMovedRepo
 
 	if oldPath != slug {
-		repos, err := uc.repos.ListByOwnerAndFolderID(ownerKind, ownerID, &folder.ID)
+		repos, err := uc.repos.ListByFolderID(ctx, folder.ID)
 		if err != nil {
 			return nil, fmt.Errorf("list folder repos: %w", err)
 		}
@@ -304,17 +330,12 @@ func (uc *FolderUseCase) Rename(ctx context.Context, in RenameFolderInput) (*Fol
 	return &item, nil
 }
 
-func (uc *FolderUseCase) Delete(ctx context.Context, viewerID, ownerID uint, path string) error {
+func (uc *FolderUseCase) Delete(ctx context.Context, viewerID, _ uint, path string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	ownerKind, ownerID, err := uc.resolveOwner(viewerID, ownerID, true)
-	if err != nil {
-		return err
-	}
-
-	if ownerID == 0 {
+	if viewerID == 0 {
 		return ErrUnauthorized
 	}
 
@@ -323,9 +344,13 @@ func (uc *FolderUseCase) Delete(ctx context.Context, viewerID, ownerID uint, pat
 		return ErrFolderNotFound
 	}
 
-	folder, err := uc.folders.FindByOwnerAndPath(ownerKind, ownerID, path)
+	folder, err := uc.folders.FindByPath(path)
 	if err != nil {
 		return ErrFolderNotFound
+	}
+
+	if err := uc.authz.RequireFolderCap(folder.ID, viewerID, domain.CapDeleteFolder); err != nil {
+		return err
 	}
 
 	childRepos, err := uc.repos.CountByFolderID(folder.ID)
@@ -342,6 +367,20 @@ func (uc *FolderUseCase) Delete(ctx context.Context, viewerID, ownerID uint, pat
 	}
 
 	return nil
+}
+
+func (uc *FolderUseCase) FindByPath(path string) (*domain.Folder, error) {
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return nil, ErrFolderNotFound
+	}
+
+	folder, err := uc.folders.FindByPath(path)
+	if err != nil {
+		return nil, ErrFolderNotFound
+	}
+
+	return folder, nil
 }
 
 func normalizeFolderName(raw string) (name, slug string, err error) {

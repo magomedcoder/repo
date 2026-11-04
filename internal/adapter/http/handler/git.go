@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"compress/gzip"
 	"errors"
 	"io"
 	"net/http"
@@ -27,8 +28,6 @@ func NewGitHandler(git *usecase.GitUseCase) *GitHandler {
 func (h *GitHandler) SetAccessLogger(log *audit.Logger) {
 	h.access = log
 }
-
-func (h *GitHandler) SetTempDir(string) {}
 
 func (h *GitHandler) SetReceiveMaxBytes(n int64) {
 	if n > 0 {
@@ -85,27 +84,29 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		return
 	}
 
-	var (
-		body    io.Reader = http.MaxBytesReader(w, r.Body, uploadPackMaxBytes)
-		receive *domain.ReceivePackOptions
-	)
+	limit := int64(uploadPackMaxBytes)
+	var receive *domain.ReceivePackOptions
 
 	if service == usecase.GitReceivePack {
 		unlock := h.git.LockRepo(repo.Path)
 		defer unlock()
 
-		limit := h.receiveMaxBytes
+		limit = h.receiveMaxBytes
 		if limit <= 0 {
 			limit = 512 << 20
 		}
-
-		body = http.MaxBytesReader(w, r.Body, limit)
 		if repo.ProtectDefaultBranch {
 			receive = &domain.ReceivePackOptions{
 				ProtectDefaultBranch: true,
 				DefaultBranch:        repo.DefaultBranch,
 			}
 		}
+	}
+
+	body, err := gitPackBody(w, r, limit)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/x-"+string(service)+"-result")
@@ -157,11 +158,6 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 			return nil, nil, authErr
 		}
 
-		if repo.IsPrivate {
-			http.Error(w, "not found", http.StatusNotFound)
-			return nil, nil, authErr
-		}
-
 		w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return nil, nil, authErr
@@ -172,11 +168,6 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 	}
 
 	if err := h.git.Authorize(r.Context(), repo, viewer, service); err != nil {
-		if repo.IsPrivate {
-			http.Error(w, "not found", http.StatusNotFound)
-			return nil, nil, err
-		}
-
 		if errors.Is(err, usecase.ErrUnauthorized) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -205,6 +196,20 @@ func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) 
 	}
 
 	return nil, usecase.ErrUnauthorized
+}
+
+func gitPackBody(w http.ResponseWriter, r *http.Request, limit int64) (io.Reader, error) {
+	body := http.MaxBytesReader(w, r.Body, limit)
+	if !strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
+		return body, nil
+	}
+
+	gz, err := gzip.NewReader(body)
+	if err != nil {
+		return nil, err
+	}
+
+	return http.MaxBytesReader(w, gz, limit), nil
 }
 
 func parseGitHTTPPath(urlPath string) (repoPath, action string, err error) {

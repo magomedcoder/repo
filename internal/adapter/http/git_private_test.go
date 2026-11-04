@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestGitHTTPPrivateRepoIsNotFoundWithoutAuth(t *testing.T) {
+func TestGitHTTPPrivateRepoChallengesWithoutAuth(t *testing.T) {
 	env := newTestServer(t)
 	cookies := loginUser(t, env, "gitpriv", "gitpriv@example.com", "password1")
 
@@ -41,15 +41,15 @@ func TestGitHTTPPrivateRepoIsNotFoundWithoutAuth(t *testing.T) {
 
 	missBody, _ := io.ReadAll(missRes.Body)
 
-	if privRes.StatusCode != http.StatusNotFound {
+	if privRes.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("private git status=%d www=%q body=%s", privRes.StatusCode, privRes.Header.Get("WWW-Authenticate"), privBody)
+	}
+
+	if privRes.Header.Get("WWW-Authenticate") != `Basic realm="git"` {
+		t.Fatalf("private git WWW-Authenticate=%q", privRes.Header.Get("WWW-Authenticate"))
 	}
 
 	if missRes.StatusCode != http.StatusNotFound {
 		t.Fatalf("missing git status=%d body=%s", missRes.StatusCode, missBody)
-	}
-
-	if privRes.Header.Get("WWW-Authenticate") != "" {
-		t.Fatalf("private git must not challenge: %q", privRes.Header.Get("WWW-Authenticate"))
 	}
 }

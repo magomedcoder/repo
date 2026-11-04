@@ -13,10 +13,11 @@ import (
 )
 
 var (
-	ErrTokenNameRequired = NewError(KindValidation, "token_name_required")
-	ErrTokenNotFound     = NewError(KindNotFound, "token_not_found")
-	ErrTokenNameTooLong  = NewError(KindValidation, "token_name_too_long")
-	ErrTooManyTokens     = NewError(KindConflict, "too_many_tokens")
+	ErrTokenNameRequired  = NewError(KindValidation, "token_name_required")
+	ErrTokenNotFound      = NewError(KindNotFound, "token_not_found")
+	ErrTokenNameTooLong   = NewError(KindValidation, "token_name_too_long")
+	ErrTooManyTokens      = NewError(KindConflict, "too_many_tokens")
+	ErrTokenExpiryInvalid = NewError(KindValidation, "token_expiry_invalid")
 )
 
 const (
@@ -25,8 +26,10 @@ const (
 )
 
 type CreateTokenInput struct {
-	UserID uint
-	Name   string
+	UserID    uint
+	Name      string
+	ExpiresIn *int
+	ExpiresAt *time.Time
 }
 
 type TokenItem struct {
@@ -35,6 +38,7 @@ type TokenItem struct {
 	Prefix     string     `json:"prefix"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitzero"`
+	ExpiresAt  *time.Time `json:"expires_at,omitzero"`
 }
 
 type CreateTokenOutput struct {
@@ -80,6 +84,11 @@ func (uc *TokenUseCase) Create(ctx context.Context, in CreateTokenInput) (*Creat
 		return nil, ErrTooManyTokens
 	}
 
+	expiresAt, err := resolveTokenExpiry(in.ExpiresIn, in.ExpiresAt, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+
 	raw, err := uc.gen.Generate()
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
@@ -91,6 +100,7 @@ func (uc *TokenUseCase) Create(ctx context.Context, in CreateTokenInput) (*Creat
 		Name:      name,
 		TokenHash: hashAccessToken(raw),
 		Prefix:    formatTokenPrefix(raw),
+		ExpiresAt: expiresAt,
 	}
 
 	if err := uc.tokens.Create(token); err != nil {
@@ -161,5 +171,35 @@ func toTokenItem(t *domain.AccessToken) TokenItem {
 		Prefix:     t.Prefix,
 		CreatedAt:  t.CreatedAt,
 		LastUsedAt: t.LastUsedAt,
+		ExpiresAt:  t.ExpiresAt,
 	}
+}
+
+func resolveTokenExpiry(days *int, at *time.Time, now time.Time) (*time.Time, error) {
+	if days != nil && at != nil {
+		return nil, ErrTokenExpiryInvalid
+	}
+
+	if days != nil {
+		if *days <= 0 || *days > 3650 {
+			return nil, ErrTokenExpiryInvalid
+		}
+
+		exp := now.Add(time.Duration(*days) * 24 * time.Hour)
+		return &exp, nil
+	}
+
+	if at != nil {
+		if !at.After(now) {
+			return nil, ErrTokenExpiryInvalid
+		}
+		exp := at.UTC()
+		return &exp, nil
+	}
+
+	return nil, nil
+}
+
+func AccessTokenExpired(token *domain.AccessToken, now time.Time) bool {
+	return token != nil && token.ExpiresAt != nil && !token.ExpiresAt.After(now)
 }

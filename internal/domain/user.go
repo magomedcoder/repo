@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"strings"
 	"time"
 )
@@ -70,13 +71,13 @@ type UserListFilter struct {
 type UserStore interface {
 	Create(user *User) error
 
-	FindByID(id uint) (*User, error)
+	FindByID(ctx context.Context, id uint) (*User, error)
 
-	FindByIDs(ids []uint) (map[uint]*User, error)
+	FindByIDs(ctx context.Context, ids []uint) (map[uint]*User, error)
 
-	FindByUsername(username string) (*User, error)
+	FindByUsername(ctx context.Context, username string) (*User, error)
 
-	FindByEmail(email string) (*User, error)
+	FindByEmail(ctx context.Context, email string) (*User, error)
 
 	ExistsByUsername(username string) (bool, error)
 
@@ -94,7 +95,7 @@ type UserStore interface {
 type SessionStore interface {
 	Create(session *Session) error
 
-	FindByToken(token string) (*Session, error)
+	FindByToken(ctx context.Context, token string) (*Session, error)
 
 	ListByUserID(userID uint) ([]Session, error)
 

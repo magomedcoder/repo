@@ -81,7 +81,7 @@ func (uc *ActivityUseCase) filterVisible(events []domain.ActivityEvent, ownerKin
 		return events, nil
 	}
 
-	ids, err := uc.repos.ListPublicIDsByOwner(ownerKind, ownerID)
+	ids, err := uc.repos.ListPublicIDsByOwner(context.Background(), ownerKind, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (uc *ActivityUseCase) filterVisible(events []domain.ActivityEvent, ownerKin
 }
 
 func (uc *ActivityUseCase) resolveOwner(slug string) (string, uint, error) {
-	if u, err := uc.users.FindByUsername(slug); err == nil {
+	if u, err := uc.users.FindByUsername(context.Background(), slug); err == nil {
 		return domain.OwnerKindUser, u.ID, nil
 	}
 
@@ -126,7 +126,7 @@ func (uc *ActivityUseCase) mapEvents(events []domain.ActivityEvent) ([]ActivityI
 
 	ids := slices.Collect(maps.Keys(idSet))
 
-	usersByID, err := uc.users.FindByIDs(ids)
+	usersByID, err := uc.users.FindByIDs(context.Background(), ids)
 	if err != nil {
 		return nil, fmt.Errorf("load activity users: %w", err)
 	}

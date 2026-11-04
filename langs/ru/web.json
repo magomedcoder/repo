@@ -66,6 +66,59 @@
     "delete": "Удалить",
     "confirmDelete": "Удалить папку «{name}»? Это действие нельзя отменить."
   },
+  "folderAccess": {
+    "members": "Участники",
+    "teams": "Команды",
+    "addMember": "Добавить",
+    "edit": "Изменить",
+    "addTeam": "Создать команду",
+    "username": "Имя пользователя",
+    "role": "Роль",
+    "teamName": "Название команды",
+    "submitMember": "Пригласить",
+    "saveMember": "Сохранить",
+    "submitTeam": "Создать",
+    "remove": "Удалить",
+    "noMembers": "Участников пока нет.",
+    "noTeams": "Команд пока нет.",
+    "confirmRemoveMember": "Удалить {username} из папки?",
+    "confirmRemoveTeam": "Удалить команду «{slug}»?",
+    "teamDetail": "Команда: {name}",
+    "addTeamMember": "В команду",
+    "noTeamMembers": "В команде никого нет.",
+    "repoName": "Имя репозитория",
+    "grantRepo": "Выдать доступ",
+    "noRepoGrants": "Нет прав на репозитории.",
+    "roles": {
+      "owner": "Владелец",
+      "admin": "Админ",
+      "member": "Участник"
+    },
+    "caps": {
+      "view": "Просмотр",
+      "create_repos": "Создавать репозитории",
+      "create_folders": "Создавать папки",
+      "manage_members": "Управлять участниками",
+      "manage_settings": "Менять настройки",
+      "delete_folder": "Удалять папку",
+      "delete_repos": "Удалять репозитории"
+    }
+  },
+  "collaborators": {
+    "title": "Участники репозитория",
+    "add": "Добавить",
+    "username": "Имя пользователя",
+    "role": "Роль",
+    "submit": "Добавить",
+    "remove": "Удалить",
+    "empty": "Участников пока нет.",
+    "confirmRemove": "Удалить участника {username}?",
+    "roles": {
+      "read": "Чтение",
+      "write": "Запись",
+      "admin": "Админ"
+    }
+  },
   "list": {
     "noRepos": "Репозиториев пока нет.",
     "noFolders": "Папок пока нет."
@@ -199,7 +252,10 @@
     "lastUsed": "Последнее использование",
     "confirmRevoke": "Отозвать этот токен?",
     "createdTitle": "Токен создан",
-    "createdHint": "Скопируйте токен сейчас. Повторно он больше не отобразится."
+    "createdHint": "Скопируйте токен сейчас. Повторно он больше не отобразится.",
+    "expiresIn": "Срок (дней)",
+    "expiresInPlaceholder": "Необязательно - пусто значит без срока",
+    "expiresAt": "Истекает"
   },
   "sessions": {
     "title": "Сессии",
@@ -245,6 +301,21 @@
       "folder_already_exists": "Папка с таким именем уже существует",
       "folder_not_found": "Папка не найдена",
       "folder_not_empty": "Папка не пуста",
+      "folder_access_denied": "Нет доступа к этой папке",
+      "member_not_found": "Участник не найден",
+      "member_already_exists": "Пользователь уже участник папки",
+      "invalid_folder_role": "Роль: owner, admin или member",
+      "invalid_collaborator_role": "Роль: admin, write или read",
+      "cannot_remove_owner": "Нельзя удалить этого владельца",
+      "last_folder_owner": "Нельзя удалить или понизить последнего владельца папки",
+      "team_not_found": "Команда не найдена",
+      "team_already_exists": "Команда с таким именем уже есть",
+      "team_name_required": "Введите название команды",
+      "invalid_team_name": "Некорректное название команды",
+      "team_member_already_exists": "Пользователь уже в этой команде",
+      "team_member_not_found": "Участник команды не найден",
+      "collaborator_not_found": "Участник репозитория не найден",
+      "cannot_collaborator_self": "Владелец репозитория уже имеет права администратора",
       "ref_not_found": "Ссылка не найдена",
       "blame_too_large": "Файл слишком большой для blame",
       "history_too_large": "История репозитория слишком велика для этой операции",

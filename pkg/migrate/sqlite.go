@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -100,11 +101,9 @@ func BackupSQLite(dbPath string) (string, error) {
 }
 
 func splitDSN(dsn string) (file string, query string) {
-	for i := 0; i < len(dsn); i++ {
-		if dsn[i] == '?' {
-			return dsn[:i], dsn[i+1:]
-		}
+	file, query, ok := strings.Cut(dsn, "?")
+	if !ok {
+		return dsn, ""
 	}
-
-	return dsn, ""
+	return file, query
 }

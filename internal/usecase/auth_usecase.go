@@ -274,9 +274,9 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 		err  error
 	)
 	if strings.Contains(login, "@") {
-		user, err = uc.users.FindByEmail(login)
+		user, err = uc.users.FindByEmail(ctx, login)
 	} else {
-		user, err = uc.users.FindByUsername(login)
+		user, err = uc.users.FindByUsername(ctx, login)
 	}
 
 	if err != nil {
@@ -336,7 +336,7 @@ func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInpu
 		return ErrPasswordTooShort
 	}
 
-	user, err := uc.users.FindByID(in.UserID)
+	user, err := uc.users.FindByID(ctx, in.UserID)
 	if err != nil {
 		return ErrUnauthorized
 	}
@@ -399,7 +399,7 @@ func (uc *AuthUseCase) Authenticate(ctx context.Context, token string) (*domain.
 		return nil, nil, ErrUnauthorized
 	}
 
-	session, err := uc.sessions.FindByToken(token)
+	session, err := uc.sessions.FindByToken(ctx, token)
 	if err != nil {
 		return nil, nil, ErrUnauthorized
 	}
@@ -440,7 +440,7 @@ func (uc *AuthUseCase) Authenticate(ctx context.Context, token string) (*domain.
 		_ = uc.sessions.Touch(session)
 	}
 
-	user, err := uc.users.FindByID(session.UserID)
+	user, err := uc.users.FindByID(ctx, session.UserID)
 	if err != nil {
 		return nil, nil, ErrUnauthorized
 	}
@@ -488,7 +488,7 @@ func (uc *AuthUseCase) ListSessions(ctx context.Context, userID uint, currentTok
 
 	var currentID uint
 	if currentToken != "" {
-		if cur, err := uc.sessions.FindByToken(currentToken); err == nil && cur.UserID == userID {
+		if cur, err := uc.sessions.FindByToken(ctx, currentToken); err == nil && cur.UserID == userID {
 			currentID = cur.ID
 		}
 	}
@@ -524,7 +524,7 @@ func (uc *AuthUseCase) RevokeSession(ctx context.Context, userID, sessionID uint
 
 	var currentID uint
 	if currentToken != "" {
-		if cur, ferr := uc.sessions.FindByToken(currentToken); ferr == nil && cur.UserID == userID {
+		if cur, ferr := uc.sessions.FindByToken(ctx, currentToken); ferr == nil && cur.UserID == userID {
 			currentID = cur.ID
 		}
 	}
