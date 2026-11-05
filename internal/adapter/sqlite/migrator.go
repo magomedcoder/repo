@@ -46,6 +46,7 @@ func bootstrapSchema(db *gorm.DB) error {
 
 func ensureIndexes(db *gorm.DB) error {
 	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_folder_scope`,
 		`DROP INDEX IF EXISTS idx_repo_scope`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE deleted_at IS NULL`,

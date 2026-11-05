@@ -1,6 +1,6 @@
 module magomedcoder.ru/repo
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/go-git/go-git/v6 v6.0.0-beta.1
@@ -21,7 +21,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
-	github.com/mattn/go-sqlite3 v1.14.52 // indirect
+	github.com/mattn/go-sqlite3 v1.14.53 // indirect
 	github.com/pjbgf/sha1cd v0.7.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	golang.org/x/net v0.62.0 // indirect

@@ -96,6 +96,11 @@ func (uc *RepositoryUseCase) runMirrorSync(ctx context.Context, repo *domain.Rep
 		syncErr = uc.git.MirrorFetch(ctx, repo.Path, repo.MirrorURL, auth)
 		if syncErr == nil {
 			_ = uc.git.EnsureDefaultBranch(repo.Path, repo.DefaultBranch)
+			if detected, derr := uc.git.DetectHEADBranch(repo.Path); derr == nil && detected != "" {
+				if verr := validateBranchName(detected); verr == nil {
+					repo.DefaultBranch = detected
+				}
+			}
 		}
 	case domain.MirrorPush:
 		syncErr = uc.git.MirrorPush(ctx, repo.Path, repo.MirrorURL, auth)

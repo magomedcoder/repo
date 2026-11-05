@@ -1,10 +1,10 @@
 name: security
 
-#on:
-#  push:
-#    branches: [main]
-#  pull_request:
-#    branches: [main]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   govulncheck:
@@ -30,4 +30,4 @@ jobs:
           cache: yarn
           cache-dependency-path: web/yarn.lock
       - run: yarn install --frozen-lockfile
-      - run: yarn npm audit --severity high
+      - run: yarn audit --severity high

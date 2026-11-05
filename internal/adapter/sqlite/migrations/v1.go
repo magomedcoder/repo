@@ -7,9 +7,10 @@ import (
 
 func v1() migrate.Migration {
 	return migrate.Migration{
-		Version: 1,
-		Name:    "migration",
-		Up:      upV1,
+		Version:     1,
+		Name:        "migration",
+		Destructive: true,
+		Up:          upV1,
 	}
 }
 
@@ -17,18 +18,34 @@ func upV1(db *gorm.DB) error {
 	if err := addTokenExpiryAndSeqs(db); err != nil {
 		return err
 	}
+	if err := addSessionClientColumns(db); err != nil {
+		return err
+	}
+
+	if err := dropFolderParentID(db); err != nil {
+		return err
+	}
+
+	if err := flattenFolderPaths(db); err != nil {
+		return err
+	}
+
 	if err := createAccessModelTables(db); err != nil {
 		return err
 	}
+
 	if err := seedFolderOwners(db); err != nil {
 		return err
 	}
+
 	if err := ensureFolderIndexes(db); err != nil {
 		return err
 	}
+
 	if err := backfillIssuePullSeqs(db); err != nil {
 		return err
 	}
+
 	return addRepoMirrorColumns(db)
 }
 
@@ -40,6 +57,74 @@ func addTokenExpiryAndSeqs(db *gorm.DB) error {
 		return err
 	}
 	return migrate.AddColumnIfMissing(db, "repositories", "pull_seq", `ALTER TABLE repositories ADD COLUMN pull_seq INTEGER NOT NULL DEFAULT 0`)
+}
+
+func addSessionClientColumns(db *gorm.DB) error {
+	if err := migrate.AddColumnIfMissing(db, "sessions", "ip", `ALTER TABLE sessions ADD COLUMN ip TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	return migrate.AddColumnIfMissing(db, "sessions", "user_agent", `ALTER TABLE sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''`)
+}
+
+func dropFolderParentID(db *gorm.DB) error {
+	ok, err := migrate.ColumnExists(db, "folders", "parent_id")
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return nil
+	}
+
+	for _, stmt := range []string{
+		`PRAGMA foreign_keys = OFF`,
+		`DROP INDEX IF EXISTS idx_folder_scope`,
+		`DROP INDEX IF EXISTS idx_folders_slug`,
+		`DROP INDEX IF EXISTS idx_folders_path`,
+		`DROP INDEX IF EXISTS idx_folders_owner_path`,
+		`CREATE TABLE folders__new (
+			id integer PRIMARY KEY AUTOINCREMENT,
+			created_at datetime,
+			updated_at datetime,
+			deleted_at datetime,
+			owner_kind text NOT NULL DEFAULT "user",
+			owner_id integer NOT NULL,
+			name text NOT NULL,
+			slug text NOT NULL,
+			path text NOT NULL
+		)`,
+		`INSERT INTO folders__new (id, created_at, updated_at, deleted_at, owner_kind, owner_id, name, slug, path)
+		 SELECT id, created_at, updated_at, deleted_at, owner_kind, owner_id, name, slug, path FROM folders`,
+		`DROP TABLE folders`,
+		`ALTER TABLE folders__new RENAME TO folders`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_path ON folders (path) WHERE deleted_at IS NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_folders_owner_path ON folders (owner_kind, owner_id, path)`,
+		`PRAGMA foreign_keys = ON`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func flattenFolderPaths(db *gorm.DB) error {
+	if err := db.Exec(`UPDATE folders SET path = slug WHERE instr(path, '/') > 0`).Error; err != nil {
+		return err
+	}
+
+	return db.Exec(`
+		UPDATE repositories
+		SET repo_path = CASE
+			WHEN folder_id IS NULL OR folder_id = 0 THEN name || '.git'
+			ELSE (
+				SELECT f.path || '/' || repositories.name || '.git'
+				FROM folders f
+				WHERE f.id = repositories.folder_id
+			)
+		END
+		WHERE deleted_at IS NULL
+	`).Error
 }
 
 func createAccessModelTables(db *gorm.DB) error {
@@ -123,6 +208,7 @@ func seedFolderOwners(db *gorm.DB) error {
 
 func ensureFolderIndexes(db *gorm.DB) error {
 	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_folder_scope`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_path ON folders (path) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_slug ON folders (slug) WHERE deleted_at IS NULL`,
 	} {

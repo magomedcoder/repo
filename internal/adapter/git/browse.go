@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -669,13 +670,25 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 
 func (r *Repository) FindReadme(repoPath, ref string) (*domain.BlobContent, error) {
 	candidates := []string{"README.md", "Readme.md", "readme.md", "README", "README.txt", "readme.txt"}
+	var sawMissing bool
 	for _, name := range candidates {
 		blob, err := r.GetBlob(repoPath, ref, name)
 		if err == nil {
 			return blob, nil
 		}
+		switch {
+		case errors.Is(err, ErrEmptyRepository), errors.Is(err, ErrRefNotFound):
+			return nil, err
+		case errors.Is(err, ErrFileNotFound), errors.Is(err, ErrPathNotFound), errors.Is(err, ErrNotDirectory):
+			sawMissing = true
+			continue
+		default:
+			return nil, err
+		}
 	}
-
+	if sawMissing {
+		return nil, nil
+	}
 	return nil, ErrReadmeNotFound
 }
 

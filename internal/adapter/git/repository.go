@@ -122,8 +122,12 @@ func (r *Repository) MirrorFetch(ctx context.Context, path, url string, auth *do
 	}
 	defer repo.Close()
 
+	if err := ensureMirrorRemote(repo, url); err != nil {
+		return err
+	}
+
 	err = repo.FetchContext(ctx, &gogit.FetchOptions{
-		RemoteName:    "origin",
+		RemoteName:    mirrorRemoteName,
 		RemoteURL:     url,
 		RefSpecs:      []config.RefSpec{"+refs/*:refs/*"},
 		Force:         true,
@@ -152,8 +156,12 @@ func (r *Repository) MirrorPush(ctx context.Context, path, url string, auth *dom
 	}
 	defer repo.Close()
 
+	if err := ensureMirrorRemote(repo, url); err != nil {
+		return err
+	}
+
 	err = repo.PushContext(ctx, &gogit.PushOptions{
-		RemoteName:    "origin",
+		RemoteName:    mirrorRemoteName,
 		RemoteURL:     url,
 		RefSpecs:      []config.RefSpec{"+refs/*:refs/*"},
 		Force:         true,
@@ -163,6 +171,26 @@ func (r *Repository) MirrorPush(ctx context.Context, path, url string, auth *dom
 	if err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("mirror push: %w", err)
 	}
+	return nil
+}
+
+const mirrorRemoteName = "origin"
+
+func ensureMirrorRemote(repo *gogit.Repository, url string) error {
+	cfg := &config.RemoteConfig{
+		Name:  mirrorRemoteName,
+		URLs:  []string{url},
+		Fetch: []config.RefSpec{"+refs/*:refs/*"},
+	}
+
+	if _, err := repo.Remote(mirrorRemoteName); err == nil {
+		_ = repo.DeleteRemote(mirrorRemoteName)
+	}
+
+	if _, err := repo.CreateRemote(cfg); err != nil {
+		return fmt.Errorf("mirror remote: %w", err)
+	}
+
 	return nil
 }
 
@@ -180,6 +208,10 @@ func mirrorClientOpts(auth *domain.MirrorAuth) []client.Option {
 			Password: auth.Password,
 		}),
 	}
+}
+
+func (r *Repository) DetectHEADBranch(repoPath string) (string, error) {
+	return detectHEADBranch(repoPath)
 }
 
 func detectHEADBranch(path string) (string, error) {

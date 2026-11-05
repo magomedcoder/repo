@@ -212,6 +212,9 @@ func (uc *RepositoryUseCase) GetReadme(ctx context.Context, in ResolveRepository
 	if err != nil {
 		return nil, mapGitBrowseErr(err)
 	}
+	if blob == nil {
+		return nil, ErrPathNotFound
+	}
 
 	return blob, nil
 }
@@ -442,7 +445,10 @@ func (uc *RepositoryUseCase) GetSummary(ctx context.Context, in ResolveRepositor
 		}
 
 		r, e := uc.git.FindReadme(repo.Path, ref)
-		if e != nil && !isEmptyOrMissingRef(e) {
+		if e != nil {
+			if isEmptyOrMissingRef(e) {
+				return nil
+			}
 			return mapGitBrowseErr(e)
 		}
 		readme = r

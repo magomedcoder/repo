@@ -184,6 +184,8 @@ type GitRepository interface {
 
 	EnsureDefaultBranch(repoPath, branch string) error
 
+	DetectHEADBranch(repoPath string) (string, error)
+
 	ListBranches(repoPath string) ([]RefInfo, error)
 
 	ListTags(repoPath string) ([]RefInfo, error)
