@@ -95,10 +95,6 @@ func (s *memRepos) ListPublicIDsByOwner(_ context.Context, ownerKind string, own
 	return out, nil
 }
 
-func (s *memRepos) ListByOwnerAndFolderID(context.Context, string, uint, *uint) ([]domain.Repository, error) {
-	return nil, nil
-}
-
 func (s *memRepos) ListByFolderID(context.Context, uint) ([]domain.Repository, error) {
 	return nil, nil
 }
@@ -109,6 +105,21 @@ func (s *memRepos) ListPublic(context.Context, int, int, domain.RepoOrder) ([]do
 
 func (s *memRepos) ListHome(context.Context, int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
+}
+
+func (s *memRepos) ListByMirrorDirection(context.Context, string) ([]domain.Repository, error) {
+	return nil, nil
+}
+
+func (s *memRepos) FindByID(_ context.Context, id uint) (*domain.Repository, error) {
+	for i := range s.items {
+		if s.items[i].ID == id {
+			repo := s.items[i]
+			return &repo, nil
+		}
+	}
+
+	return nil, errors.New("not found")
 }
 
 func (s *memRepos) SearchByName(context.Context, string, string, uint, bool, int, int, domain.RepoOrder) ([]domain.Repository, error) {

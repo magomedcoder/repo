@@ -105,6 +105,8 @@ func runServe() {
 	gitHandler := handler.NewGitHandler(gitUC)
 	gitHandler.SetReceiveMaxBytes(cfg.ReceiveMaxBytes)
 	gitHandler.SetAccessLogger(accessLog)
+	gitHandler.SetMirrorScheduler(repoUC)
+	pullUC.SetPushMirrorScheduler(repoUC)
 	issueHandler := handler.NewIssueHandler(issueUC)
 	pullHandler := handler.NewPullRequestHandler(pullUC)
 	profileHandler := handler.NewProfileHandler(profileUC)
@@ -127,6 +129,8 @@ func runServe() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go repoUC.RunPullMirrorLoop(ctx, cfg.MirrorPullEvery)
 
 	go func() {
 		slog.Info("listening", "addr", cfg.HTTPAddr)

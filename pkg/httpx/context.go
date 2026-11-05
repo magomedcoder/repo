@@ -18,32 +18,12 @@ func (c *Context) Ctx() context.Context {
 	return c.R.Context()
 }
 
-func (c *Context) WithContext(ctx context.Context) {
-	c.R = c.R.WithContext(ctx)
-}
-
 func (c *Context) Param(name string) string {
 	return c.R.PathValue(name)
 }
 
 func (c *Context) Query(name string) string {
 	return c.R.URL.Query().Get(name)
-}
-
-func (c *Context) Method() string {
-	return c.R.Method
-}
-
-func (c *Context) Path() string {
-	return c.R.URL.Path
-}
-
-func (c *Context) Request() *http.Request {
-	return c.R
-}
-
-func (c *Context) Writer() http.ResponseWriter {
-	return c.W
 }
 
 type ErrorResponse struct {
@@ -68,14 +48,6 @@ func OK[T any](c *Context, v T) error {
 }
 
 func Created[T any](c *Context, v T) error {
-	return c.JSON(http.StatusCreated, v)
-}
-
-func (c *Context) OK(v any) error {
-	return c.JSON(http.StatusOK, v)
-}
-
-func (c *Context) Created(v any) error {
 	return c.JSON(http.StatusCreated, v)
 }
 

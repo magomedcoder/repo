@@ -404,28 +404,20 @@ func (h *MembershipHandler) RemoveCollaborator(c *httpx.Context, in usecase.Reso
 func splitFolderSuffix(raw, marker string) (folderPath, rest string) {
 	raw = strings.Trim(raw, "/")
 	parts := strings.Split(raw, "/")
-	for i, p := range parts {
-		if p == marker {
-			folderPath = strings.Join(parts[:i], "/")
-			rest = strings.Join(parts[i+1:], "/")
-			return folderPath, rest
-		}
+	if len(parts) >= 2 && parts[1] == marker {
+		return parts[0], strings.Join(parts[2:], "/")
 	}
-
 	return "", ""
 }
 
 func splitTeamResource(raw, resource string) (folderPath, teamSlug, rest string, ok bool) {
 	raw = strings.Trim(raw, "/")
 	parts := strings.Split(raw, "/")
-	for i, p := range parts {
-		if p == "teams" && i+2 < len(parts) && parts[i+2] == resource {
-			folderPath = strings.Join(parts[:i], "/")
-			teamSlug = parts[i+1]
-			rest = strings.Join(parts[i+3:], "/")
-			return folderPath, teamSlug, rest, folderPath != "" && teamSlug != ""
-		}
+	if len(parts) >= 4 && parts[1] == "teams" && parts[3] == resource {
+		folderPath = parts[0]
+		teamSlug = parts[2]
+		rest = strings.Join(parts[4:], "/")
+		return folderPath, teamSlug, rest, folderPath != "" && teamSlug != ""
 	}
-
 	return "", "", "", false
 }

@@ -27,13 +27,25 @@ func (h *RepositoryHandler) SetAccessLogger(log *audit.Logger) {
 }
 
 type createRepoRequest struct {
-	Name          string `json:"name"`
-	Path          string `json:"path"`
-	Description   string `json:"description"`
-	FolderPath    string `json:"folder_path"`
-	Private       bool   `json:"private"`
-	ShowOnHome    bool   `json:"show_on_home"`
-	DefaultBranch string `json:"default_branch"`
+	Name            string `json:"name"`
+	Description     string `json:"description"`
+	FolderPath      string `json:"folder_path"`
+	Private         bool   `json:"private"`
+	ShowOnHome      bool   `json:"show_on_home"`
+	DefaultBranch   string `json:"default_branch"`
+	MirrorDirection string `json:"mirror_direction"`
+	MirrorURL       string `json:"mirror_url"`
+	MirrorUsername  string `json:"mirror_username"`
+	MirrorPassword  string `json:"mirror_password"`
+}
+
+type configureMirrorRequest struct {
+	Enabled       *bool   `json:"enabled"`
+	Direction     string  `json:"direction"`
+	URL           string  `json:"url"`
+	Username      *string `json:"username"`
+	Password      *string `json:"password"`
+	ClearPassword bool    `json:"clear_password"`
 }
 
 type updateRepoRequest struct {
@@ -62,15 +74,18 @@ func (h *RepositoryHandler) Create(c *httpx.Context) error {
 	}
 
 	out, err := h.repos.Create(c.Ctx(), usecase.CreateRepositoryInput{
-		Name:          req.Name,
-		Path:          req.Path,
-		Description:   req.Description,
-		ViewerID:      user.ID,
-		OwnerID:       user.ID,
-		FolderPath:    req.FolderPath,
-		Private:       req.Private,
-		ShowOnHome:    req.ShowOnHome,
-		DefaultBranch: req.DefaultBranch,
+		Name:            req.Name,
+		Description:     req.Description,
+		ViewerID:        user.ID,
+		OwnerID:         user.ID,
+		FolderPath:      req.FolderPath,
+		Private:         req.Private,
+		ShowOnHome:      req.ShowOnHome,
+		DefaultBranch:   req.DefaultBranch,
+		MirrorDirection: req.MirrorDirection,
+		MirrorURL:       req.MirrorURL,
+		MirrorUsername:  req.MirrorUsername,
+		MirrorPassword:  req.MirrorPassword,
 	})
 	if err != nil {
 		return mapError(c, err)
@@ -298,6 +313,68 @@ func (h *RepositoryHandler) Delete(c *httpx.Context) error {
 	return c.NoContent()
 }
 
+func (h *RepositoryHandler) ConfigureMirror(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	folderPath, name, err := parseRepoPath(c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, err.Error())
+	}
+
+	req, err := httpx.BindJSON[configureMirrorRequest](c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
+	}
+
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
+	out, err := h.repos.ConfigureMirror(c.Ctx(), usecase.ConfigureMirrorInput{
+		ViewerID:      user.ID,
+		FolderPath:    folderPath,
+		Name:          name,
+		Direction:     req.Direction,
+		URL:           req.URL,
+		Username:      req.Username,
+		Password:      req.Password,
+		ClearPassword: req.ClearPassword,
+		Enabled:       enabled,
+	})
+	if err != nil {
+		return mapError(c, err)
+	}
+
+	return httpx.OK(c, out)
+}
+
+func (h *RepositoryHandler) SyncMirror(c *httpx.Context) error {
+	user, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	folderPath, name, err := parseRepoPath(c)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, err.Error())
+	}
+
+	out, err := h.repos.SyncMirror(c.Ctx(), usecase.ResolveRepositoryInput{
+		FolderPath: folderPath,
+		Name:       name,
+		ViewerID:   user.ID,
+	})
+	if err != nil {
+		return mapError(c, err)
+	}
+
+	return httpx.OK(c, out)
+}
+
 func (h *RepositoryHandler) MoveWithParts(c *httpx.Context, repoParts []string) error {
 	folderPath, name, err := folderAndName(repoParts)
 	if err != nil {
@@ -336,9 +413,13 @@ func (h *RepositoryHandler) move(c *httpx.Context, folderPath, name string) erro
 
 func parseRepoPath(c *httpx.Context) (folderPath, name string, err error) {
 	rest := strings.Trim(c.Param("path"), "/")
-	if rest == "" {
-		return "", "", errors.New("invalid_repository_path")
+	if rest != "" {
+		return folderAndName(strings.Split(rest, "/"))
 	}
 
-	return folderAndName(strings.Split(rest, "/"))
+	parts := namedRepoParts(c)
+	if len(parts) == 0 {
+		return "", "", errors.New("invalid_repository_path")
+	}
+	return folderAndName(parts)
 }

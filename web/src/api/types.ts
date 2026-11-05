@@ -55,7 +55,6 @@ export interface AuthSession {
 export type FolderCaps = {
   view?: boolean
   create_repos?: boolean
-  create_folders?: boolean
   manage_members?: boolean
   manage_settings?: boolean
   delete_folder?: boolean
@@ -126,6 +125,8 @@ export interface RepoSummary {
   updated_at: string
 }
 
+export type MirrorDirection = 'pull' | 'push'
+
 export interface Repository {
   id: number
   name: string
@@ -139,6 +140,12 @@ export interface Repository {
   issues_enabled?: boolean
   default_branch: string
   last_activity_at?: string
+  mirror_direction?: MirrorDirection | string
+  mirror_url?: string
+  mirror_username?: string
+  mirror_has_password?: boolean
+  mirror_last_sync_at?: string
+  mirror_last_error?: string
   can_read?: boolean
   can_write?: boolean
   can_admin?: boolean
@@ -264,18 +271,16 @@ export interface ActivityEvent {
   created_at: string
 }
 
-export interface BlameLine {
-  line: number
-  content: string
-  commit_sha: string
-  author_name: string
-  authored_at: string
-}
-
 export interface BlameResult {
   path: string
   ref: string
-  lines: BlameLine[]
+  lines: {
+    line: number
+    content: string
+    commit_sha: string
+    author_name: string
+    authored_at: string
+  }[]
 }
 
 export interface PullRequest {

@@ -101,9 +101,3 @@ func (s *FolderMemberStore) ListByFolder(folderID uint) ([]domain.FolderMember, 
 
 	return out, nil
 }
-
-func (s *FolderMemberStore) ListFolderIDsByUser(userID uint) ([]uint, error) {
-	var ids []uint
-	err := s.db.Model(&folderMemberModel{}).Where("user_id = ?", userID).Pluck("folder_id", &ids).Error
-	return ids, err
-}

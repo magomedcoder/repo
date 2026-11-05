@@ -15,8 +15,13 @@ import (
 
 const uploadPackMaxBytes = 32 << 20
 
+type pushMirrorScheduler interface {
+	SchedulePushMirror(repoID uint)
+}
+
 type GitHandler struct {
 	git             *usecase.GitUseCase
+	mirrors         pushMirrorScheduler
 	access          *audit.Logger
 	receiveMaxBytes int64
 }
@@ -27,6 +32,10 @@ func NewGitHandler(git *usecase.GitUseCase) *GitHandler {
 
 func (h *GitHandler) SetAccessLogger(log *audit.Logger) {
 	h.access = log
+}
+
+func (h *GitHandler) SetMirrorScheduler(m pushMirrorScheduler) {
+	h.mirrors = m
 }
 
 func (h *GitHandler) SetReceiveMaxBytes(n int64) {
@@ -135,6 +144,9 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		}
 		_ = h.git.TouchActivity(r.Context(), repo, actorID)
 		_ = h.git.EnsureDefaultBranch(r.Context(), repo.Path, repo.DefaultBranch)
+		if h.mirrors != nil && repo.MirrorDirection == domain.MirrorPush {
+			h.mirrors.SchedulePushMirror(repo.ID)
+		}
 	}
 }
 
@@ -165,6 +177,10 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 		if errors.Is(err, usecase.ErrUnauthorized) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return nil, nil, err
+		}
+		if errors.Is(err, usecase.ErrMirrorReadOnly) {
+			http.Error(w, "mirror is read-only", http.StatusForbidden)
 			return nil, nil, err
 		}
 

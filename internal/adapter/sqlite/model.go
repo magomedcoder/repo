@@ -27,6 +27,12 @@ type repositoryModel struct {
 	RepoPath             string `gorm:"size:512;not null;default:''"`
 	IssueSeq             int    `gorm:"not null;default:0"`
 	PullSeq              int    `gorm:"not null;default:0"`
+	MirrorDirection      string `gorm:"size:8;not null;default:''"`
+	MirrorURL            string `gorm:"size:2048;not null;default:''"`
+	MirrorUsername       string `gorm:"size:255;not null;default:''"`
+	MirrorPassword       string `gorm:"size:2048;not null;default:''"`
+	MirrorLastSyncAt     *time.Time
+	MirrorLastError      string `gorm:"size:1024;not null;default:''"`
 	LastActivityAt       *time.Time
 }
 
@@ -54,6 +60,12 @@ func (m repositoryModel) toDomain() domain.Repository {
 		DefaultBranch:        m.DefaultBranch,
 		Path:                 m.Path,
 		RepoPath:             m.RepoPath,
+		MirrorDirection:      m.MirrorDirection,
+		MirrorURL:            m.MirrorURL,
+		MirrorUsername:       m.MirrorUsername,
+		MirrorPassword:       m.MirrorPassword,
+		MirrorLastSyncAt:     m.MirrorLastSyncAt,
+		MirrorLastError:      m.MirrorLastError,
 		LastActivityAt:       m.LastActivityAt,
 		CreatedAt:            m.CreatedAt,
 		UpdatedAt:            m.UpdatedAt,
@@ -86,6 +98,12 @@ func fromDomain(repo *domain.Repository) *repositoryModel {
 		DefaultBranch:        repo.DefaultBranch,
 		Path:                 repo.Path,
 		RepoPath:             repo.RepoPath,
+		MirrorDirection:      repo.MirrorDirection,
+		MirrorURL:            repo.MirrorURL,
+		MirrorUsername:       repo.MirrorUsername,
+		MirrorPassword:       repo.MirrorPassword,
+		MirrorLastSyncAt:     repo.MirrorLastSyncAt,
+		MirrorLastError:      repo.MirrorLastError,
 		LastActivityAt:       repo.LastActivityAt,
 		CreatedAt:            repo.CreatedAt,
 		UpdatedAt:            repo.UpdatedAt,

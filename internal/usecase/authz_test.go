@@ -46,10 +46,6 @@ func (m *memMembers) ListByFolder(uint) ([]domain.FolderMember, error) {
 	return nil, nil
 }
 
-func (m *memMembers) ListFolderIDsByUser(uint) ([]uint, error) {
-	return nil, nil
-}
-
 type memCollabs struct {
 	byKey map[string]*domain.RepoCollaborator
 }
@@ -96,10 +92,6 @@ func (m *memTeamRepos) Upsert(g *domain.TeamRepoGrant) error {
 
 func (m *memTeamRepos) Delete(uint, uint) error {
 	return nil
-}
-
-func (m *memTeamRepos) Find(uint, uint) (*domain.TeamRepoGrant, error) {
-	return nil, ErrRepoNotFound
 }
 
 func (m *memTeamRepos) ListByTeam(uint) ([]domain.TeamRepoGrant, error) {

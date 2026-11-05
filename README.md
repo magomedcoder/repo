@@ -2,6 +2,14 @@
 
 Lightweight self-hosted Git hosting.
 
+## Features
+
+- Repositories over HTTP: clone, fetch, push; browse branches, tags, tree, commits, blame, README
+- Issues and pull requests (diff, comments, merge)
+- Folders as shared org spaces: members, capabilities, teams, per-repo collaborators
+- Pull and push mirroring to remote http(s) Git URLs (scheduled pull sync, push sync after git push/merge)
+- Accounts, sessions, access tokens, admin users; UI in English and Russian
+
 ## Stack
 
 - Go 1.27+, CGO for SQLite
@@ -23,16 +31,17 @@ Copy the example and edit values:
 cp config.example.yaml config.yaml
 ```
 
-| Key                  | Description                                                                       |
-|----------------------|-----------------------------------------------------------------------------------|
-| `http_addr`          | HTTP listen address (default `:8080`)                                             |
-| `data_dir`           | SQLite DB, Git repos, and avatars                                                 |
-| `site_name`          | Site title in the UI                                                              |
-| `session_secret`     | Session signing secret (required, min 32 characters; e.g. `openssl rand -hex 32`) |
-| `cookie_secure`      | Set `true` behind HTTPS (Secure cookies + HSTS)                                   |
-| `allow_registration` | Public self-registration; otherwise create users via CLI/admin                    |
-| `receive_max_bytes`  | Max Git push size in bytes (default 512 MiB)                                      |
-| `trusted_proxies`    | Optional CIDRs/IPs trusted for `X-Forwarded-For` / `X-Forwarded-Proto`            |
+| Key                    | Description                                                                       |
+|------------------------|-----------------------------------------------------------------------------------|
+| `http_addr`            | HTTP listen address (default `:8080`)                                             |
+| `data_dir`             | SQLite DB, Git repos, and avatars                                                 |
+| `site_name`            | Site title in the UI                                                              |
+| `session_secret`       | Session signing secret (required, min 32 characters; e.g. `openssl rand -hex 32`) |
+| `cookie_secure`        | Set `true` behind HTTPS (Secure cookies + HSTS)                                   |
+| `allow_registration`   | Public self-registration; otherwise create users via CLI/admin                    |
+| `receive_max_bytes`    | Max Git push size in bytes (default 512 MiB)                                      |
+| `mirror_pull_interval` | How often pull mirrors fetch (`5m` by default; `0` disables the scheduler)        |
+| `trusted_proxies`      | Optional CIDRs/IPs trusted for `X-Forwarded-For` / `X-Forwarded-Proto`            |
 
 Responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and (over HTTPS / with `cookie_secure`) HSTS with `includeSubDomains; preload`. After the site is live on HTTPS, you can submit the domain at [hstspreload.org](https://hstspreload.org).
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const MaxPathDepth = 8
+const MaxPathDepth = 2
 
 var (
 	ErrInvalidPath     = errors.New("invalid_path")
@@ -62,7 +62,7 @@ func validSegment(part string) bool {
 	return true
 }
 
-func IsZeroHash(hash string) bool {
+func isZeroHash(hash string) bool {
 	hash = strings.TrimSpace(hash)
 	if len(hash) < 4 {
 		return false
@@ -90,11 +90,11 @@ func CheckRefUpdate(protect bool, defaultBranch, refname, oldRev, newRev string,
 		return nil
 	}
 
-	if IsZeroHash(newRev) {
+	if isZeroHash(newRev) {
 		return ErrBranchProtected
 	}
 
-	if IsZeroHash(oldRev) {
+	if isZeroHash(oldRev) {
 		return nil
 	}
 

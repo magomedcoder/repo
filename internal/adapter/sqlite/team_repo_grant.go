@@ -71,17 +71,6 @@ func (s *TeamRepoGrantStore) Delete(teamID, repoID uint) error {
 	return s.db.Where("team_id = ? AND repo_id = ?", teamID, repoID).Delete(&teamRepoGrantModel{}).Error
 }
 
-func (s *TeamRepoGrantStore) Find(teamID, repoID uint) (*domain.TeamRepoGrant, error) {
-	var model teamRepoGrantModel
-	err := s.db.Where("team_id = ? AND repo_id = ?", teamID, repoID).First(&model).Error
-	if err != nil {
-		return nil, mapDBErr(err)
-	}
-	out := model.toDomain()
-
-	return &out, nil
-}
-
 func (s *TeamRepoGrantStore) ListByTeam(teamID uint) ([]domain.TeamRepoGrant, error) {
 	var models []teamRepoGrantModel
 	if err := s.db.Where("team_id = ?", teamID).Order("id ASC").Find(&models).Error; err != nil {

@@ -5,36 +5,42 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	MinSessionSecretLen = 32
-	DefaultReceiveMax   = 512 << 20
-	DefaultPath         = "config.yaml"
-	DefaultSiteName     = "Repo"
-	DefaultBranch       = "main"
+	MinSessionSecretLen       = 32
+	DefaultReceiveMax         = 512 << 20
+	DefaultPath               = "config.yaml"
+	DefaultSiteName           = "Repo"
+	DefaultBranch             = "main"
+	DefaultMirrorPullInterval = 5 * time.Minute
 )
 
 type Config struct {
-	HTTPAddr          string   `yaml:"http_addr"`
-	DataDir           string   `yaml:"data_dir"`
-	SiteName          string   `yaml:"site_name"`
-	CookieSecure      bool     `yaml:"cookie_secure"`
-	SessionSecret     string   `yaml:"session_secret"`
-	AllowRegistration bool     `yaml:"allow_registration"`
-	TrustedProxies    []string `yaml:"trusted_proxies"`
-	ReceiveMaxBytes   int64    `yaml:"receive_max_bytes"`
-	TrustedProxyNets  []*net.IPNet
+	HTTPAddr           string   `yaml:"http_addr"`
+	DataDir            string   `yaml:"data_dir"`
+	SiteName           string   `yaml:"site_name"`
+	CookieSecure       bool     `yaml:"cookie_secure"`
+	SessionSecret      string   `yaml:"session_secret"`
+	AllowRegistration  bool     `yaml:"allow_registration"`
+	TrustedProxies     []string `yaml:"trusted_proxies"`
+	ReceiveMaxBytes    int64    `yaml:"receive_max_bytes"`
+	MirrorPullInterval string   `yaml:"mirror_pull_interval"`
+	TrustedProxyNets   []*net.IPNet
+	MirrorPullEvery    time.Duration `yaml:"-"`
 }
 
 func Default() Config {
 	return Config{
-		HTTPAddr:        ":8080",
-		DataDir:         "data",
-		SiteName:        DefaultSiteName,
-		ReceiveMaxBytes: DefaultReceiveMax,
+		HTTPAddr:           ":8080",
+		DataDir:            "data",
+		SiteName:           DefaultSiteName,
+		ReceiveMaxBytes:    DefaultReceiveMax,
+		MirrorPullInterval: "5m",
+		MirrorPullEvery:    DefaultMirrorPullInterval,
 	}
 }
 
@@ -69,6 +75,17 @@ func Load(path string) (Config, error) {
 	if cfg.ReceiveMaxBytes <= 0 {
 		cfg.ReceiveMaxBytes = DefaultReceiveMax
 	}
+
+	if strings.TrimSpace(cfg.MirrorPullInterval) == "" {
+		cfg.MirrorPullInterval = "5m"
+	}
+
+	every, err := time.ParseDuration(cfg.MirrorPullInterval)
+	if err != nil {
+		return Config{}, fmt.Errorf("mirror_pull_interval: %w", err)
+	}
+
+	cfg.MirrorPullEvery = every
 
 	nets, err := parseCIDRs(cfg.TrustedProxies)
 	if err != nil {

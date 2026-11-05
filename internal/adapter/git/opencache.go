@@ -26,14 +26,6 @@ func newOpenCache(max int) *openCache {
 	}
 }
 
-func (c *openCache) get(path string) (*gogit.Repository, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	repo, ok := c.entries[path]
-
-	return repo, ok
-}
-
 func (c *openCache) getOrOpen(path string, open func() (*gogit.Repository, error)) (*gogit.Repository, error) {
 	c.mu.Lock()
 	if repo, ok := c.entries[path]; ok {
@@ -62,22 +54,6 @@ func (c *openCache) getOrOpen(path string, open func() (*gogit.Repository, error
 	}
 
 	return repo, nil
-}
-
-func (c *openCache) put(path string, repo *gogit.Repository) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, exists := c.entries[path]; exists {
-		return
-	}
-
-	c.entries[path] = repo
-	c.order = append(c.order, path)
-	for len(c.order) > c.max {
-		oldest := c.order[0]
-		c.order = c.order[1:]
-		delete(c.entries, oldest)
-	}
 }
 
 func (c *openCache) evict(path string) {

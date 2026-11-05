@@ -218,7 +218,6 @@ func CapsJSON(c domain.FolderCap) map[string]bool {
 	return map[string]bool{
 		"view":            c&domain.CapView != 0,
 		"create_repos":    c&domain.CapCreateRepos != 0,
-		"create_folders":  c&domain.CapCreateFolders != 0,
 		"manage_members":  c&domain.CapManageMembers != 0,
 		"manage_settings": c&domain.CapManageSettings != 0,
 		"delete_folder":   c&domain.CapDeleteFolder != 0,
@@ -243,7 +242,6 @@ func CapsFromJSON(m map[string]bool, base domain.FolderCap) domain.FolderCap {
 	}
 	set("view", domain.CapView)
 	set("create_repos", domain.CapCreateRepos)
-	set("create_folders", domain.CapCreateFolders)
 	set("manage_members", domain.CapManageMembers)
 	set("manage_settings", domain.CapManageSettings)
 	set("delete_folder", domain.CapDeleteFolder)

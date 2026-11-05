@@ -7,13 +7,6 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 )
 
-func (uc *RepositoryUseCase) ResolveRepository(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, string, string, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, "", "", err
-	}
-	return uc.resolve(in)
-}
-
 func ResolveReadable(repos domain.RepositoryStore, authz *Authz, in ResolveRepositoryInput) (*domain.Repository, error) {
 	name, err := normalizeRepoName(in.Name)
 	if err != nil {

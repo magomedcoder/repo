@@ -57,14 +57,23 @@ type PullCompare struct {
 	Files          []domain.FileDiff   `json:"files"`
 }
 
+type pushMirrorScheduler interface {
+	SchedulePushMirror(repoID uint)
+}
+
 type PullRequestUseCase struct {
-	pulls    domain.PullRequestStore
-	repos    domain.RepositoryStore
-	folders  domain.FolderStore
-	users    domain.UserStore
-	git      domain.GitRepository
-	activity domain.ActivityStore
-	authz    *Authz
+	pulls       domain.PullRequestStore
+	repos       domain.RepositoryStore
+	folders     domain.FolderStore
+	users       domain.UserStore
+	git         domain.GitRepository
+	activity    domain.ActivityStore
+	authz       *Authz
+	pushMirrors pushMirrorScheduler
+}
+
+func (uc *PullRequestUseCase) SetPushMirrorScheduler(s pushMirrorScheduler) {
+	uc.pushMirrors = s
 }
 
 func NewPullRequestUseCase(
@@ -452,6 +461,9 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 
 	_ = uc.repos.TouchLastActivity(repo.ID, now)
 	recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityPRMerge, activitySummary("merged pull request #%d", pr.Number))
+	if uc.pushMirrors != nil && repo.MirrorDirection == domain.MirrorPush {
+		uc.pushMirrors.SchedulePushMirror(repo.ID)
+	}
 
 	return uc.mapPull(pr, nil)
 }

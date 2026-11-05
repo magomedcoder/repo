@@ -111,26 +111,6 @@ func (s *RepositoryStore) ListByOwnerID(ctx context.Context, ownerKind string, o
 	return repoModelsToDomain(models), nil
 }
 
-func (s *RepositoryStore) ListByOwnerAndFolderID(ctx context.Context, ownerKind string, ownerID uint, folderID *uint) ([]domain.Repository, error) {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
-	}
-	var models []repositoryModel
-	q := s.db.WithContext(ctx).Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID)
-	if folderID == nil {
-		q = q.Where("folder_id IS NULL")
-	} else {
-		q = q.Where("folder_id = ?", *folderID)
-	}
-
-	err := q.Order("name ASC").Find(&models).Error
-	if err != nil {
-		return nil, err
-	}
-
-	return repoModelsToDomain(models), nil
-}
-
 func (s *RepositoryStore) ListByFolderID(ctx context.Context, folderID uint) ([]domain.Repository, error) {
 	var models []repositoryModel
 	err := s.db.WithContext(ctx).Where("folder_id = ?", folderID).Order("name ASC").Find(&models).Error
@@ -215,6 +195,31 @@ func (s *RepositoryStore) TouchLastActivity(id uint, at time.Time) error {
 		"last_activity_at": at,
 		"updated_at":       at,
 	}).Error
+}
+
+func (s *RepositoryStore) FindByID(ctx context.Context, id uint) (*domain.Repository, error) {
+	var model repositoryModel
+	err := s.db.WithContext(ctx).First(&model, id).Error
+	if err != nil {
+		return nil, err
+	}
+
+	repo := model.toDomain()
+
+	return &repo, nil
+}
+
+func (s *RepositoryStore) ListByMirrorDirection(ctx context.Context, direction string) ([]domain.Repository, error) {
+	var models []repositoryModel
+	err := s.db.WithContext(ctx).
+		Where("mirror_direction = ? AND mirror_url != ''", direction).
+		Order("id ASC").
+		Find(&models).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return repoModelsToDomain(models), nil
 }
 
 func repoOrderClause(order domain.RepoOrder) string {

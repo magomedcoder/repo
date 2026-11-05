@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"gorm.io/gorm"
@@ -46,6 +47,9 @@ func Run(opts Options) error {
 	}
 
 	migrations := opts.Migrations
+	if err := Validate(migrations); err != nil {
+		return err
+	}
 
 	empty, err := IsEmptySQLite(opts.DB)
 	if err != nil {
@@ -114,6 +118,34 @@ func Run(opts Options) error {
 
 		log.Info("migrate: applied", "version", m.Version, "name", m.Name)
 	}
+	return nil
+}
+
+func Validate(migrations []Migration) error {
+	seen := make(map[int]string, len(migrations))
+	for _, m := range migrations {
+		if m.Version <= 0 {
+			return fmt.Errorf("migrate: invalid version %d (%s)", m.Version, m.Name)
+		}
+
+		if prev, ok := seen[m.Version]; ok {
+			return fmt.Errorf("migrate: duplicate version %d (%s and %s)", m.Version, prev, m.Name)
+		}
+
+		seen[m.Version] = m.Name
+		if m.Up == nil {
+			return fmt.Errorf("migrate: v%d %s: Up is nil", m.Version, m.Name)
+		}
+	}
+
+	sorted := append([]Migration(nil), migrations...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Version < sorted[j].Version })
+	for i, m := range sorted {
+		if m.Version != i+1 {
+			return fmt.Errorf("migrate: versions must be contiguous starting at 1; gap at %d (found %d_%s)", i+1, m.Version, m.Name)
+		}
+	}
+
 	return nil
 }
 

@@ -197,6 +197,10 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 
 		return nil
 	case GitReceivePack:
+		if repo.MirrorDirection == domain.MirrorPull {
+			return ErrMirrorReadOnly
+		}
+
 		if viewer == nil {
 			return ErrUnauthorized
 		}
@@ -237,14 +241,6 @@ func (uc *GitUseCase) EnsureDefaultBranch(ctx context.Context, repoPath, branch 
 	}
 
 	return uc.git.EnsureDefaultBranch(repoPath, branch)
-}
-
-func (uc *GitUseCase) Ancestor(ctx context.Context, repoPath, oldRev, newRev string) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, err
-	}
-
-	return uc.git.CanFastForward(ctx, repoPath, oldRev, newRev)
 }
 
 func (uc *GitUseCase) TouchActivity(ctx context.Context, repo *domain.Repository, actorID uint) error {

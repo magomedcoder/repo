@@ -195,13 +195,13 @@ func splitBrowsePath(parts []string) (action string, repoParts, extra []string, 
 }
 
 func folderAndName(parts []string) (folderPath, name string, err error) {
-	if len(parts) == 0 || parts[len(parts)-1] == "" {
+	if len(parts) == 0 || len(parts) > 2 || parts[len(parts)-1] == "" {
 		return "", "", errors.New("invalid_repository_path")
 	}
 
 	name = parts[len(parts)-1]
-	if len(parts) > 1 {
-		folderPath = strings.Join(parts[:len(parts)-1], "/")
+	if len(parts) == 2 {
+		folderPath = parts[0]
 	}
 
 	return folderPath, name, nil

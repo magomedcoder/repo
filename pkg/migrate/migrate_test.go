@@ -1,44 +1,37 @@
 package migrate_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
-	"testing/fstest"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"magomedcoder.ru/repo/pkg/migrate"
 )
 
-func TestLoadSQLEmpty(t *testing.T) {
+func TestValidateRejectsGap(t *testing.T) {
 	t.Parallel()
-	fsys := fstest.MapFS{
-		"migrations/.gitkeep": &fstest.MapFile{
-			Data: []byte{},
-		},
-	}
-
-	ms, err := migrate.LoadSQL(fsys, "migrations", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(ms) != 0 {
-		t.Fatalf("got %d migrations", len(ms))
+	err := migrate.Validate([]migrate.Migration{
+		{Version: 2, Name: "skip", Up: func(*gorm.DB) error { return nil }},
+	})
+	if err == nil || !strings.Contains(err.Error(), "contiguous") {
+		t.Fatalf("err=%v", err)
 	}
 }
 
 func TestFreshMarksAppliedWithoutRunningUp(t *testing.T) {
 	t.Parallel()
-	fsys := fstest.MapFS{
-		"migrations/0001_add_note.up.sql": &fstest.MapFile{
-			Data: []byte(`CREATE TABLE IF NOT EXISTS notes (id integer primary key, body text);
-`),
+	ran := false
+	ms := []migrate.Migration{
+		{
+			Version: 1,
+			Name:    "add_note",
+			Up: func(db *gorm.DB) error {
+				ran = true
+				return db.Exec(`CREATE TABLE IF NOT EXISTS notes (id integer primary key, body text)`).Error
+			},
 		},
-	}
-	ms, err := migrate.LoadSQL(fsys, "migrations", nil)
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	db, err := gorm.Open(sqlite.Open("file:fresh?mode=memory&cache=shared"), &gorm.Config{})
@@ -56,18 +49,21 @@ func TestFreshMarksAppliedWithoutRunningUp(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if ran {
+		t.Fatal("fresh bootstrap must not run Up")
+	}
+
 	applied, err := migrate.Applied(db)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if len(applied) != 1 {
 		t.Fatalf("applied=%d", len(applied))
 	}
 
 	ok, err := migrate.TableExists(db, "notes")
 	if err != nil || ok {
-		t.Fatalf("fresh bootstrap must not run Up SQL; notes exists=%v err=%v", ok, err)
+		t.Fatalf("notes exists=%v err=%v", ok, err)
 	}
 
 	ok, err = migrate.TableExists(db, "seed")
@@ -78,16 +74,14 @@ func TestFreshMarksAppliedWithoutRunningUp(t *testing.T) {
 
 func TestApplyPendingOnExisting(t *testing.T) {
 	t.Parallel()
-	fsys := fstest.MapFS{
-		"migrations/0001_add_note.up.sql": &fstest.MapFile{
-			Data: []byte(`
-CREATE TABLE IF NOT EXISTS notes (id integer primary key, body text);
-`),
+	ms := []migrate.Migration{
+		{
+			Version: 1,
+			Name:    "add_note",
+			Up: func(db *gorm.DB) error {
+				return db.Exec(`CREATE TABLE IF NOT EXISTS notes (id integer primary key, body text)`).Error
+			},
 		},
-	}
-	ms, err := migrate.LoadSQL(fsys, "migrations", nil)
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	db, err := gorm.Open(sqlite.Open("file:existing?mode=memory&cache=shared"), &gorm.Config{})
@@ -112,16 +106,54 @@ CREATE TABLE IF NOT EXISTS notes (id integer primary key, body text);
 	}
 }
 
-func TestLoadSQLRejectsGap(t *testing.T) {
+func TestDestructiveTriggersBackup(t *testing.T) {
 	t.Parallel()
-	fsys := fstest.MapFS{
-		"migrations/0002_skip.up.sql": &fstest.MapFile{
-			Data: []byte(`SELECT 1;`),
-		},
+	dir := t.TempDir()
+	dbPath := dir + "/db.sqlite"
+
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	_, err := migrate.LoadSQL(fsys, "migrations", nil)
-	if err == nil || !strings.Contains(err.Error(), "contiguous") {
-		t.Fatalf("err=%v", err)
+	if err := db.Exec(`CREATE TABLE seed (id integer primary key)`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = sqlDB.Close()
+
+	db2, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := migrate.Run(migrate.Options{
+		DB:     db2,
+		DBPath: dbPath,
+		Migrations: []migrate.Migration{
+			{
+				Version:     1,
+				Name:        "boom",
+				Destructive: true,
+				Up: func(db *gorm.DB) error {
+					return db.Exec(`CREATE TABLE notes (id integer primary key)`).Error
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(dir, "db.sqlite.bak.*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(matches) != 1 {
+		t.Fatalf("backups=%v", matches)
 	}
 }

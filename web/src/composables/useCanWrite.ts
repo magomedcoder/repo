@@ -9,15 +9,11 @@ export function useCanWrite(repo?: MaybeRefOrGetter<Repository | null | undefine
   const username = computed(() => auth.user.value?.username || '')
 
   const current = computed(() => (repo ? toValue(repo) : null))
-
-  const canWrite = computed(() => !!current.value?.can_write)
   const canAdmin = computed(() => !!current.value?.can_admin)
 
   return {
-    user: auth.user,
     isAuthenticated,
     username,
-    canWrite,
     canAdmin,
   }
 }

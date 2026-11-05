@@ -36,27 +36,11 @@ func (m *memFolders) FindByPath(path string) (*domain.Folder, error) {
 	return nil, ErrFolderNotFound
 }
 
-func (m *memFolders) FindByOwnerAndID(string, uint, uint) (*domain.Folder, error) {
-	return nil, ErrFolderNotFound
-}
-
-func (m *memFolders) FindByOwnerAndPath(string, uint, string) (*domain.Folder, error) {
-	return nil, ErrFolderNotFound
-}
-
-func (m *memFolders) ListByOwner(string, uint) ([]domain.Folder, error) {
-	return nil, nil
-}
-
 func (m *memFolders) ListForMember(uint) ([]domain.Folder, error) {
 	return nil, nil
 }
 
 func (m *memFolders) ExistsBySlug(string) (bool, error) {
-	return false, nil
-}
-
-func (m *memFolders) ExistsByOwnerSlug(string, uint, string) (bool, error) {
 	return false, nil
 }
 

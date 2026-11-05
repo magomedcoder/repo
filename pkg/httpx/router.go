@@ -15,10 +15,6 @@ func New() *Router {
 	return &Router{mux: http.NewServeMux()}
 }
 
-func (r *Router) Use(mw ...Middleware) {
-	r.mws = append(r.mws, mw...)
-}
-
 func (r *Router) Group(prefix string, mw ...Middleware) *Router {
 	return &Router{
 		mux:    r.mux,

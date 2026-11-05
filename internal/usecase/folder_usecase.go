@@ -369,20 +369,6 @@ func (uc *FolderUseCase) Delete(ctx context.Context, viewerID, _ uint, path stri
 	return nil
 }
 
-func (uc *FolderUseCase) FindByPath(path string) (*domain.Folder, error) {
-	path = strings.Trim(path, "/")
-	if path == "" {
-		return nil, ErrFolderNotFound
-	}
-
-	folder, err := uc.folders.FindByPath(path)
-	if err != nil {
-		return nil, ErrFolderNotFound
-	}
-
-	return folder, nil
-}
-
 func normalizeFolderName(raw string) (name, slug string, err error) {
 	name = strings.TrimSpace(raw)
 	if name == "" {

@@ -9,7 +9,12 @@ import (
 )
 
 func RegisterRepoRoutes(pub, authed *httpx.Router, d *RepoDispatcher) {
-	mountRepoActionRoutes(pub, authed, d)
+	mountRepoCRUD(pub, authed, d, "/repos/{name}")
+	mountRepoCollectionRoutes(pub, authed, d, "/repos/{name}")
+
+	mountRepoCRUD(pub, authed, d, "/repos/{folder}/{name}")
+	mountRepoCollectionRoutes(pub, authed, d, "/repos/{folder}/{name}")
+	mountRepoDetailRoutes(pub, authed, d, "/repos/{folder}/{name}")
 
 	pub.GET("/repos/{path...}", d.DispatchGet)
 	authed.PATCH("/repos/{path...}", d.DispatchPatch)
@@ -17,27 +22,47 @@ func RegisterRepoRoutes(pub, authed *httpx.Router, d *RepoDispatcher) {
 	authed.POST("/repos/{path...}", d.DispatchPost)
 }
 
-func mountRepoActionRoutes(pub, authed *httpx.Router, d *RepoDispatcher) {
-	base := "/repos/{name}"
+func mountRepoCRUD(pub, authed *httpx.Router, d *RepoDispatcher, base string) {
+	pub.GET(base, d.Repos.Get)
+	authed.PATCH(base, d.Repos.Update)
+	authed.DELETE(base, d.Repos.Delete)
+}
 
+func mountRepoCollectionRoutes(pub, authed *httpx.Router, d *RepoDispatcher, base string) {
 	pub.GET(base+"/issues", d.explicitGet("issues"))
-	pub.GET(base+"/issues/{number}", d.explicitGet("issue"))
 	pub.GET(base+"/labels", d.explicitGet("labels"))
 	authed.POST(base+"/issues", d.explicitPost("issues"))
-	authed.POST(base+"/issues/{number}/comments", d.explicitPost("issue-comments"))
 	authed.POST(base+"/labels", d.explicitPost("labels"))
-	authed.PATCH(base+"/issues/{number}", d.explicitPatch("issue"))
-	authed.PATCH(base+"/issues/{number}/comments/{commentID}", d.explicitPatch("issue-comment"))
-	authed.PATCH(base+"/labels/{labelID}", d.explicitPatch("label"))
-	authed.DELETE(base+"/issues/{number}", d.explicitDelete("issue"))
-	authed.DELETE(base+"/issues/{number}/comments/{commentID}", d.explicitDelete("issue-comment"))
-	authed.DELETE(base+"/labels/{labelID}", d.explicitDelete("label"))
 
 	pub.GET(base+"/pulls", d.explicitGet("pulls"))
+	authed.POST(base+"/pulls", d.explicitPost("pulls"))
+
+	for _, action := range []string{"branches", "tags", "commits", "tree", "blob", "raw", "blame", "readme", "stats", "summary"} {
+		pub.GET(base+"/"+action, d.explicitGet(action))
+	}
+
+	authed.POST(base+"/move", d.explicitPost("move"))
+
+	authed.PUT(base+"/mirror", d.Repos.ConfigureMirror)
+	authed.POST(base+"/mirror/sync", d.Repos.SyncMirror)
+
+	authed.GET(base+"/collaborators", d.explicitGet("collaborators"))
+	authed.POST(base+"/collaborators", d.explicitPost("collaborators"))
+}
+
+func mountRepoDetailRoutes(pub, authed *httpx.Router, d *RepoDispatcher, base string) {
+	pub.GET(base+"/issues/{number}", d.explicitGet("issue"))
+	authed.POST(base+"/issues/{number}/comments", d.explicitPost("issue-comments"))
+	authed.PATCH(base+"/issues/{number}", d.explicitPatch("issue"))
+	authed.PATCH(base+"/issues/{number}/comments/{commentID}", d.explicitPatch("issue-comment"))
+	authed.DELETE(base+"/issues/{number}", d.explicitDelete("issue"))
+	authed.DELETE(base+"/issues/{number}/comments/{commentID}", d.explicitDelete("issue-comment"))
+	authed.PATCH(base+"/labels/{labelID}", d.explicitPatch("label"))
+	authed.DELETE(base+"/labels/{labelID}", d.explicitDelete("label"))
+
 	pub.GET(base+"/pulls/{number}", d.explicitGet("pull"))
 	pub.GET(base+"/pulls/{number}/diff", d.explicitGet("pull-diff"))
 	pub.GET(base+"/pulls/{number}/commits", d.explicitGet("pull-commits"))
-	authed.POST(base+"/pulls", d.explicitPost("pulls"))
 	authed.POST(base+"/pulls/{number}/comments", d.explicitPost("pull-comments"))
 	authed.POST(base+"/pulls/{number}/merge", d.explicitPost("pull-merge"))
 	authed.PATCH(base+"/pulls/{number}", d.explicitPatch("pull"))
@@ -45,16 +70,9 @@ func mountRepoActionRoutes(pub, authed *httpx.Router, d *RepoDispatcher) {
 	authed.DELETE(base+"/pulls/{number}", d.explicitDelete("pull"))
 	authed.DELETE(base+"/pulls/{number}/comments/{commentID}", d.explicitDelete("pull-comment"))
 
-	for _, action := range []string{"branches", "tags", "commits", "tree", "blob", "raw", "blame", "readme", "stats", "summary"} {
-		pub.GET(base+"/"+action, d.explicitGet(action))
-	}
 	pub.GET(base+"/commits/{sha}", d.explicitGet("commits"))
 	pub.GET(base+"/commits/{sha}/diff", d.explicitGet("commit-diff"))
 
-	authed.POST(base+"/move", d.explicitPost("move"))
-
-	authed.GET(base+"/collaborators", d.explicitGet("collaborators"))
-	authed.POST(base+"/collaborators", d.explicitPost("collaborators"))
 	authed.DELETE(base+"/collaborators/{username}", d.explicitDelete("collaborator"))
 }
 
@@ -148,6 +166,15 @@ func resolveNamedRepo(c *httpx.Context) (usecase.ResolveRepositoryInput, error) 
 
 func namedRepoParts(c *httpx.Context) []string {
 	name := strings.Trim(c.Param("name"), "/")
+	folder := strings.Trim(c.Param("folder"), "/")
+	if folder != "" {
+		return []string{folder, name}
+	}
+
+	if name == "" {
+		return nil
+	}
+
 	return []string{name}
 }
 

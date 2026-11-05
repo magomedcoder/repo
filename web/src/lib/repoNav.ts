@@ -2,7 +2,7 @@ import type { RouteLocationRaw } from 'vue-router'
 import type { TreeEntry } from '@/api/types'
 import { encodeRepoPath } from '@/lib/repoPath'
 
-export type RepoRouteKind =
+type RepoRouteKind =
   | 'repo'
   | 'repo-commits'
   | 'repo-commit'

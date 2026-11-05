@@ -2,6 +2,14 @@
 
 Лёгкий self-hosted Git-хостинг.
 
+## Возможности
+
+- Репозитории по HTTP: clone, fetch, push; просмотр веток, тегов, дерева, коммитов, blame, README
+- Issues и pull requests (diff, комментарии, merge)
+- Папки как общие org-пространства: участники, capabilities, команды, collaborators на репозиторий
+- Pull/push-зеркалирование на удалённые http(s) Git URL (pull по расписанию, push после git push/merge)
+- Аккаунты, сессии, access-токены, админ-пользователи; UI на английском и русском
+
 ## Стек
 
 - Go 1.27+, CGO для SQLite
@@ -23,16 +31,17 @@
 cp config.example.yaml config.yaml
 ```
 
-| Ключ                 | Описание                                                                             |
-|----------------------|--------------------------------------------------------------------------------------|
-| `http_addr`          | Адрес HTTP-сервера (по умолчанию `:8080`)                                            |
-| `data_dir`           | Каталог для SQLite, Git-репозиториев и аватаров                                      |
-| `site_name`          | Название сайта в UI                                                                  |
-| `session_secret`     | Секрет подписи сессий (обязателен, мин. 32 символа; например `openssl rand -hex 32`) |
-| `cookie_secure`      | `true` за HTTPS (Secure-cookie + HSTS)                                               |
-| `allow_registration` | Публичная саморегистрация; иначе пользователи через CLI/админку                      |
-| `receive_max_bytes`  | Максимальный размер Git push в байтах (по умолчанию 512 MiB)                         |
-| `trusted_proxies`    | Опциональные CIDR/IP для `X-Forwarded-For` / `X-Forwarded-Proto`                     |
+| Ключ                   | Описание                                                                             |
+|------------------------|--------------------------------------------------------------------------------------|
+| `http_addr`            | Адрес HTTP-сервера (по умолчанию `:8080`)                                            |
+| `data_dir`             | Каталог для SQLite, Git-репозиториев и аватаров                                      |
+| `site_name`            | Название сайта в UI                                                                  |
+| `session_secret`       | Секрет подписи сессий (обязателен, мин. 32 символа; например `openssl rand -hex 32`) |
+| `cookie_secure`        | `true` за HTTPS (Secure-cookie + HSTS)                                               |
+| `allow_registration`   | Публичная саморегистрация; иначе пользователи через CLI/админку                      |
+| `receive_max_bytes`    | Максимальный размер Git push в байтах (по умолчанию 512 MiB)                         |
+| `mirror_pull_interval` | Как часто pull-зеркала делают fetch (`5m` по умолчанию; `0` - без планировщика)      |
+| `trusted_proxies`      | Опциональные CIDR/IP для `X-Forwarded-For` / `X-Forwarded-Proto`                     |
 
 В ответах выставляются CSP, `X-Frame-Options`, `X-Content-Type-Options` и (по HTTPS / при `cookie_secure`) HSTS с `includeSubDomains; preload`. После запуска сайта на HTTPS домен можно подать на [hstspreload.org](https://hstspreload.org).
 

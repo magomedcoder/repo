@@ -1,6 +1,6 @@
 import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
-import type { AccessLog, AccessToken, ActivityEvent, AdminUser, AuthSession, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderCaps, FolderContents, FolderMember, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, RepoStats, Repository, RepoSummary, Team, TeamMember, TeamRepoGrant, TreeEntry, User, UserRole } from './types'
+import type { AccessLog, AccessToken, ActivityEvent, AdminUser, AuthSession, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderCaps, FolderContents, FolderMember, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, Repository, RepoSummary, Team, TeamMember, TeamRepoGrant, TreeEntry, User, UserRole } from './types'
 
 export const siteApi = {
   get() {
@@ -122,12 +122,6 @@ export const foldersApi = {
   createTeam(path: string, body: { name: string; caps?: FolderCaps }) {
     return api<Team>(`/api/folders/${encodeRepoPath(path)}/teams`, {
       method: 'POST',
-      body: JSON.stringify(body),
-    })
-  },
-  updateTeam(path: string, slug: string, body: { name?: string; caps?: FolderCaps }) {
-    return api<Team>(`/api/folders/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}`, {
-      method: 'PATCH',
       body: JSON.stringify(body),
     })
   },
@@ -274,17 +268,41 @@ export const reposApi = {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}`)
   },
   create(body: {
-    name?: string
-    path?: string
+    name: string
     description?: string
     folder_path?: string
     private?: boolean
     show_on_home?: boolean
     default_branch?: string
+    mirror_direction?: string
+    mirror_url?: string
+    mirror_username?: string
+    mirror_password?: string
   }) {
     return api<Repository>('/api/repos', {
       method: 'POST',
       body: JSON.stringify(body)
+    })
+  },
+  configureMirror(
+    path: string,
+    body: {
+      enabled?: boolean
+      direction?: string
+      url?: string
+      username?: string
+      password?: string
+      clear_password?: boolean
+    },
+  ) {
+    return api<Repository>(`/api/repos/${encodeRepoPath(path)}/mirror`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  },
+  syncMirror(path: string) {
+    return api<Repository>(`/api/repos/${encodeRepoPath(path)}/mirror/sync`, {
+      method: 'POST',
     })
   },
   update(
@@ -386,14 +404,6 @@ export const reposApi = {
   rawHref(repoPath: string, params: { ref: string; path: string }) {
     const q = new URLSearchParams({ ref: params.ref, path: params.path })
     return `/api/repos/${encodeRepoPath(repoPath)}/raw?${q}`
-  },
-  readme(path: string, ref?: string) {
-    const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
-    return api<BlobContent>(`/api/repos/${encodeRepoPath(path)}/readme${q}`)
-  },
-  stats(path: string, ref?: string) {
-    const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
-    return api<RepoStats>(`/api/repos/${encodeRepoPath(path)}/stats${q}`)
   },
   summary(path: string, ref?: string) {
     const q = ref ? `?ref=${encodeURIComponent(ref)}` : ''
@@ -502,9 +512,6 @@ export const adminUsersApi = {
     return api<{ users: AdminUser[]; total: number; limit: number; offset: number }>(
       `/api/admin/users${qs ? `?${qs}` : ''}`,
     )
-  },
-  get(id: number) {
-    return api<AdminUser>(`/api/admin/users/${id}`)
   },
   create(body: { username: string; email: string; password: string; role: UserRole }) {
     return api<AdminUser>('/api/admin/users', {

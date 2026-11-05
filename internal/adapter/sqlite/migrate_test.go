@@ -10,6 +10,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"magomedcoder.ru/repo/internal/adapter/sqlite/migrations"
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/migrate"
 )
@@ -32,8 +33,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	if err := db.Model(&migrate.Record{}).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if int(count) != len(allMigrations()) {
-		t.Fatalf("journal rows=%d want %d (%v)", count, len(allMigrations()), migrate.Names(allMigrations()))
+	if int(count) != len(migrations.All()) {
+		t.Fatalf("journal rows=%d want %d (%v)", count, len(migrations.All()), migrate.Names(migrations.All()))
 	}
 
 	ok, err := migrate.ColumnExists(db, "users", "role")
@@ -110,6 +111,75 @@ func TestMigrateIdempotentOnExistingDB(t *testing.T) {
 
 	if got.Username != "bob" || got.Role != domain.RoleUser {
 		t.Fatalf("user not preserved: %+v", got)
+	}
+}
+
+func TestMigrateV1AddsMirrorsAndAccessTables(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "db.sqlite")
+	db, err := openRawDB(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, stmt := range []string{
+		`CREATE TABLE users (id integer PRIMARY KEY AUTOINCREMENT, username text, email text, password_hash text, role text, deleted_at datetime)`,
+		`CREATE TABLE folders (
+			id integer PRIMARY KEY AUTOINCREMENT,
+			created_at datetime, updated_at datetime, deleted_at datetime,
+			owner_kind text NOT NULL DEFAULT "user", owner_id integer NOT NULL,
+			name text NOT NULL, slug text NOT NULL, path text NOT NULL
+		)`,
+		`CREATE TABLE repositories (
+			id integer PRIMARY KEY AUTOINCREMENT,
+			created_at datetime, updated_at datetime, deleted_at datetime,
+			name text NOT NULL, owner_kind text NOT NULL DEFAULT "user", owner_id integer NOT NULL,
+			folder_id integer, description text, is_private numeric, show_on_home numeric,
+			protect_default_branch numeric, issues_enabled numeric,
+			default_branch text, path text NOT NULL, repo_path text,
+			issue_seq integer NOT NULL DEFAULT 0, pull_seq integer NOT NULL DEFAULT 0,
+			last_activity_at datetime
+		)`,
+		`CREATE TABLE issues (id integer PRIMARY KEY AUTOINCREMENT, repository_id integer, number integer)`,
+		`CREATE TABLE pull_requests (id integer PRIMARY KEY AUTOINCREMENT, repository_id integer, number integer)`,
+		`CREATE TABLE access_tokens (id integer PRIMARY KEY AUTOINCREMENT, user_id integer)`,
+		`INSERT INTO folders (owner_id, name, slug, path) VALUES (1, 'work', 'work', 'work')`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = sqlDB.Close()
+
+	db2, err := NewDB(dir)
+	if err != nil {
+		t.Fatalf("migrate v1: %v", err)
+	}
+	sqlDB2, err := db2.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB2.Close()
+
+	ok, err := migrate.ColumnExists(db2, "repositories", "mirror_direction")
+	if err != nil || !ok {
+		t.Fatalf("mirror_direction after v1: ok=%v err=%v", ok, err)
+	}
+
+	ok, err = migrate.TableExists(db2, "folder_members")
+	if err != nil || !ok {
+		t.Fatalf("folder_members after v1: ok=%v err=%v", ok, err)
+	}
+
+	var versions int64
+	if err := db2.Model(&migrate.Record{}).Count(&versions).Error; err != nil || versions != 1 {
+		t.Fatalf("journal versions=%d err=%v", versions, err)
 	}
 }
 

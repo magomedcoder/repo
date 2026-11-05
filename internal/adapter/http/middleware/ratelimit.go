@@ -164,10 +164,10 @@ func ClientIP(r *http.Request) string {
 }
 
 func ClientIPKey(r *http.Request) string {
-	return NormalizeIPKey(ClientIP(r))
+	return normalizeIPKey(ClientIP(r))
 }
 
-func NormalizeIPKey(host string) string {
+func normalizeIPKey(host string) string {
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return host

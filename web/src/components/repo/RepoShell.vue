@@ -33,6 +33,22 @@ const folderSlug = computed(() => {
 })
 const repoName = computed(() => parts.value[parts.value.length - 1] || props.repoPath)
 const issuesEnabled = computed(() => props.repo?.issues_enabled !== false)
+const mirrorDirection = computed(() => props.repo?.mirror_direction || '')
+const mirrorURL = computed(() => (props.repo?.mirror_url || '').trim())
+const mirrorLinkLabel = computed(() => {
+  const raw = mirrorURL.value
+  if (!raw) {
+    return ''
+  }
+  
+  try {
+    const u = new URL(raw)
+    const path = u.pathname.replace(/\.git$/, '').replace(/^\/+|\/+$/g, '')
+    return path ? `${u.host}/${path}` : u.host
+  } catch {
+    return raw.replace(/^https?:\/\//, '').replace(/\.git$/, '')
+  }
+})
 
 function active(name: string) {
   return props.tab === name
@@ -62,6 +78,18 @@ function active(name: string) {
         {{ repoName }}
       </RouterLink>
     </div>
+
+    <p v-if="mirrorDirection === 'pull' || mirrorDirection === 'push'" class="mt-1 text-[80%] text-ink-muted">
+      <span>{{ mirrorDirection === 'pull' ? $t('repo.mirrorPullPrefix') : $t('repo.mirrorPushPrefix') }}</span>
+      <a
+        v-if="mirrorURL"
+        :href="mirrorURL"
+        class="text-ink-muted underline decoration-line underline-offset-2 hover:text-ink"
+        target="_blank"
+        rel="noopener noreferrer"
+      >{{ mirrorLinkLabel }}</a>
+      <span v-else>{{ $t('repo.mirrorRemoteUnknown') }}</span>
+    </p>
 
     <nav class="m-0 mt-1.5 mb-0 flex w-full flex-wrap items-stretch gap-0 border-b border-line" :aria-label="$t('nav.repo')">
       <RouterLink :to="repoLocation('repo', repoPath)" :class="['relative -mb-px inline-block cursor-pointer border-b-2 border-transparent px-3 py-1.5 text-[100%] text-ink-muted no-underline hover:text-ink hover:no-underline', active('summary') && 'border-b-ink font-semibold text-ink no-underline hover:text-ink hover:no-underline']">

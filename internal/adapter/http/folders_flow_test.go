@@ -43,6 +43,46 @@ func TestFoldersCreateRepo(t *testing.T) {
 	if search.StatusCode != http.StatusOK || !strings.Contains(search.Body, `"name":"api"`) {
 		t.Fatalf("search %d %s", search.StatusCode, search.Body)
 	}
+
+	got := doJSON(t, srv, http.MethodGet, "/api/repos/work/api", "", cookies)
+	if got.StatusCode != http.StatusOK || !strings.Contains(got.Body, `"name":"api"`) {
+		t.Fatalf("get folder repo %d %s", got.StatusCode, got.Body)
+	}
+
+	issues := doJSON(t, srv, http.MethodGet, "/api/repos/work/api/issues", "", cookies)
+	if issues.StatusCode != http.StatusOK {
+		t.Fatalf("folder repo issues %d %s", issues.StatusCode, issues.Body)
+	}
+
+	createdIssue := doJSON(t, srv, http.MethodPost, "/api/repos/work/api/issues", `{"title":"bug","body":"x"}`, cookies)
+	if createdIssue.StatusCode != http.StatusCreated {
+		t.Fatalf("create folder issue %d %s", createdIssue.StatusCode, createdIssue.Body)
+	}
+
+	issue := doJSON(t, srv, http.MethodGet, "/api/repos/work/api/issues/1", "", cookies)
+	if issue.StatusCode != http.StatusOK || !strings.Contains(issue.Body, `"title":"bug"`) {
+		t.Fatalf("folder issue detail %d %s", issue.StatusCode, issue.Body)
+	}
+
+	branches := doJSON(t, srv, http.MethodGet, "/api/repos/work/api/branches", "", cookies)
+	if branches.StatusCode != http.StatusOK {
+		t.Fatalf("folder repo branches %d %s", branches.StatusCode, branches.Body)
+	}
+
+	solo := doJSON(t, srv, http.MethodGet, "/api/repos/solo", "", cookies)
+	if solo.StatusCode != http.StatusOK || !strings.Contains(solo.Body, `"name":"solo"`) {
+		t.Fatalf("get root repo %d %s", solo.StatusCode, solo.Body)
+	}
+
+	rootIssue := doJSON(t, srv, http.MethodPost, "/api/repos/solo/issues", `{"title":"root","body":"y"}`, cookies)
+	if rootIssue.StatusCode != http.StatusCreated {
+		t.Fatalf("create root issue %d %s", rootIssue.StatusCode, rootIssue.Body)
+	}
+
+	rootDetail := doJSON(t, srv, http.MethodGet, "/api/repos/solo/issues/1", "", cookies)
+	if rootDetail.StatusCode != http.StatusOK || !strings.Contains(rootDetail.Body, `"title":"root"`) {
+		t.Fatalf("root issue detail via catch-all %d %s", rootDetail.StatusCode, rootDetail.Body)
+	}
 }
 
 func TestFolderRenameAndDelete(t *testing.T) {

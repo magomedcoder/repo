@@ -27,13 +27,13 @@ func CSRF(secure bool, secret string) func(http.Handler) http.Handler {
 	}
 }
 
-func BoundCSRFToken(secret, sessionToken string) string {
+func boundCSRFToken(secret, sessionToken string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(sessionToken))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func SetCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, value string) {
+func setCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, value string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     CSRFCookie,
 		Value:    value,
@@ -45,21 +45,21 @@ func SetCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, value st
 
 func RotateAnonymousCSRF(w http.ResponseWriter, r *http.Request, secure bool) string {
 	token := randomCSRFToken()
-	SetCSRFCookie(w, r, secure, token)
+	setCSRFCookie(w, r, secure, token)
 	return token
 }
 
 func RotateSessionCSRF(w http.ResponseWriter, r *http.Request, secure bool, secret, sessionToken string) string {
-	token := BoundCSRFToken(secret, sessionToken)
-	SetCSRFCookie(w, r, secure, token)
+	token := boundCSRFToken(secret, sessionToken)
+	setCSRFCookie(w, r, secure, token)
 	return token
 }
 
 func ensureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, secret string) string {
 	if session := SessionToken(r); session != "" && secret != "" {
-		want := BoundCSRFToken(secret, session)
+		want := boundCSRFToken(secret, session)
 		if c, err := r.Cookie(CSRFCookie); err != nil || c.Value != want {
-			SetCSRFCookie(w, r, secure, want)
+			setCSRFCookie(w, r, secure, want)
 		}
 		return want
 	}
@@ -69,7 +69,7 @@ func ensureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, secre
 	}
 
 	token := randomCSRFToken()
-	SetCSRFCookie(w, r, secure, token)
+	setCSRFCookie(w, r, secure, token)
 	return token
 }
 
@@ -107,6 +107,6 @@ func validCSRF(r *http.Request, cookieToken string, secret string) bool {
 		return false
 	}
 
-	want := BoundCSRFToken(secret, session)
+	want := boundCSRFToken(secret, session)
 	return subtle.ConstantTimeCompare([]byte(cookieToken), []byte(want)) == 1
 }

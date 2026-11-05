@@ -10,14 +10,13 @@ type FolderCap uint32
 const (
 	CapView FolderCap = 1 << iota
 	CapCreateRepos
-	CapCreateFolders
 	CapManageMembers
 	CapManageSettings
 	CapDeleteFolder
 	CapDeleteRepos
 )
 
-const CapAll = CapView | CapCreateRepos | CapCreateFolders | CapManageMembers | CapManageSettings | CapDeleteFolder | CapDeleteRepos
+const CapAll = CapView | CapCreateRepos | CapManageMembers | CapManageSettings | CapDeleteFolder | CapDeleteRepos
 
 type FolderRole string
 
@@ -144,8 +143,6 @@ type FolderMemberStore interface {
 	Find(folderID, userID uint) (*FolderMember, error)
 
 	ListByFolder(folderID uint) ([]FolderMember, error)
-
-	ListFolderIDsByUser(userID uint) ([]uint, error)
 }
 
 type TeamStore interface {
@@ -180,8 +177,6 @@ type TeamRepoGrantStore interface {
 	Upsert(g *TeamRepoGrant) error
 
 	Delete(teamID, repoID uint) error
-
-	Find(teamID, repoID uint) (*TeamRepoGrant, error)
 
 	ListByTeam(teamID uint) ([]TeamRepoGrant, error)
 

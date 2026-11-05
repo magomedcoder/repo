@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"magomedcoder.ru/repo/internal/config"
+	"net"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v6/plumbing"
 
+	"magomedcoder.ru/repo/internal/config"
 	"magomedcoder.ru/repo/internal/domain"
 )
 
@@ -23,6 +26,8 @@ var (
 	ErrRepoForbidden     = NewError(KindForbidden, "repository_access_denied")
 	ErrInvalidBranchName = NewError(KindValidation, "invalid_default_branch")
 	ErrRepoQuota         = NewError(KindForbidden, "repository_quota_exceeded")
+	ErrInvalidMirrorURL  = NewError(KindValidation, "invalid_mirror_url")
+	ErrMirrorFailed      = NewError(KindValidation, "mirror_failed")
 )
 
 const maxReposPerOwner = 100
@@ -40,15 +45,18 @@ func isUniqueViolation(err error) bool {
 }
 
 type CreateRepositoryInput struct {
-	Name          string
-	Path          string
-	Description   string
-	ViewerID      uint
-	OwnerID       uint
-	FolderPath    string
-	Private       bool
-	ShowOnHome    bool
-	DefaultBranch string
+	Name            string
+	Description     string
+	ViewerID        uint
+	OwnerID         uint
+	FolderPath      string
+	Private         bool
+	ShowOnHome      bool
+	DefaultBranch   string
+	MirrorDirection string
+	MirrorURL       string
+	MirrorUsername  string
+	MirrorPassword  string
 }
 
 type UpdateRepositoryInput struct {
@@ -91,6 +99,12 @@ type RepositoryItem struct {
 	DefaultBranch        string     `json:"default_branch"`
 	LastActivityAt       *time.Time `json:"last_activity_at,omitzero"`
 	RepoPath             string     `json:"repo_path"`
+	MirrorDirection      string     `json:"mirror_direction,omitzero"`
+	MirrorURL            string     `json:"mirror_url,omitzero"`
+	MirrorUsername       string     `json:"mirror_username,omitzero"`
+	MirrorHasPassword    bool       `json:"mirror_has_password"`
+	MirrorLastSyncAt     *time.Time `json:"mirror_last_sync_at,omitzero"`
+	MirrorLastError      string     `json:"mirror_last_error,omitzero"`
 	CanRead              bool       `json:"can_read"`
 	CanWrite             bool       `json:"can_write"`
 	CanAdmin             bool       `json:"can_admin"`
@@ -99,12 +113,14 @@ type RepositoryItem struct {
 }
 
 type RepositoryUseCase struct {
-	store    domain.RepositoryStore
-	folders  domain.FolderStore
-	users    domain.UserStore
-	git      domain.GitRepository
-	activity domain.ActivityStore
-	authz    *Authz
+	store       domain.RepositoryStore
+	folders     domain.FolderStore
+	users       domain.UserStore
+	git         domain.GitRepository
+	activity    domain.ActivityStore
+	authz       *Authz
+	mirrorMu    sync.Mutex
+	mirrorLocks map[uint]*sync.Mutex
 }
 
 func NewRepositoryUseCase(
@@ -139,15 +155,9 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		return nil, ErrUnauthorized
 	}
 
-	name := ""
-	if strings.TrimSpace(in.Path) == "" {
-		var nerr error
-		name, nerr = normalizeRepoName(in.Name)
-		if nerr != nil {
-			return nil, nerr
-		}
-	} else {
-		name = strings.TrimSpace(in.Name)
+	name, err := normalizeRepoName(in.Name)
+	if err != nil {
+		return nil, err
 	}
 
 	ownerKind := domain.OwnerKindUser
@@ -180,38 +190,13 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		logical = folderPath + "/" + name + ".git"
 	}
 
-	if strings.TrimSpace(in.Path) != "" {
-		parsed, perr := domain.ParseRepoPath(in.Path)
-		if perr != nil {
-			return nil, ErrInvalidName
-		}
-
-		if len(parsed) > 2 {
-			return nil, ErrInvalidName
-		}
-
-		name = strings.TrimSuffix(parsed[len(parsed)-1], ".git")
-		folderID = nil
-		folderPath = ""
-		if len(parsed) == 2 {
-			folderID, folderPath, err = uc.resolveFolderPathForCreate(viewerID, parsed[0])
-			if err != nil {
-				return nil, err
-			}
-		}
-		logical = name + ".git"
-		if folderPath != "" {
-			logical = folderPath + "/" + name + ".git"
-		}
-	}
-
 	if _, err := domain.ParseRepoPath(logical); err != nil {
 		return nil, ErrInvalidName
 	}
 
 	firstSegment := name
 	if folderPath != "" {
-		firstSegment = strings.Split(folderPath, "/")[0]
+		firstSegment = folderPath
 	}
 	if IsReservedSlug(firstSegment) {
 		return nil, ErrReservedSlug
@@ -228,6 +213,26 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 
 	if other, ferr := uc.store.FindByRepoPath(ctx, logical); ferr == nil && other != nil {
 		return nil, ErrAlreadyExists
+	}
+
+	mirrorURL := strings.TrimSpace(in.MirrorURL)
+	mirrorDir := domain.MirrorNone
+	if mirrorURL != "" {
+		if err := validateMirrorURL(mirrorURL); err != nil {
+			return nil, err
+		}
+
+		var derr error
+		mirrorDir, derr = normalizeMirrorDirection(in.MirrorDirection)
+		if derr != nil {
+			return nil, derr
+		}
+
+		if mirrorDir == domain.MirrorNone {
+			mirrorDir = domain.MirrorPull
+		}
+	} else if strings.TrimSpace(in.MirrorDirection) != "" {
+		return nil, ErrInvalidMirrorURL
 	}
 
 	branch := strings.TrimSpace(in.DefaultBranch)
@@ -254,6 +259,10 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		IssuesEnabled:        true,
 		DefaultBranch:        branch,
 		Path:                 repoPath,
+		MirrorDirection:      mirrorDir,
+		MirrorURL:            mirrorURL,
+		MirrorUsername:       strings.TrimSpace(in.MirrorUsername),
+		MirrorPassword:       in.MirrorPassword,
 	}
 	if err := uc.store.Create(repo); err != nil {
 		if isUniqueViolation(err) {
@@ -263,11 +272,37 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		return nil, fmt.Errorf("save repository metadata: %w", err)
 	}
 
-	if err := uc.git.InitBare(repoPath, domain.BareInitOptions{
-		DefaultBranch: branch,
-	}); err != nil {
-		_ = uc.store.Delete(repo.ID)
-		return nil, fmt.Errorf("init bare repository: %w", err)
+	auth := mirrorAuthFromRepo(repo)
+	switch mirrorDir {
+	case domain.MirrorPull:
+		detected, merr := uc.git.MirrorClone(ctx, repoPath, mirrorURL, auth)
+		if merr != nil {
+			_ = uc.git.Remove(repoPath)
+			_ = uc.store.Delete(repo.ID)
+			return nil, ErrMirrorFailed
+		}
+
+		if detected != "" {
+			if verr := validateBranchName(detected); verr == nil {
+				repo.DefaultBranch = detected
+			}
+		}
+
+		now := time.Now().UTC()
+		repo.MirrorLastSyncAt = &now
+		_ = uc.store.Update(repo)
+		_ = uc.git.EnsureDefaultBranch(repoPath, repo.DefaultBranch)
+	case domain.MirrorPush:
+		if err := uc.git.InitBare(repoPath, domain.BareInitOptions{DefaultBranch: branch}); err != nil {
+			_ = uc.store.Delete(repo.ID)
+			return nil, fmt.Errorf("init bare repository: %w", err)
+		}
+
+	default:
+		if err := uc.git.InitBare(repoPath, domain.BareInitOptions{DefaultBranch: branch}); err != nil {
+			_ = uc.store.Delete(repo.ID)
+			return nil, fmt.Errorf("init bare repository: %w", err)
+		}
 	}
 
 	item := uc.toRepositoryItem(repo, ownerSlug, folderPath, viewerID)
@@ -281,6 +316,31 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 	})
 
 	return &item, nil
+}
+
+func validateMirrorURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return ErrInvalidMirrorURL
+	}
+
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "https" && scheme != "http" {
+		return ErrInvalidMirrorURL
+	}
+
+	host := strings.ToLower(u.Hostname())
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "metadata.google.internal" {
+		return ErrInvalidMirrorURL
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return ErrInvalidMirrorURL
+		}
+	}
+
+	return nil
 }
 
 func (uc *RepositoryUseCase) ListOwn(ctx context.Context, ownerID uint, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
@@ -661,6 +721,9 @@ func (uc *RepositoryUseCase) resolveFolderPathForCreate(viewerID uint, path stri
 	if path == "" {
 		return nil, "", nil
 	}
+	if strings.Contains(path, "/") {
+		return nil, "", ErrFolderNotFound
+	}
 
 	folder, err := uc.folders.FindByPath(path)
 	if err != nil {
@@ -679,6 +742,9 @@ func (uc *RepositoryUseCase) resolveFolderPathForMove(viewerID uint, path string
 	path = strings.Trim(strings.TrimSpace(path), "/")
 	if path == "" {
 		return nil, "", nil
+	}
+	if strings.Contains(path, "/") {
+		return nil, "", ErrFolderNotFound
 	}
 
 	folder, err := uc.folders.FindByPath(path)
@@ -769,7 +835,7 @@ func buildRepoDiskPath(basePath, ownerKind string, ownerID uint, folderPath, nam
 
 	parts := []string{basePath, ownerKind, fmt.Sprintf("%d", ownerID)}
 	if folderPath != "" {
-		parts = append(parts, strings.Split(folderPath, "/")...)
+		parts = append(parts, folderPath)
 	}
 
 	parts = append(parts, name+".git")
@@ -833,6 +899,17 @@ func (uc *RepositoryUseCase) toRepositoryItem(repo *domain.Repository, ownerUser
 		item.CanAdmin = uc.authz.CanAdminRepo(repo, viewerID)
 	} else if !repo.IsPrivate {
 		item.CanRead = true
+	}
+
+	if repo.MirrorDirection != domain.MirrorNone {
+		item.MirrorDirection = repo.MirrorDirection
+		item.MirrorURL = repo.MirrorURL
+		if item.CanAdmin {
+			item.MirrorUsername = repo.MirrorUsername
+			item.MirrorHasPassword = repo.MirrorPassword != ""
+			item.MirrorLastSyncAt = repo.MirrorLastSyncAt
+			item.MirrorLastError = repo.MirrorLastError
+		}
 	}
 
 	return item

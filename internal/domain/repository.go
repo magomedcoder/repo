@@ -8,6 +8,12 @@ import (
 
 const OwnerKindUser = "user"
 
+const (
+	MirrorNone = ""
+	MirrorPull = "pull"
+	MirrorPush = "push"
+)
+
 type Repository struct {
 	ID                   uint
 	Name                 string
@@ -22,6 +28,12 @@ type Repository struct {
 	DefaultBranch        string
 	Path                 string
 	RepoPath             string
+	MirrorDirection      string
+	MirrorURL            string
+	MirrorUsername       string
+	MirrorPassword       string
+	MirrorLastSyncAt     *time.Time
+	MirrorLastError      string
 	LastActivityAt       *time.Time
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -49,13 +61,15 @@ type RepositoryStore interface {
 
 	ListPublicIDsByOwner(ctx context.Context, ownerKind string, ownerID uint) ([]uint, error)
 
-	ListByOwnerAndFolderID(ctx context.Context, ownerKind string, ownerID uint, folderID *uint) ([]Repository, error)
-
 	ListByFolderID(ctx context.Context, folderID uint) ([]Repository, error)
 
 	ListPublic(ctx context.Context, limit, offset int, order RepoOrder) ([]Repository, error)
 
 	ListHome(ctx context.Context, limit, offset int, order RepoOrder) ([]Repository, error)
+
+	ListByMirrorDirection(ctx context.Context, direction string) ([]Repository, error)
+
+	FindByID(ctx context.Context, id uint) (*Repository, error)
 
 	SearchByName(ctx context.Context, query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order RepoOrder) ([]Repository, error)
 
@@ -68,6 +82,11 @@ type RepositoryStore interface {
 
 type BareInitOptions struct {
 	DefaultBranch string
+}
+
+type MirrorAuth struct {
+	Username string
+	Password string
 }
 
 type RefInfo struct {
@@ -147,6 +166,12 @@ type GitRepository interface {
 
 	InitBare(path string, opts BareInitOptions) error
 
+	MirrorClone(ctx context.Context, path, url string, auth *MirrorAuth) (defaultBranch string, err error)
+
+	MirrorFetch(ctx context.Context, path, url string, auth *MirrorAuth) error
+
+	MirrorPush(ctx context.Context, path, url string, auth *MirrorAuth) error
+
 	Remove(path string) error
 
 	Move(oldPath, newPath string) error
@@ -176,8 +201,6 @@ type GitRepository interface {
 	GetCommitDiff(ctx context.Context, repoPath, sha string) (*CommitDiff, error)
 
 	Compare(ctx context.Context, repoPath, base, head string) (*CompareResult, error)
-
-	CanFastForward(ctx context.Context, repoPath, base, head string) (bool, error)
 
 	Merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error)
 

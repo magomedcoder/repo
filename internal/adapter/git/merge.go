@@ -145,12 +145,6 @@ func (r *Repository) logRange(ctx context.Context, repoPath, base, head string) 
 	return out, nil
 }
 
-func (r *Repository) CanFastForward(ctx context.Context, repoPath, base, head string) (bool, error) {
-	return r.withTimeout(ctx, func(ctx context.Context) (bool, error) {
-		return r.canFastForward(ctx, repoPath, base, head)
-	})
-}
-
 func (r *Repository) canFastForward(ctx context.Context, repoPath, base, head string) (bool, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {

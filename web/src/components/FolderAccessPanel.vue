@@ -37,7 +37,6 @@ const teamRepoRole = ref('read')
 const capKeys: (keyof FolderCaps)[] = [
   'view',
   'create_repos',
-  'create_folders',
   'manage_members',
   'manage_settings',
   'delete_folder',

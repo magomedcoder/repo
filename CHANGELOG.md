@@ -2,6 +2,7 @@
 
 # dev
 
+- Repositories: pull and push mirroring (into / from a remote http(s) URL) on create and in settings; pull sync on schedule (`mirror_pull_interval`), push sync after git push/merge; manual sync still available; pull mirrors reject git push
 - Sessions: store hashed tokens; list devices with IP and user agent; revoke one, other, or all sessions in settings
 - Folders: shared org spaces with members (`owner` / `admin` / `member`), configurable capabilities, invite/edit/remove in the UI
 - Teams: create teams inside a folder, add members, grant read/write/admin on selected repositories
@@ -20,7 +21,7 @@
 - Roles: user and admin; admin user list, create, update, delete in the API and UI
 - Profile: public page, email update, avatar upload and delete
 - Access tokens: create, list, and revoke in the API and UI for Git HTTP auth
-- Folders: create, list, rename, delete; nested layout with ownerless repository paths
+- Folders: create, list, rename, delete; flat layout with ownerless repository paths
 - Repositories: create, update, rename/move, delete, description, public and private, default branch, protect default branch, issues and pull requests toggles
 - Access: guest read for public repos; write actions require login; settings only for owners
 - Git over HTTP: clone, fetch, push; force-push guard on protected default branch

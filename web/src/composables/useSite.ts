@@ -42,6 +42,5 @@ export function useSite() {
     name: computed(() => name.value || i18n.global.t('brand.name')),
     ready,
     fetchSite,
-    applyTitle,
   }
 }

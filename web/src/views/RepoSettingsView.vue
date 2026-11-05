@@ -2,13 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { foldersApi, reposApi } from '@/api'
-import type { RefInfo, RepoCollaborator, RepoCollabRole } from '@/api/types'
+import type { MirrorDirection, RefInfo, RepoCollaborator, RepoCollabRole } from '@/api/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { useCanWrite } from '@/composables/useCanWrite'
 import { invalidateRepo, useRepo } from '@/composables/useRepo'
 import type { PageError } from '@/i18n'
-import { i18n, localizeError } from '@/i18n'
+import { formatDate, i18n, localizeError } from '@/i18n'
 import { folderKey } from '@/lib/folderNav'
 import { normalizeRepoPath } from '@/lib/repoPath'
 import { repoLocation } from '@/lib/repoNav'
@@ -52,6 +52,19 @@ const saving = ref(false)
 const deleting = ref(false)
 const redirected = ref(false)
 
+const mirrorEnabled = ref(false)
+const mirrorDirection = ref<MirrorDirection>('pull')
+const mirrorURL = ref('')
+const mirrorUsername = ref('')
+const mirrorPassword = ref('')
+const mirrorClearPassword = ref(false)
+const mirrorHasPassword = ref(false)
+const mirrorLastSyncAt = ref('')
+const mirrorLastError = ref('')
+const mirrorBusy = ref(false)
+const mirrorError = ref('')
+const mirrorMessage = ref('')
+
 const loading = computed(() => dataLoading.value)
 
 const branchOptions = computed(() => {
@@ -81,6 +94,16 @@ function syncFormFromRepo() {
   issuesEnabled.value = repo.value.issues_enabled !== false
   defaultBranch.value = repo.value.default_branch
   folderPathKey.value = normalizeRepoPath(repo.value.folder_path || '')
+
+  mirrorEnabled.value = !!repo.value.mirror_direction
+  mirrorDirection.value = (repo.value.mirror_direction === 'push' ? 'push' : 'pull')
+  mirrorURL.value = repo.value.mirror_url || ''
+  mirrorUsername.value = repo.value.mirror_username || ''
+  mirrorPassword.value = ''
+  mirrorClearPassword.value = false
+  mirrorHasPassword.value = !!repo.value.mirror_has_password
+  mirrorLastSyncAt.value = repo.value.mirror_last_sync_at || ''
+  mirrorLastError.value = repo.value.mirror_last_error || ''
 }
 
 async function denyNonOwner() {
@@ -187,11 +210,77 @@ async function save() {
   }
 }
 
+async function saveMirror() {
+  if (!canAdmin.value) {
+    return
+  }
+
+  mirrorBusy.value = true
+  mirrorError.value = ''
+  mirrorMessage.value = ''
+  try {
+    if (!mirrorEnabled.value) {
+      await reposApi.configureMirror(props.repoPath, { enabled: false })
+      mirrorMessage.value = i18n.global.t('settings.mirrorDisabled')
+    } else {
+      const body: Parameters<typeof reposApi.configureMirror>[1] = {
+        enabled: true,
+        direction: mirrorDirection.value,
+        url: mirrorURL.value.trim(),
+        username: mirrorUsername.value.trim(),
+      }
+      
+      if (mirrorClearPassword.value) {
+        body.clear_password = true
+      } else if (mirrorPassword.value) {
+        body.password = mirrorPassword.value
+      }
+
+      await reposApi.configureMirror(props.repoPath, body)
+      mirrorMessage.value = i18n.global.t('settings.mirrorSaved')
+    }
+
+    mirrorPassword.value = ''
+    mirrorClearPassword.value = false
+    invalidateRepo(props.repoPath)
+    await reload()
+    syncFormFromRepo()
+  } catch (err) {
+    mirrorError.value = localizeError(err, 'errors.saveFailed')
+  } finally {
+    mirrorBusy.value = false
+  }
+}
+
+async function syncMirrorNow() {
+  if (!canAdmin.value) {
+    return
+  }
+
+  mirrorBusy.value = true
+  mirrorError.value = ''
+  mirrorMessage.value = ''
+  try {
+    await reposApi.syncMirror(props.repoPath)
+    mirrorMessage.value = i18n.global.t('settings.mirrorSynced')
+    invalidateRepo(props.repoPath)
+    await reload()
+    syncFormFromRepo()
+  } catch (err) {
+    mirrorError.value = localizeError(err, 'errors.mirrorSyncFailed')
+    invalidateRepo(props.repoPath)
+    await reload()
+    syncFormFromRepo()
+  } finally {
+    mirrorBusy.value = false
+  }
+}
+
 async function remove() {
   if (!canAdmin.value) {
     return
   }
-  
+
   if (!confirm(i18n.global.t('settings.confirmDelete', { path: props.repoPath }))) {
     return
   }
@@ -320,6 +409,88 @@ watch([() => props.repoPath, repo, canAdmin], load, { immediate: true })
           <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="saving">
             {{ saving ? $t('settings.saving') : $t('settings.save') }}
           </button>
+        </div>
+      </form>
+
+      <form class="overflow-hidden border border-line bg-paper mt-6" @submit.prevent="saveMirror">
+        <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">
+          {{ $t('settings.mirrorTitle') }}
+        </div>
+        <div class="space-y-4 p-3 sm:p-4">
+          <p class="text-xs text-ink-muted">{{ $t('settings.mirrorIntro') }}</p>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="mirrorEnabled" type="checkbox" class="accent-ink">
+            {{ $t('settings.mirrorEnable') }}
+          </label>
+          <template v-if="mirrorEnabled">
+            <label class="block text-sm">
+              <span class="mb-1 block font-semibold">{{ $t('settings.mirrorDirection') }}</span>
+              <select v-model="mirrorDirection" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
+                <option value="pull">{{ $t('settings.mirrorPull') }}</option>
+                <option value="push">{{ $t('settings.mirrorPush') }}</option>
+              </select>
+            </label>
+            <p class="text-xs text-ink-muted">
+              {{ mirrorDirection === 'push' ? $t('settings.mirrorPushHint') : $t('settings.mirrorPullHint') }}
+            </p>
+            <label class="block text-sm">
+              <span class="mb-1 block font-semibold">{{ $t('settings.mirrorURL') }}</span>
+              <input
+                v-model="mirrorURL"
+                type="url"
+                required
+                class="w-full border border-line bg-paper px-2 py-1 font-mono text-[10pt] text-ink outline-none"
+                :placeholder="$t('modal.mirrorURLPlaceholder')"
+              >
+            </label>
+            <label class="block text-sm">
+              <span class="mb-1 block font-semibold">{{ $t('settings.mirrorUsername') }}</span>
+              <input
+                v-model="mirrorUsername"
+                class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
+                :placeholder="$t('modal.optional')"
+                autocomplete="off"
+              >
+            </label>
+            <label class="block text-sm">
+              <span class="mb-1 block font-semibold">{{ $t('settings.mirrorPassword') }}</span>
+              <input
+                v-model="mirrorPassword"
+                type="password"
+                class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
+                :placeholder="mirrorHasPassword ? $t('settings.mirrorPasswordKeep') : $t('modal.optional')"
+                autocomplete="new-password"
+              >
+            </label>
+            <label v-if="mirrorHasPassword" class="flex items-center gap-2 text-sm">
+              <input v-model="mirrorClearPassword" type="checkbox" class="accent-ink">
+              {{ $t('settings.mirrorClearPassword') }}
+            </label>
+            <p v-if="mirrorLastSyncAt" class="text-xs text-ink-muted">
+              {{ $t('settings.mirrorLastSync', { at: formatDate(mirrorLastSyncAt) }) }}
+            </p>
+            <p v-if="mirrorLastError" class="text-sm text-warn">{{ mirrorLastError }}</p>
+          </template>
+          <p v-if="mirrorError" class="text-sm text-warn">{{ mirrorError }}</p>
+          <p v-else-if="mirrorMessage" class="text-sm text-ink">{{ mirrorMessage }}</p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="mirrorBusy"
+            >
+              {{ mirrorBusy ? $t('settings.saving') : $t('settings.mirrorSave') }}
+            </button>
+            <button
+              v-if="mirrorEnabled && mirrorURL"
+              type="button"
+              class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-path disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="mirrorBusy"
+              @click="syncMirrorNow"
+            >
+              {{ $t('settings.mirrorSync') }}
+            </button>
+          </div>
         </div>
       </form>
 
