@@ -68,6 +68,11 @@ func (h *ProfileHandler) UploadAvatar(c *httpx.Context) error {
 	if err := c.R.ParseMultipartForm(2 << 20); err != nil {
 		return c.Error(http.StatusBadRequest, "invalid_avatar")
 	}
+	defer func() {
+		if c.R.MultipartForm != nil {
+			_ = c.R.MultipartForm.RemoveAll()
+		}
+	}()
 
 	file, header, err := c.R.FormFile("avatar")
 	if err != nil {

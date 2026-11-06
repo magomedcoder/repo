@@ -2,18 +2,22 @@
 
 # dev
 
-- Repositories: pull and push mirroring (into / from a remote http(s) URL) on create and in settings; pull sync on schedule (`mirror_pull_interval`), push sync after git push/merge; manual sync still available; pull mirrors reject git push
-- Sessions: store hashed tokens; list devices with IP and user agent; revoke one, other, or all sessions in settings
-- Folders: shared org spaces with members (`owner` / `admin` / `member`), configurable capabilities, invite/edit/remove in the UI
-- Teams: create teams inside a folder, add members, grant read/write/admin on selected repositories
-- Collaborators: per-repository `admin` / `write` / `read`; Git HTTP and API use the same rules; folder membership does not imply repo write
-- Git: enforce protected default branch on push after unpack; allow fast-forward, block force-push and delete; safer concurrent merge and push; gzip request bodies; private repos challenge with Basic auth
-- Security: CSP and HSTS behind trusted HTTPS; CSRF bound to the session cookie; sanitize README HTML without rewriting images through a proxy
-- Security: clamp folder member caps on update (no admin->owner / delete_folder escalation); revoke sessions and tokens on admin password or role change; uniform Git HTTP 401 for anonymous missing/private probes; block username/email reuse after soft-delete; require auth for collaborator list and visit beacons; escape admin LIKE wildcards; require password to change email
-- Access: guests see only public activity, home, and search; sort repositories by name in the database; clamp list pagination
+- Mirroring: pull and push from http(s) remotes on create and in settings; scheduled pull sync, push sync after git push or merge; manual sync; pull mirrors reject git push
+- Mirroring options: pause without removing; interval, sync window, force/prune, refspecs, LFS, size limit, conflict policy; SSH key with passphrase; insecure TLS for admins
+- Mirroring UI: connection check, sync history, next-pull preview; status on pull mirrors; Import vs Mirror create flow; admin Mirrors page with bulk sync and pause
+- Mirror integrity: verify remote refs after sync and on demand from the repository or admin API
+- Sessions: hashed tokens; list devices with IP and user agent; revoke one, others, or all in settings
+- Folders: shared spaces with members (`owner` / `admin` / `member`), capabilities, invite/edit/remove in the UI
+- Teams: create teams in a folder, add members, grant read/write/admin on selected repositories
+- Collaborators: per-repository `admin` / `write` / `read`; same rules for Git HTTP and API; folder membership does not grant repo write
 - Access tokens: optional expiry on create; expired tokens rejected for Git auth
 - Issues and pull requests: monotonic number counters per repository
-- Reliability: safer git repository open cache; create repository row before bare init; separate audit queues for security and visits; cancel browse work on request context
+- Access: guests see only public activity, home, and search; repository lists sorted by name with clamped pagination
+- Git: protected default branch after unpack (fast-forward only; block force-push and delete); Basic auth challenge for private repos; gzip request bodies
+- Security: CSP and HSTS behind trusted HTTPS; session-bound CSRF; safer README HTML; password required to change email
+- Security: clamp folder member caps; revoke sessions and tokens when an admin changes password or role; block username/email reuse after soft-delete; auth required for collaborator list and visit beacons
+- Maintenance: hourly prune of expired sessions/tokens, old activity, and soft-deleted repositories; WAL checkpoint; tighter rate-limit and cache cleanup
+- Reliability: schema verify after migrations; safer git open cache and repository create path; cancel browse work when the request ends
 
 ## v0.1.0 - November 1, 2026
 

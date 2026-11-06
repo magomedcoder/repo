@@ -29,6 +29,7 @@ func newOpenCache(max int) *openCache {
 func (c *openCache) getOrOpen(path string, open func() (*gogit.Repository, error)) (*gogit.Repository, error) {
 	c.mu.Lock()
 	if repo, ok := c.entries[path]; ok {
+		c.touchLocked(path)
 		c.mu.Unlock()
 		return repo, nil
 	}
@@ -42,6 +43,8 @@ func (c *openCache) getOrOpen(path string, open func() (*gogit.Repository, error
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if existing, ok := c.entries[path]; ok {
+		_ = repo.Close()
+		c.touchLocked(path)
 		return existing, nil
 	}
 
@@ -50,20 +53,36 @@ func (c *openCache) getOrOpen(path string, open func() (*gogit.Repository, error
 	for len(c.order) > c.max {
 		oldest := c.order[0]
 		c.order = c.order[1:]
+		if old := c.entries[oldest]; old != nil {
+			_ = old.Close()
+		}
 		delete(c.entries, oldest)
 	}
 
 	return repo, nil
 }
 
+func (c *openCache) touchLocked(path string) {
+	for i, p := range c.order {
+		if p == path {
+			c.order = append(append(c.order[:i], c.order[i+1:]...), path)
+			return
+		}
+	}
+}
+
 func (c *openCache) evict(path string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, ok := c.entries[path]; !ok {
+	old, ok := c.entries[path]
+	if !ok {
 		return
 	}
 
 	delete(c.entries, path)
+	if old != nil {
+		_ = old.Close()
+	}
 	for i, p := range c.order {
 		if p == path {
 			c.order = append(c.order[:i], c.order[i+1:]...)

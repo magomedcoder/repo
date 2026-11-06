@@ -40,12 +40,30 @@ type createRepoRequest struct {
 }
 
 type configureMirrorRequest struct {
-	Enabled       *bool   `json:"enabled"`
-	Direction     string  `json:"direction"`
-	URL           string  `json:"url"`
-	Username      *string `json:"username"`
-	Password      *string `json:"password"`
-	ClearPassword bool    `json:"clear_password"`
+	Enabled        *bool   `json:"enabled"`
+	Direction      string  `json:"direction"`
+	URL            string  `json:"url"`
+	Username       *string `json:"username"`
+	Password       *string `json:"password"`
+	Clear          bool    `json:"clear"`
+	ClearPassword  bool    `json:"clear_password"`
+	Interval       *string `json:"interval"`
+	SyncWindow     *string `json:"sync_window"`
+	Force          *bool   `json:"force"`
+	Prune          *bool   `json:"prune"`
+	Refspecs       *string `json:"refspecs"`
+	SSHPrivateKey  *string `json:"ssh_private_key"`
+	SSHPassphrase  *string `json:"ssh_passphrase"`
+	ClearSSHKey    bool    `json:"clear_ssh_key"`
+	InsecureTLS    *bool   `json:"insecure_tls"`
+	PinnedHosts    *string `json:"pinned_hosts"`
+	LFS            *bool   `json:"lfs"`
+	MaxBytes       *int64  `json:"max_bytes"`
+	ConflictPolicy *string `json:"conflict_policy"`
+	OwnerOnly      *bool   `json:"owner_only"`
+	GroupID        *uint   `json:"group_id"`
+	Partial        *bool   `json:"partial"`
+	VerifySigned   *bool   `json:"verify_signed"`
 }
 
 type updateRepoRequest struct {
@@ -160,7 +178,8 @@ func (h *RepositoryHandler) List(c *httpx.Context) error {
 
 func listReposForSort(fetch func(limit, offset int) ([]usecase.RepositoryItem, error)) ([]usecase.RepositoryItem, error) {
 	const pageSize = 100
-	const maxTotal = 5000
+	const maxTotal = 500
+
 	all := make([]usecase.RepositoryItem, 0, pageSize)
 	for off := 0; off < maxTotal; off += pageSize {
 		page, err := fetch(pageSize, off)
@@ -335,15 +354,33 @@ func (h *RepositoryHandler) ConfigureMirror(c *httpx.Context) error {
 	}
 
 	out, err := h.repos.ConfigureMirror(c.Ctx(), usecase.ConfigureMirrorInput{
-		ViewerID:      user.ID,
-		FolderPath:    folderPath,
-		Name:          name,
-		Direction:     req.Direction,
-		URL:           req.URL,
-		Username:      req.Username,
-		Password:      req.Password,
-		ClearPassword: req.ClearPassword,
-		Enabled:       enabled,
+		ViewerID:       user.ID,
+		FolderPath:     folderPath,
+		Name:           name,
+		Direction:      req.Direction,
+		URL:            req.URL,
+		Username:       req.Username,
+		Password:       req.Password,
+		ClearPassword:  req.ClearPassword,
+		Enabled:        enabled,
+		Clear:          req.Clear,
+		Interval:       req.Interval,
+		SyncWindow:     req.SyncWindow,
+		Force:          req.Force,
+		Prune:          req.Prune,
+		Refspecs:       req.Refspecs,
+		SSHPrivateKey:  req.SSHPrivateKey,
+		SSHPassphrase:  req.SSHPassphrase,
+		ClearSSHKey:    req.ClearSSHKey,
+		InsecureTLS:    req.InsecureTLS,
+		PinnedHosts:    req.PinnedHosts,
+		LFS:            req.LFS,
+		MaxBytes:       req.MaxBytes,
+		ConflictPolicy: req.ConflictPolicy,
+		OwnerOnly:      req.OwnerOnly,
+		GroupID:        req.GroupID,
+		Partial:        req.Partial,
+		VerifySigned:   req.VerifySigned,
 	})
 	if err != nil {
 		return mapError(c, err)

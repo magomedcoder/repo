@@ -1,27 +1,27 @@
 package sqlite
 
 import (
+	"context"
+
 	"gorm.io/gorm"
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
-type issueLabelModel struct {
-	IssueID uint `gorm:"primaryKey"`
-	LabelID uint `gorm:"primaryKey"`
+func (s *Issue) issueLabels() *gormutil.Repo[model.IssueLabel] {
+	r := gormutil.NewRepo[model.IssueLabel](s.Db)
+	return &r
 }
 
-func (issueLabelModel) TableName() string {
-	return "issue_labels"
-}
-
-func (s *IssueStore) SetIssueLabels(issueID uint, labelIDs []uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("issue_id = ?", issueID).Delete(&issueLabelModel{}).Error; err != nil {
+func (s *Issue) SetIssueLabels(issueID uint, labelIDs []uint) error {
+	return s.Txx(context.Background(), func(tx *gorm.DB) error {
+		if err := tx.Where("issue_id = ?", issueID).Delete(&model.IssueLabel{}).Error; err != nil {
 			return err
 		}
 
 		for _, id := range labelIDs {
-			row := issueLabelModel{IssueID: issueID, LabelID: id}
+			row := model.IssueLabel{IssueID: issueID, LabelID: id}
 			if err := tx.Create(&row).Error; err != nil {
 				return err
 			}
@@ -31,14 +31,16 @@ func (s *IssueStore) SetIssueLabels(issueID uint, labelIDs []uint) error {
 	})
 }
 
-func (s *IssueStore) ListLabelsByIssues(issueIDs []uint) (map[uint][]domain.Label, error) {
+func (s *Issue) ListLabelsByIssues(issueIDs []uint) (map[uint][]domain.Label, error) {
 	out := map[uint][]domain.Label{}
 	if len(issueIDs) == 0 {
 		return out, nil
 	}
 
-	var links []issueLabelModel
-	if err := s.db.Where("issue_id IN ?", issueIDs).Find(&links).Error; err != nil {
+	ctx := context.Background()
+	il := s.issueLabels()
+	links, err := il.FindAll(ctx, gormutil.WithWhere("issue_id IN ?", issueIDs))
+	if err != nil {
 		return nil, err
 	}
 
@@ -57,14 +59,15 @@ func (s *IssueStore) ListLabelsByIssues(issueIDs []uint) (map[uint][]domain.Labe
 		ids = append(ids, link.LabelID)
 	}
 
-	var models []labelModel
-	if err := s.db.Where("id IN ?", ids).Find(&models).Error; err != nil {
+	labels := s.labels()
+	labelRows, err := labels.FindAll(ctx, gormutil.WithWhere("id IN ?", ids))
+	if err != nil {
 		return nil, err
 	}
 
 	byID := map[uint]domain.Label{}
-	for _, m := range models {
-		byID[m.ID] = m.toDomain()
+	for _, m := range labelRows {
+		byID[m.ID] = m.ToDomain()
 	}
 
 	for _, link := range links {

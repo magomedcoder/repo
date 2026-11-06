@@ -2,7 +2,6 @@ package git
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,11 +9,8 @@ import (
 	"strings"
 
 	gogit "github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/client"
 	"github.com/go-git/go-git/v6/plumbing/transport"
-	githttp "github.com/go-git/go-git/v6/plumbing/transport/http"
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/fsutil"
 )
@@ -65,149 +61,6 @@ func (r *Repository) InitBare(path string, opts domain.BareInitOptions) error {
 	}
 
 	return nil
-}
-
-func (r *Repository) MirrorClone(ctx context.Context, path, url string, auth *domain.MirrorAuth) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return "", fmt.Errorf("mirror url required")
-	}
-
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		return "", fmt.Errorf("repository already exists: %s", path)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", fmt.Errorf("create parent directory: %w", err)
-	}
-
-	opts := &gogit.CloneOptions{
-		URL:           url,
-		Mirror:        true,
-		ClientOptions: mirrorClientOpts(auth),
-	}
-
-	repo, err := gogit.PlainCloneContext(ctx, path, opts)
-	if err != nil {
-		_ = os.RemoveAll(path)
-		return "", fmt.Errorf("mirror clone: %w", err)
-	}
-	_ = repo.Close()
-
-	if err := os.Chmod(path, 0o700); err != nil {
-		_ = os.RemoveAll(path)
-		return "", err
-	}
-
-	branch, _ := detectHEADBranch(path)
-	return branch, nil
-}
-
-func (r *Repository) MirrorFetch(ctx context.Context, path, url string, auth *domain.MirrorAuth) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return fmt.Errorf("mirror url required")
-	}
-
-	repo, err := gogit.PlainOpen(path)
-	if err != nil {
-		return fmt.Errorf("open mirror: %w", err)
-	}
-	defer repo.Close()
-
-	if err := ensureMirrorRemote(repo, url); err != nil {
-		return err
-	}
-
-	err = repo.FetchContext(ctx, &gogit.FetchOptions{
-		RemoteName:    mirrorRemoteName,
-		RemoteURL:     url,
-		RefSpecs:      []config.RefSpec{"+refs/*:refs/*"},
-		Force:         true,
-		Prune:         true,
-		Tags:          gogit.AllTags,
-		ClientOptions: mirrorClientOpts(auth),
-	})
-	if err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) && !errors.Is(err, transport.ErrEmptyRemoteRepository) {
-		return fmt.Errorf("mirror fetch: %w", err)
-	}
-	return nil
-}
-
-func (r *Repository) MirrorPush(ctx context.Context, path, url string, auth *domain.MirrorAuth) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return fmt.Errorf("mirror url required")
-	}
-
-	repo, err := gogit.PlainOpen(path)
-	if err != nil {
-		return fmt.Errorf("open mirror: %w", err)
-	}
-	defer repo.Close()
-
-	if err := ensureMirrorRemote(repo, url); err != nil {
-		return err
-	}
-
-	err = repo.PushContext(ctx, &gogit.PushOptions{
-		RemoteName:    mirrorRemoteName,
-		RemoteURL:     url,
-		RefSpecs:      []config.RefSpec{"+refs/*:refs/*"},
-		Force:         true,
-		Prune:         true,
-		ClientOptions: mirrorClientOpts(auth),
-	})
-	if err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
-		return fmt.Errorf("mirror push: %w", err)
-	}
-	return nil
-}
-
-const mirrorRemoteName = "origin"
-
-func ensureMirrorRemote(repo *gogit.Repository, url string) error {
-	cfg := &config.RemoteConfig{
-		Name:  mirrorRemoteName,
-		URLs:  []string{url},
-		Fetch: []config.RefSpec{"+refs/*:refs/*"},
-	}
-
-	if _, err := repo.Remote(mirrorRemoteName); err == nil {
-		_ = repo.DeleteRemote(mirrorRemoteName)
-	}
-
-	if _, err := repo.CreateRemote(cfg); err != nil {
-		return fmt.Errorf("mirror remote: %w", err)
-	}
-
-	return nil
-}
-
-func mirrorClientOpts(auth *domain.MirrorAuth) []client.Option {
-	if auth == nil || (auth.Username == "" && auth.Password == "") {
-		return nil
-	}
-	user := auth.Username
-	if user == "" {
-		user = "git"
-	}
-	return []client.Option{
-		client.WithHTTPAuth(&githttp.BasicAuth{
-			Username: user,
-			Password: auth.Password,
-		}),
-	}
 }
 
 func (r *Repository) DetectHEADBranch(repoPath string) (string, error) {

@@ -1,5 +1,4 @@
 import { computed, reactive } from 'vue'
-import { ApiError } from '@/api/client'
 import { authApi } from '@/api'
 import { RoleAdmin, type User } from '@/api/types'
 
@@ -20,11 +19,8 @@ export function useAuth() {
   async function fetchMe() {
     try {
       state.user = await authApi.me()
-    } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-        state.user = null
-      }
-
+    } catch {
+      state.user = null
     } finally {
       state.ready = true
     }

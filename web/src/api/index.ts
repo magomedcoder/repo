@@ -1,6 +1,31 @@
 import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
-import type { AccessLog, AccessToken, ActivityEvent, AdminUser, AuthSession, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderCaps, FolderContents, FolderMember, Issue, IssueComment, IssueDetail, Label, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, Repository, RepoSummary, Team, TeamMember, TeamRepoGrant, TreeEntry, User, UserRole } from './types'
+import type { AccessLog, AccessToken, ActivityEvent, AdminMirror, AdminUser, AuthSession, BlobContent, BlameResult, CommitDiff, CommitInfo, CreateAccessTokenResponse, Folder, FolderCaps, FolderContents, FolderMember, Issue, IssueComment, IssueDetail, Label, MirrorCheckResult, MirrorConflictPolicy, MirrorDirection, MirrorDryRun, MirrorStatus, MirrorSyncEvent, Profile, PullCompare, PullDetail, PullRequest, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, Repository, RepoSummary, Team, TeamMember, TeamRepoGrant, TreeEntry, User, UserRole } from './types'
+
+export interface MirrorConfigureBody {
+  enabled?: boolean
+  clear?: boolean
+  direction?: MirrorDirection | string
+  url?: string
+  username?: string
+  password?: string
+  clear_password?: boolean
+  ssh_private_key?: string
+  ssh_passphrase?: string
+  clear_ssh_key?: boolean
+  interval?: string
+  sync_window?: string
+  force?: boolean
+  prune?: boolean
+  refspecs?: string
+  lfs?: boolean
+  max_bytes?: number
+  conflict_policy?: MirrorConflictPolicy | string
+  insecure_tls?: boolean
+  owner_only?: boolean
+  partial?: boolean
+  verify_signed?: boolean
+}
 
 export const siteApi = {
   get() {
@@ -41,7 +66,7 @@ export const authApi = {
     })
   },
   me() {
-    return api<User>('/api/auth/me')
+    return api<User | null>('/api/auth/me')
   },
   logout() {
     return api<void>('/api/auth/logout', {
@@ -278,23 +303,18 @@ export const reposApi = {
     mirror_url?: string
     mirror_username?: string
     mirror_password?: string
+    mirror_interval?: string
+    mirror_lfs?: boolean
   }) {
     return api<Repository>('/api/repos', {
       method: 'POST',
       body: JSON.stringify(body)
     })
   },
-  configureMirror(
-    path: string,
-    body: {
-      enabled?: boolean
-      direction?: string
-      url?: string
-      username?: string
-      password?: string
-      clear_password?: boolean
-    },
-  ) {
+  mirrorStatus(path: string) {
+    return api<MirrorStatus>(`/api/repos/${encodeRepoPath(path)}/mirror`)
+  },
+  configureMirror(path: string, body: MirrorConfigureBody) {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}/mirror`, {
       method: 'PUT',
       body: JSON.stringify(body),
@@ -304,6 +324,19 @@ export const reposApi = {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}/mirror/sync`, {
       method: 'POST',
     })
+  },
+  checkMirror(path: string, body: Record<string, unknown> = {}) {
+    return api<MirrorCheckResult>(`/api/repos/${encodeRepoPath(path)}/mirror/check`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  mirrorHistory(path: string, params?: { limit?: number }) {
+    const qs = params?.limit != null ? `?limit=${params.limit}` : ''
+    return api<{ events: MirrorSyncEvent[] }>(`/api/repos/${encodeRepoPath(path)}/mirror/history${qs}`)
+  },
+  mirrorDryRun(path: string) {
+    return api<MirrorDryRun>(`/api/repos/${encodeRepoPath(path)}/mirror/dry-run`)
   },
   update(
     path: string,
@@ -542,6 +575,28 @@ export const adminAccessLogsApi = {
     return api<{ items: AccessLog[]; total: number; limit: number; offset: number }>(
       `/api/admin/access-logs${qs ? `?${qs}` : ''}`,
     )
+  },
+}
+
+export const adminMirrorsApi = {
+  list(params?: { direction?: string; error?: boolean }) {
+    const q = new URLSearchParams()
+    if (params?.direction) q.set('direction', params.direction)
+    if (params?.error) q.set('errors', '1')
+    const qs = q.toString()
+    return api<{ mirrors: AdminMirror[] }>(`/api/admin/mirrors${qs ? `?${qs}` : ''}`)
+  },
+  sync(ids?: number[]) {
+    return api<{ queued?: number; affected?: number }>('/api/admin/mirrors/sync', {
+      method: 'POST',
+      body: JSON.stringify(ids?.length ? { ids, repo_ids: ids } : {}),
+    })
+  },
+  pause(ids: number[], paused: boolean) {
+    return api<{ affected?: number }>('/api/admin/mirrors/pause', {
+      method: 'POST',
+      body: JSON.stringify({ ids, repo_ids: ids, paused, pause: paused }),
+    })
   },
 }
 

@@ -362,10 +362,9 @@ func ClampPagination(offset, limit, defLimit, maxLimit int) (int, int) {
 }
 
 type RepositorySummary struct {
-	Branches []domain.RefInfo    `json:"branches"`
-	Tree     []domain.TreeEntry  `json:"tree"`
-	Stats    *domain.RepoStats   `json:"stats,omitzero"`
-	Readme   *domain.BlobContent `json:"readme,omitzero"`
+	Tree   []domain.TreeEntry  `json:"tree"`
+	Stats  *domain.RepoStats   `json:"stats,omitzero"`
+	Readme *domain.BlobContent `json:"readme,omitzero"`
 }
 
 func (uc *RepositoryUseCase) GetSummary(ctx context.Context, in ResolveRepositoryInput, ref string) (*RepositorySummary, error) {
@@ -383,29 +382,11 @@ func (uc *RepositoryUseCase) GetSummary(ctx context.Context, in ResolveRepositor
 	}
 
 	var (
-		branches []domain.RefInfo
-		tree     []domain.TreeEntry
-		stats    *domain.RepoStats
-		readme   *domain.BlobContent
+		tree   []domain.TreeEntry
+		stats  *domain.RepoStats
+		readme *domain.BlobContent
 	)
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		if err := gctx.Err(); err != nil {
-			return err
-		}
-
-		var e error
-		branches, e = uc.git.ListBranches(repo.Path)
-		if e != nil {
-			if isEmptyOrMissingRef(e) {
-				branches = []domain.RefInfo{}
-				return nil
-			}
-			return mapGitBrowseErr(e)
-		}
-
-		return nil
-	})
 	g.Go(func() error {
 		if err := gctx.Err(); err != nil {
 			return err
@@ -460,9 +441,8 @@ func (uc *RepositoryUseCase) GetSummary(ctx context.Context, in ResolveRepositor
 	}
 
 	return &RepositorySummary{
-		Branches: branches,
-		Tree:     tree,
-		Stats:    stats,
-		Readme:   readme,
+		Tree:   tree,
+		Stats:  stats,
+		Readme: readme,
 	}, nil
 }

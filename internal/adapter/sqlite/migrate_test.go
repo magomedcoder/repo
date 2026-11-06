@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -47,7 +48,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 		t.Fatalf("repositories.issues_enabled missing: %v", err)
 	}
 
-	store := NewRepositoryStore(db)
+	store := NewRepositoryRepo(db)
 	repo, err := store.FindByRepoPath(context.Background(), "missing.git")
 	if err == nil || repo != nil {
 		t.Fatal("expected missing repository")
@@ -76,7 +77,7 @@ func TestMigrateIdempotentOnExistingDB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	users := NewUserStore(db)
+	users := NewUserRepo(db)
 	u := &domain.User{
 		Username:     "bob",
 		Email:        "bob@example.com",
@@ -104,7 +105,7 @@ func TestMigrateIdempotentOnExistingDB(t *testing.T) {
 	}
 	defer sqlDB2.Close()
 
-	got, err := NewUserStore(db2).FindByID(context.Background(), u.ID)
+	got, err := NewUserRepo(db2).FindByID(context.Background(), u.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +257,7 @@ func TestSoftDeleteAllowsNameReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	users := NewUserStore(db)
+	users := NewUserRepo(db)
 	u := &domain.User{
 		Username:     "alice",
 		Email:        "alice@example.com",
@@ -274,7 +275,7 @@ func TestSoftDeleteAllowsNameReuse(t *testing.T) {
 		Path:          filepath.Join(dir, "demo.git"),
 		RepoPath:      "demo.git",
 	}
-	repos := NewRepositoryStore(db)
+	repos := NewRepositoryRepo(db)
 	if err := repos.Create(first); err != nil {
 		t.Fatal(err)
 	}
@@ -314,4 +315,239 @@ func openRawDB(dbPath string) (*gorm.DB, error) {
 	}
 
 	return db, nil
+}
+
+func tableColumns(t *testing.T, db *gorm.DB, table string) map[string]bool {
+	t.Helper()
+
+	var rows []struct {
+		Name string
+	}
+	if err := db.Raw(fmt.Sprintf(`SELECT name FROM pragma_table_info('%s')`, table)).Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	out := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		out[r.Name] = true
+	}
+
+	return out
+}
+
+var v2RepoColumns = []string{"mirror_enabled", "mirror_interval", "mirror_sync_window", "mirror_force", "mirror_prune", "mirror_refspecs", "mirror_ssh_private_key", "mirror_ssh_passphrase", "mirror_insecure_tls", "mirror_pinned_hosts", "mirror_lfs", "mirror_max_bytes", "mirror_conflict_policy", "mirror_status", "mirror_fail_count", "mirror_next_sync_at", "mirror_last_progress", "mirror_remote_head", "mirror_owner_only", "mirror_group_id"}
+
+func TestMigrateV2UpgradesV1State(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	fresh, err := NewDB(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantCols := tableColumns(t, fresh, "repositories")
+	for _, c := range v2RepoColumns {
+		if !wantCols[c] {
+			t.Fatalf("bootstrap schema lacks %s", c)
+		}
+	}
+
+	steps := []string{
+		`DROP INDEX IF EXISTS idx_repositories_mirror`,
+		`DROP INDEX IF EXISTS idx_repositories_mirror_due`,
+	}
+	for _, c := range v2RepoColumns {
+		steps = append(steps, "ALTER TABLE repositories DROP COLUMN "+c)
+	}
+
+	for _, c := range []string{"mirror_partial", "mirror_verify_signed"} {
+		steps = append(steps, "ALTER TABLE repositories DROP COLUMN "+c)
+	}
+
+	steps = append(steps,
+		`DROP TABLE mirror_sync_events`, `DROP TABLE mirror_targets`, `DROP TABLE mirror_groups`,
+		`DELETE FROM schema_migrations`,
+		`INSERT INTO repositories (name, owner_id, path, repo_path, mirror_direction, mirror_url, mirror_last_error)
+		 VALUES ('legacy', 1, '/tmp/legacy.git', 'legacy.git', 'pull', 'https://example.com/a.git', 'boom')`,
+		`INSERT INTO repositories (name, owner_id, path, repo_path, mirror_direction, mirror_url, mirror_last_sync_at)
+		 VALUES ('healthy', 1, '/tmp/healthy.git', 'healthy.git', 'pull', 'https://example.com/b.git', '2026-01-01 00:00:00')`,
+		`INSERT INTO repositories (name, owner_id, path, repo_path) VALUES ('plain', 1, '/tmp/plain.git', 'plain.git')`,
+	)
+
+	for _, stmt := range steps {
+		if err := fresh.Exec(stmt).Error; err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+
+	if ok, _ := migrate.ColumnExists(fresh, "repositories", "mirror_status"); ok {
+		t.Fatal("rewind failed")
+	}
+
+	sqlDB, _ := fresh.DB()
+	_ = sqlDB.Close()
+
+	db, err := NewDB(dir)
+	if err != nil {
+		t.Fatalf("migrate v2: %v", err)
+	}
+
+	sqlDB, _ = db.DB()
+	defer sqlDB.Close()
+
+	got := tableColumns(t, db, "repositories")
+	for c := range wantCols {
+		if !got[c] {
+			t.Fatalf("migrated schema lacks %s", c)
+		}
+	}
+
+	for _, tbl := range []string{"mirror_sync_events", "mirror_targets", "mirror_groups"} {
+		if ok, err := migrate.TableExists(db, tbl); err != nil || !ok {
+			t.Fatalf("%s missing: ok=%v err=%v", tbl, ok, err)
+		}
+	}
+
+	type row struct {
+		RepoPath      string
+		MirrorStatus  string
+		MirrorEnabled bool
+		MirrorForce   bool
+		FailCount     int
+	}
+
+	var rows []row
+	if err := db.Raw(`SELECT repo_path, mirror_status, mirror_enabled, mirror_force, mirror_fail_count AS fail_count FROM repositories ORDER BY id`).Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]string{"legacy.git": "error", "healthy.git": "ok", "plain.git": ""}
+	for _, r := range rows {
+		if r.MirrorStatus != want[r.RepoPath] {
+			t.Fatalf("%s: status=%q want %q", r.RepoPath, r.MirrorStatus, want[r.RepoPath])
+		}
+
+		if !r.MirrorEnabled || !r.MirrorForce || r.FailCount != 0 {
+			t.Fatalf("%s: defaults not applied: %+v", r.RepoPath, r)
+		}
+	}
+
+	var n int64
+	if err := db.Model(&migrate.Record{}).Count(&n).Error; err != nil || int(n) != len(migrations.All()) {
+		t.Fatalf("journal=%d want %d err=%v", n, len(migrations.All()), err)
+	}
+
+	ctx := context.Background()
+	if c, err := NewRepositoryRepo(db).CountMirrorsInError(ctx, time.Now()); err != nil || c != 1 {
+		t.Fatalf("CountMirrorsInError=%d err=%v", c, err)
+	}
+
+	if err := NewMirrorSyncRepo(db).Create(ctx, &domain.MirrorSyncEvent{RepoID: 1, Direction: "pull", Status: domain.MirrorEventOK, StartedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = sqlDB.Close()
+
+	again, err := NewDB(dir)
+	if err != nil {
+		t.Fatalf("second open: %v", err)
+	}
+
+	if err := VerifySchema(again); err != nil {
+		t.Fatalf("schema after v2 upgrade: %v", err)
+	}
+
+	sqlDB, _ = again.DB()
+	_ = sqlDB.Close()
+}
+
+func TestSchemaMatchesModelsFresh(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	db, err := NewDB(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	if err := VerifySchema(db); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSchemaDetectsMissingColumn(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	db, err := NewDB(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Exec(`ALTER TABLE repositories DROP COLUMN mirror_partial`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err = VerifySchema(db)
+	if err == nil || !strings.Contains(err.Error(), "mirror_partial") {
+		t.Fatalf("want missing mirror_partial, got %v", err)
+	}
+
+	sqlDB, _ := db.DB()
+	_ = sqlDB.Close()
+}
+
+func TestMigrateV3UpgradesV2State(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	db, err := NewDB(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v3Cols := []string{"mirror_partial", "mirror_verify_signed"}
+	for _, c := range v3Cols {
+		if err := db.Exec("ALTER TABLE repositories DROP COLUMN " + c).Error; err != nil {
+			t.Fatalf("drop %s: %v", c, err)
+		}
+	}
+	if err := db.Exec(`DELETE FROM schema_migrations`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	sqlDB, _ := db.DB()
+	_ = sqlDB.Close()
+
+	db2, err := NewDB(dir)
+	if err != nil {
+		t.Fatalf("migrate schema: %v", err)
+	}
+	sqlDB2, err := db2.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB2.Close()
+
+	for _, c := range v3Cols {
+		ok, err := migrate.ColumnExists(db2, "repositories", c)
+		if err != nil || !ok {
+			t.Fatalf("%s after v3: ok=%v err=%v", c, ok, err)
+		}
+	}
+
+	if err := VerifySchema(db2); err != nil {
+		t.Fatal(err)
+	}
+
+	var versions int64
+	if err := db2.Model(&migrate.Record{}).Count(&versions).Error; err != nil || int(versions) != len(migrations.All()) {
+		t.Fatalf("journal=%d want %d err=%v", versions, len(migrations.All()), err)
+	}
 }

@@ -152,9 +152,14 @@ func (h *AuthHandler) Logout(c *httpx.Context) error {
 }
 
 func (h *AuthHandler) Me(c *httpx.Context) error {
-	user, err := h.auth.Me(c.Ctx(), middleware.SessionToken(c.R))
+	token := middleware.SessionToken(c.R)
+	if token == "" {
+		return c.JSON(http.StatusOK, nil)
+	}
+
+	user, err := h.auth.Me(c.Ctx(), token)
 	if err != nil {
-		return mapError(c, err)
+		return c.JSON(http.StatusOK, nil)
 	}
 
 	return httpx.OK(c, userResponse(user))

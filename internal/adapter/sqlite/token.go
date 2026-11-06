@@ -1,105 +1,85 @@
 package sqlite
 
 import (
+	"context"
 	"time"
 
 	"gorm.io/gorm"
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
-type accessTokenModel struct {
-	ID         uint `gorm:"primaryKey"`
-	CreatedAt  time.Time
-	UserID     uint   `gorm:"index;not null"`
-	Name       string `gorm:"size:100;not null"`
-	TokenHash  string `gorm:"uniqueIndex;size:64;not null"`
-	Prefix     string `gorm:"size:16;not null"`
-	LastUsedAt *time.Time
-	ExpiresAt  *time.Time
+type AccessToken struct {
+	gormutil.Repo[model.AccessToken]
 }
 
-func (accessTokenModel) TableName() string {
-	return "access_tokens"
+func NewAccessTokenRepo(db *gorm.DB) *AccessToken {
+	return &AccessToken{Repo: gormutil.NewRepo[model.AccessToken](db)}
 }
 
-func (m accessTokenModel) toDomain() domain.AccessToken {
-	return domain.AccessToken{
-		ID:         m.ID,
-		UserID:     m.UserID,
-		Name:       m.Name,
-		TokenHash:  m.TokenHash,
-		Prefix:     m.Prefix,
-		CreatedAt:  m.CreatedAt,
-		LastUsedAt: m.LastUsedAt,
-		ExpiresAt:  m.ExpiresAt,
-	}
-}
-
-type AccessTokenStore struct {
-	db *gorm.DB
-}
-
-func NewAccessTokenStore(db *gorm.DB) *AccessTokenStore {
-	return &AccessTokenStore{db: db}
-}
-
-func (s *AccessTokenStore) Create(token *domain.AccessToken) error {
-	model := &accessTokenModel{
+func (s *AccessToken) Create(token *domain.AccessToken) error {
+	m := &model.AccessToken{
 		UserID:    token.UserID,
 		Name:      token.Name,
 		TokenHash: token.TokenHash,
 		Prefix:    token.Prefix,
 		ExpiresAt: token.ExpiresAt,
 	}
-	if err := s.db.Create(model).Error; err != nil {
+	if err := s.Repo.Create(context.Background(), m); err != nil {
 		return err
 	}
 
-	*token = model.toDomain()
+	*token = m.ToDomain()
 	return nil
 }
 
-func (s *AccessTokenStore) ListByUserID(userID uint) ([]domain.AccessToken, error) {
-	var models []accessTokenModel
-	if err := s.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&models).Error; err != nil {
+func (s *AccessToken) ListByUserID(userID uint) ([]domain.AccessToken, error) {
+	models, err := s.FindByWhereAndOrder(context.Background(), "user_id = ?", "created_at DESC", userID)
+	if err != nil {
 		return nil, err
 	}
 
 	out := make([]domain.AccessToken, 0, len(models))
 	for _, m := range models {
-		out = append(out, m.toDomain())
+		out = append(out, m.ToDomain())
 	}
 
 	return out, nil
 }
 
-func (s *AccessTokenStore) FindByHash(hash string) (*domain.AccessToken, error) {
-	var model accessTokenModel
-	if err := s.db.Where("token_hash = ?", hash).First(&model).Error; err != nil {
+func (s *AccessToken) FindByHash(hash string) (*domain.AccessToken, error) {
+	row, err := s.FindByWhere(context.Background(), "token_hash = ?", hash)
+	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	t := model.toDomain()
+	t := row.ToDomain()
 	return &t, nil
 }
 
-func (s *AccessTokenStore) DeleteByUserAndID(userID, id uint) error {
-	res := s.db.Where("user_id = ? AND id = ?", userID, id).Delete(&accessTokenModel{})
-	if res.Error != nil {
-		return res.Error
+func (s *AccessToken) DeleteByUserAndID(userID, id uint) error {
+	n, err := s.DeleteWhereRows(context.Background(), "user_id = ? AND id = ?", userID, id)
+	if err != nil {
+		return err
 	}
 
-	if res.RowsAffected == 0 {
+	if n == 0 {
 		return domain.ErrNotFound
 	}
 
 	return nil
 }
 
-func (s *AccessTokenStore) DeleteByUserID(userID uint) error {
-	return s.db.Where("user_id = ?", userID).Delete(&accessTokenModel{}).Error
+func (s *AccessToken) DeleteByUserID(userID uint) error {
+	return s.DeleteWhere(context.Background(), "user_id = ?", userID)
 }
 
-func (s *AccessTokenStore) TouchLastUsed(id uint, at time.Time) error {
-	return s.db.Model(&accessTokenModel{}).Where("id = ?", id).Update("last_used_at", at).Error
+func (s *AccessToken) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
+	return s.DeleteWhereRows(ctx, "expires_at IS NOT NULL AND expires_at < ?", now.In(time.Local))
+}
+
+func (s *AccessToken) TouchLastUsed(id uint, at time.Time) error {
+	_, err := s.UpdateColumnByID(context.Background(), id, "last_used_at", at)
+	return err
 }

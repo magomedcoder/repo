@@ -9,36 +9,50 @@ import (
 )
 
 func runMigrations(db *gorm.DB, dbPath string) error {
-	return migrate.Run(migrate.Options{
+	if err := migrate.Run(migrate.Options{
 		DB:         db,
 		DBPath:     dbPath,
 		Migrations: migrations.All(),
 		Bootstrap:  bootstrapSchema,
-	})
+	}); err != nil {
+		return err
+	}
+
+	latest := migrate.LatestVersion(migrations.All())
+	if err := db.Where("version > ?", latest).Delete(&migrate.Record{}).Error; err != nil {
+		return fmt.Errorf("prune schema_migrations: %w", err)
+	}
+
+	if err := ensureMissingTables(db); err != nil {
+		return err
+	}
+
+	return VerifySchema(db)
 }
 
 func bootstrapSchema(db *gorm.DB) error {
-	if err := db.AutoMigrate(
-		&userModel{},
-		&sessionModel{},
-		&accessTokenModel{},
-		&folderModel{},
-		&repositoryModel{},
-		&folderMemberModel{},
-		&teamModel{},
-		&teamMemberModel{},
-		&teamRepoGrantModel{},
-		&repoCollaboratorModel{},
-		&issueModel{},
-		&issueCommentModel{},
-		&labelModel{},
-		&issueLabelModel{},
-		&pullRequestModel{},
-		&pullCommentModel{},
-		&activityModel{},
-		&accessLogModel{},
-	); err != nil {
+	if err := db.AutoMigrate(bootstrapModels()...); err != nil {
 		return fmt.Errorf("automigrate bootstrap: %w", err)
+	}
+
+	return ensureIndexes(db)
+}
+
+func ensureMissingTables(db *gorm.DB) error {
+	m := db.Migrator()
+	var missing []any
+	for _, schemaModel := range bootstrapModels() {
+		if !m.HasTable(schemaModel) {
+			missing = append(missing, schemaModel)
+		}
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+
+	if err := db.AutoMigrate(missing...); err != nil {
+		return fmt.Errorf("ensure missing tables: %w", err)
 	}
 
 	return ensureIndexes(db)
@@ -67,6 +81,8 @@ func ensureIndexes(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_activity_events_owner ON activity_events (owner_kind, owner_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_access_logs_action ON access_logs (action)`,
+		`CREATE INDEX IF NOT EXISTS idx_repositories_mirror ON repositories (mirror_direction, mirror_status) WHERE mirror_direction != ''`,
+		`CREATE INDEX IF NOT EXISTS idx_repositories_mirror_due ON repositories (mirror_enabled, mirror_next_sync_at) WHERE mirror_direction != ''`,
 	} {
 		if err := db.Exec(stmt).Error; err != nil {
 			return fmt.Errorf("index: %w", err)

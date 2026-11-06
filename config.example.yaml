@@ -5,7 +5,12 @@ session_secret: "" # openssl rand -hex 32
 cookie_secure: false
 allow_registration: true
 receive_max_bytes: 536870912
-mirror_pull_interval: 5m
 trusted_proxies:
   - "127.0.0.1/32"
   - "::1/128"
+
+mirror_pull_interval: 5m
+mirror_workers: 4
+mirror_clone_timeout: 15m
+mirror_fetch_timeout: 10m
+mirror_push_timeout: 10m

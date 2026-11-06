@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 const (
 	ActivityPush       = "push"
@@ -30,4 +33,6 @@ type ActivityStore interface {
 	ListByOwner(ownerKind string, ownerID uint, limit int) ([]ActivityEvent, error)
 
 	ListPublicByOwner(ownerKind string, ownerID uint, limit int) ([]ActivityEvent, error)
+
+	DeleteOlderThan(ctx context.Context, before time.Time) (int64, error)
 }

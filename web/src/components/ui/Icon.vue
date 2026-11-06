@@ -4,10 +4,11 @@ import close from '@/assets/icons/close.svg?raw'
 import issue from '@/assets/icons/issue.svg?raw'
 import issueClosed from '@/assets/icons/issue-closed.svg?raw'
 import lock from '@/assets/icons/lock.svg?raw'
+import mirror from '@/assets/icons/mirror.svg?raw'
 import pull from '@/assets/icons/pull.svg?raw'
 import pullMerged from '@/assets/icons/pull-merged.svg?raw'
 
-type IconName = 'close' | 'issue' | 'issue-closed' | 'lock' | 'pull' | 'pull-merged'
+type IconName = 'close' | 'issue' | 'issue-closed' | 'lock' | 'mirror' | 'pull' | 'pull-merged'
 type IconSize = 'xs' | 'sm' | 'md'
 
 const icons: Record<IconName, string> = {
@@ -15,6 +16,7 @@ const icons: Record<IconName, string> = {
   issue,
   'issue-closed': issueClosed,
   lock,
+  mirror,
   pull,
   'pull-merged': pullMerged,
 }

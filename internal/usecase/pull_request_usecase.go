@@ -146,20 +146,10 @@ func (uc *PullRequestUseCase) Get(ctx context.Context, in ResolveRepositoryInput
 		return nil, err
 	}
 
-	detail := &PullDetail{
+	return &PullDetail{
 		PullItem: *item,
 		Comments: mapped,
-	}
-	if pr.State == "open" {
-		cmp, cerr := uc.git.Compare(ctx, repo.Path, pr.BaseBranch, pr.HeadBranch)
-		if cerr == nil {
-			detail.CanFastForward = cmp.CanFastForward
-			detail.Commits = len(cmp.Commits)
-			detail.FilesChanged = len(cmp.Files)
-		}
-	}
-
-	return detail, nil
+	}, nil
 }
 
 func (uc *PullRequestUseCase) Create(ctx context.Context, in ResolveRepositoryInput, title, body, base, head string) (*PullItem, error) {
@@ -408,6 +398,10 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 
 	if !uc.authz.CanWriteRepo(repo, in.ViewerID) {
 		return nil, ErrPullForbidden
+	}
+
+	if repo.MirrorDirection == domain.MirrorPull {
+		return nil, ErrMirrorReadOnly
 	}
 
 	pr, err := uc.findPull(repo.ID, number)

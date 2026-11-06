@@ -12,14 +12,61 @@ export type PageError =
   | { kind: 'message'; text: string }
 
 const STORAGE_KEY = 'repo.locale'
+const SUPPORTED: readonly AppLocale[] = ['en', 'ru']
 
-export function detectLocale(): AppLocale {
-  const saved = localStorage.getItem(STORAGE_KEY)
-  if (saved === 'en' || saved === 'ru') {
-    return saved
+export function normalizeLocale(tag: string): AppLocale | null {
+  const lower = tag.trim().toLowerCase().replaceAll('_', '-')
+  if (!lower) {
+    return null
   }
 
-  return navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en'
+  if (lower === 'ru' || lower.startsWith('ru-')) {
+    return 'ru'
+  }
+
+  if (lower === 'en' || lower.startsWith('en-')) {
+    return 'en'
+  }
+
+  return null
+}
+
+export function detectBrowserLocale(): AppLocale {
+  const candidates: string[] = []
+  if (typeof navigator !== 'undefined') {
+    if (Array.isArray(navigator.languages)) {
+      candidates.push(...navigator.languages)
+    }
+
+    if (navigator.language) {
+      candidates.push(navigator.language)
+    }
+  }
+
+  for (const tag of candidates) {
+    const matched = normalizeLocale(tag)
+    if (matched) {
+      return matched
+    }
+  }
+
+  return 'en'
+}
+
+export function detectLocale(): AppLocale {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved === 'en' || saved === 'ru') {
+      return saved
+    }
+  } catch {}
+
+  return detectBrowserLocale()
+}
+
+export function getLocale(): AppLocale {
+  const value = i18n.global.locale.value
+  return value === 'ru' ? 'ru' : 'en'
 }
 
 export const i18n = createI18n<MessageSchema, AppLocale, false>({
@@ -29,10 +76,26 @@ export const i18n = createI18n<MessageSchema, AppLocale, false>({
   messages: { en, ru },
 })
 
-export function setLocale(locale: AppLocale) {
-  i18n.global.locale.value = locale
-  localStorage.setItem(STORAGE_KEY, locale)
+function applyDocumentLocale(locale: AppLocale) {
+  if (typeof document === 'undefined') {
+    return
+  }
+
   document.documentElement.lang = locale
+  document.documentElement.dir = 'ltr'
+}
+
+export function setLocale(locale: AppLocale) {
+  if (!SUPPORTED.includes(locale)) {
+    locale = 'en'
+  }
+
+  i18n.global.locale.value = locale
+  try {
+    localStorage.setItem(STORAGE_KEY, locale)
+  } catch {}
+
+  applyDocumentLocale(locale)
   document.title = i18n.global.t('brand.title')
 }
 
@@ -65,7 +128,7 @@ export function pageError(err: unknown, fallbackKey: Parameters<typeof i18n.glob
 }
 
 export function formatDate(value: string): string {
-  const tag = i18n.global.locale.value === 'ru' ? 'ru-RU' : 'en-GB'
+  const tag = getLocale() === 'ru' ? 'ru-RU' : 'en-GB'
   return new Date(value).toLocaleString(tag, {
     year: 'numeric',
     month: 'long',
@@ -76,7 +139,7 @@ export function formatDate(value: string): string {
 }
 
 export function diffStatus(status: string): string {
-  const messages = i18n.global.getLocaleMessage(i18n.global.locale.value) as MessageSchema
+  const messages = i18n.global.getLocaleMessage(getLocale()) as MessageSchema
   if (status in messages.status) {
     return messages.status[status as keyof MessageSchema['status']]
   }

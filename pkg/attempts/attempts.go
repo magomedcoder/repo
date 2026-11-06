@@ -1,6 +1,7 @@
 package attempts
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -10,13 +11,38 @@ const (
 	defaultLockDuration = 15 * time.Minute
 	sweepEvery          = 64
 	idleTTL             = 30 * time.Minute
-	defaultMaxKeys      = 100_000
+	defaultMaxKeys      = 8192
 )
 
 type Counter interface {
 	Fail(key string) bool
 	Reset(key string)
 	Locked(key string) bool
+	Sweep()
+}
+
+func StartBackgroundSweep(ctx context.Context, every time.Duration, counters ...Counter) {
+	if every <= 0 {
+		every = 5 * time.Minute
+	}
+
+	go func() {
+		t := time.NewTicker(every)
+		defer t.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				for _, c := range counters {
+					if c != nil {
+						c.Sweep()
+					}
+				}
+			}
+		}
+	}()
 }
 
 type Config struct {
@@ -145,6 +171,16 @@ func (m *memory) Reset(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.fails, key)
+}
+
+func (m *memory) Sweep() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := m.now()
+	m.sweep(now)
+	m.lastSweep = now
+	m.calls = 0
 }
 
 func (m *memory) maybeSweep(now time.Time) {

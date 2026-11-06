@@ -57,9 +57,9 @@ func runUserCreate(args []string) error {
 	}
 
 	authUC := usecase.NewAuthUseCase(
-		sqlite.NewUserStore(db),
-		sqlite.NewSessionStore(db),
-		sqlite.NewAccessTokenStore(db),
+		sqlite.NewUserRepo(db),
+		sqlite.NewSessionRepo(db),
+		sqlite.NewAccessTokenRepo(db),
 		argon2id.NewHasher(),
 		token.NewGenerator(),
 	)

@@ -2,18 +2,22 @@
 
 # dev
 
-- Репозитории: pull/push-зеркалирование (в проект / из проекта) при создании и в настройках; pull по расписанию (`mirror_pull_interval`), push после git push/merge; ручной sync остаётся; pull-зеркала не принимают git push
-- Сессии: хранение хешированных токенов; список устройств с IP и user agent; отзыв одной, остальных или всех сессий в настройках
-- Папки: общие org-пространства с участниками (`owner` / `admin` / `member`), настраиваемые capabilities, invite/edit/remove в UI
-- Команды: создание teams внутри папки, участники команды, права read/write/admin на выбранные репозитории
-- Collaborators: на репозиторий роли `admin` / `write` / `read`; те же правила для Git HTTP и API; членство в папке не даёт write во все репо
-- Git: защита default-ветки при push после unpack; fast-forward разрешён, force-push и удаление запрещены; безопаснее одновременный merge и push; gzip-тела запросов; для private - challenge Basic auth
-- Security: CSP и HSTS за доверенным HTTPS; CSRF привязан к session cookie; санитизация HTML README без проксирования картинок
-- Security: ограничение caps при UpdateMember (нет эскалации admin->owner / delete_folder); отзыв сессий и токенов при смене пароля или роли админом; единый Git HTTP 401 для анонимных missing/private; запрет повторного username/email после soft-delete; auth для списка collaborators и visit-beacon; escape LIKE в админ-поиске; пароль при смене email
-- Access: гости видят только публичные activity, home и search; сортировка репозиториев по имени в базе; ограничение пагинации списков
-- Access-токены: опциональный срок действия при создании; просроченные отклоняются в Git auth
+- Зеркалирование: pull и push с http(s) remote при создании и в настройках; pull по расписанию, push после git push или merge; ручной sync; pull-зеркала не принимают git push
+- Параметры зеркала: пауза без удаления; интервал, окно синхронизации, force/prune, refspecs, LFS, лимит размера, политика конфликтов; SSH-ключ с passphrase; insecure TLS для админов
+- Зеркалирование (UI): проверка соединения, история sync, предпросмотр следующего pull; статус у pull-зеркал; создание Import vs Mirror; админ-страница «Зеркала» с массовым sync и pause
+- Целостность зеркал: сверка remote refs после sync и по запросу из репозитория или admin API
+- Сессии: хешированные токены; список устройств с IP и user agent; отзыв одной, остальных или всех в настройках
+- Папки: общие пространства с участниками (`owner` / `admin` / `member`), capabilities, invite/edit/remove в UI
+- Команды: создание teams в папке, участники, права read/write/admin на выбранные репозитории
+- Collaborators: на репозиторий `admin` / `write` / `read`; те же правила для Git HTTP и API; членство в папке не даёт write в репо
+- Access-токены: опциональный срок при создании; просроченные отклоняются в Git auth
 - Issues и pull requests: монотонные номера на репозиторий
-- Надёжность: безопаснее кэш открытых git-репозиториев; создание записи репо до bare init; отдельные очереди audit для security и visits; отмена browse по контексту запроса
+- Доступ: гости видят только публичные activity, home и search; списки репозиториев по имени с ограничением пагинации
+- Git: защита default branch после unpack (только fast-forward; без force-push и удаления); Basic auth для private; gzip-тела запросов
+- Security: CSP и HSTS за доверенным HTTPS; CSRF привязан к сессии; безопаснее HTML README; пароль при смене email
+- Security: ограничение caps участников папки; отзыв сессий и токенов при смене пароля или роли админом; запрет повторного username/email после soft-delete; auth для списка collaborators и visit-beacon
+- Обслуживание: ежечасная очистка просроченных сессий/токенов, старой activity и soft-deleted репозиториев; checkpoint WAL; жёстче rate-limit и очистка кэша
+- Надёжность: проверка схемы после миграций; безопаснее кэш открытых git-репо и путь создания репозитория; отмена browse при завершении запроса
 
 ## v0.1.0 - 1 ноября 2026
 

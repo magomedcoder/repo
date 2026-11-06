@@ -7,7 +7,7 @@ Lightweight self-hosted Git hosting.
 - Repositories over HTTP: clone, fetch, push; browse branches, tags, tree, commits, blame, README
 - Issues and pull requests (diff, comments, merge)
 - Folders as shared org spaces: members, capabilities, teams, per-repo collaborators
-- Pull and push mirroring to remote http(s) Git URLs (scheduled pull sync, push sync after git push/merge)
+- Pull and push mirroring over http(s) and SSH (per-repository interval and sync window, status and history, admin overview)
 - Accounts, sessions, access tokens, admin users; UI in English and Russian
 
 ## Stack
@@ -44,6 +44,12 @@ cp config.example.yaml config.yaml
 | `trusted_proxies`      | Optional CIDRs/IPs trusted for `X-Forwarded-For` / `X-Forwarded-Proto`            |
 
 Responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and (over HTTPS / with `cookie_secure`) HSTS with `includeSubDomains; preload`. After the site is live on HTTPS, you can submit the domain at [hstspreload.org](https://hstspreload.org).
+
+## Mirroring
+
+Any repository can be a **pull mirror** (kept in sync with a remote, read-only here) or a **push mirror** (published to a remote after `git push` / merge). Set it up when creating a repository (*Mirror* or one-time *Import*) or under repository **Settings -> Mirroring**: interval, sync window, force/prune, refspecs, LFS, size limit, credentials or SSH key, *Check connection*, sync history and a next-pull preview. Pull mirrors show a read-only banner with an upstream link and a syncing / ok / error / paused indicator; instance admins get all mirrors with bulk sync and pause under **Mirrors** (`/settings/mirrors`).
+
+Internal hosts are blocked by default (SSRF protection). Interval, workers, and timeouts are set in `config.example.yaml`.
 
 ## Reverse proxy
 

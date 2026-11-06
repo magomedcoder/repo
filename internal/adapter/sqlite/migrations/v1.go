@@ -8,7 +8,7 @@ import (
 func v1() migrate.Migration {
 	return migrate.Migration{
 		Version:     1,
-		Name:        "migration",
+		Name:        "schema",
 		Destructive: true,
 		Up:          upV1,
 	}
@@ -45,8 +45,15 @@ func upV1(db *gorm.DB) error {
 	if err := backfillIssuePullSeqs(db); err != nil {
 		return err
 	}
+	if err := addRepoMirrorColumns(db); err != nil {
+		return err
+	}
 
-	return addRepoMirrorColumns(db)
+	if err := backfillMirrorStatus(db); err != nil {
+		return err
+	}
+
+	return createMirrorTables(db)
 }
 
 func addTokenExpiryAndSeqs(db *gorm.DB) error {
@@ -71,7 +78,6 @@ func dropFolderParentID(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-
 	if !ok {
 		return nil
 	}
@@ -246,9 +252,90 @@ func addRepoMirrorColumns(db *gorm.DB) error {
 		{"mirror_password", `ALTER TABLE repositories ADD COLUMN mirror_password TEXT NOT NULL DEFAULT ''`},
 		{"mirror_last_sync_at", `ALTER TABLE repositories ADD COLUMN mirror_last_sync_at DATETIME`},
 		{"mirror_last_error", `ALTER TABLE repositories ADD COLUMN mirror_last_error TEXT NOT NULL DEFAULT ''`},
+		{"mirror_enabled", `ALTER TABLE repositories ADD COLUMN mirror_enabled NUMERIC NOT NULL DEFAULT 1`},
+		{"mirror_interval", `ALTER TABLE repositories ADD COLUMN mirror_interval TEXT NOT NULL DEFAULT ''`},
+		{"mirror_sync_window", `ALTER TABLE repositories ADD COLUMN mirror_sync_window TEXT NOT NULL DEFAULT ''`},
+		{"mirror_force", `ALTER TABLE repositories ADD COLUMN mirror_force NUMERIC NOT NULL DEFAULT 1`},
+		{"mirror_prune", `ALTER TABLE repositories ADD COLUMN mirror_prune NUMERIC NOT NULL DEFAULT 1`},
+		{"mirror_refspecs", `ALTER TABLE repositories ADD COLUMN mirror_refspecs TEXT NOT NULL DEFAULT ''`},
+		{"mirror_ssh_private_key", `ALTER TABLE repositories ADD COLUMN mirror_ssh_private_key TEXT NOT NULL DEFAULT ''`},
+		{"mirror_ssh_passphrase", `ALTER TABLE repositories ADD COLUMN mirror_ssh_passphrase TEXT NOT NULL DEFAULT ''`},
+		{"mirror_insecure_tls", `ALTER TABLE repositories ADD COLUMN mirror_insecure_tls NUMERIC NOT NULL DEFAULT 0`},
+		{"mirror_pinned_hosts", `ALTER TABLE repositories ADD COLUMN mirror_pinned_hosts TEXT NOT NULL DEFAULT ''`},
+		{"mirror_lfs", `ALTER TABLE repositories ADD COLUMN mirror_lfs NUMERIC NOT NULL DEFAULT 0`},
+		{"mirror_max_bytes", `ALTER TABLE repositories ADD COLUMN mirror_max_bytes INTEGER NOT NULL DEFAULT 0`},
+		{"mirror_conflict_policy", `ALTER TABLE repositories ADD COLUMN mirror_conflict_policy TEXT NOT NULL DEFAULT ''`},
+		{"mirror_status", `ALTER TABLE repositories ADD COLUMN mirror_status TEXT NOT NULL DEFAULT ''`},
+		{"mirror_fail_count", `ALTER TABLE repositories ADD COLUMN mirror_fail_count INTEGER NOT NULL DEFAULT 0`},
+		{"mirror_next_sync_at", `ALTER TABLE repositories ADD COLUMN mirror_next_sync_at DATETIME`},
+		{"mirror_last_progress", `ALTER TABLE repositories ADD COLUMN mirror_last_progress TEXT NOT NULL DEFAULT ''`},
+		{"mirror_remote_head", `ALTER TABLE repositories ADD COLUMN mirror_remote_head TEXT NOT NULL DEFAULT ''`},
+		{"mirror_owner_only", `ALTER TABLE repositories ADD COLUMN mirror_owner_only NUMERIC NOT NULL DEFAULT 0`},
+		{"mirror_group_id", `ALTER TABLE repositories ADD COLUMN mirror_group_id INTEGER NOT NULL DEFAULT 0`},
+		{"mirror_partial", `ALTER TABLE repositories ADD COLUMN mirror_partial NUMERIC NOT NULL DEFAULT 0`},
+		{"mirror_verify_signed", `ALTER TABLE repositories ADD COLUMN mirror_verify_signed NUMERIC NOT NULL DEFAULT 0`},
 	}
 	for _, col := range cols {
 		if err := migrate.AddColumnIfMissing(db, "repositories", col.name, col.sql); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func backfillMirrorStatus(db *gorm.DB) error {
+	return db.Exec(`
+		UPDATE repositories
+		SET mirror_status = CASE
+			WHEN mirror_last_error != '' THEN 'error'
+			WHEN mirror_last_sync_at IS NOT NULL THEN 'ok'
+			ELSE 'idle'
+		END
+		WHERE mirror_direction != '' AND mirror_status = ''
+	`).Error
+}
+
+func createMirrorTables(db *gorm.DB) error {
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS mirror_sync_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			repo_id INTEGER NOT NULL,
+			direction TEXT NOT NULL DEFAULT '',
+			"trigger" TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT '',
+			error TEXT NOT NULL DEFAULT '',
+			started_at DATETIME NOT NULL,
+			finished_at DATETIME,
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			actor_id INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_mirror_sync_events_repo ON mirror_sync_events (repo_id, started_at)`,
+		`CREATE TABLE IF NOT EXISTS mirror_targets (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			created_at DATETIME,
+			updated_at DATETIME,
+			repo_id INTEGER NOT NULL,
+			url TEXT NOT NULL DEFAULT '',
+			username TEXT NOT NULL DEFAULT '',
+			password TEXT NOT NULL DEFAULT '',
+			direction TEXT NOT NULL DEFAULT 'push',
+			enabled NUMERIC NOT NULL DEFAULT 1,
+			last_sync_at DATETIME,
+			last_error TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_mirror_targets_repo ON mirror_targets (repo_id)`,
+		`CREATE TABLE IF NOT EXISTS mirror_groups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			created_at DATETIME,
+			updated_at DATETIME,
+			name TEXT NOT NULL,
+			upstream_url TEXT NOT NULL DEFAULT '',
+			direction TEXT NOT NULL DEFAULT 'pull',
+			sync_interval TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_repositories_mirror ON repositories (mirror_direction, mirror_status) WHERE mirror_direction != ''`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
 			return err
 		}
 	}

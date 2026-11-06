@@ -1,145 +1,87 @@
 package sqlite
 
 import (
-	"time"
+	"context"
 
 	"gorm.io/gorm"
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
-type folderModel struct {
-	ID        uint `gorm:"primaryKey"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt
-	OwnerKind string `gorm:"size:8;not null;default:user"`
-	OwnerID   uint   `gorm:"not null"`
-	Name      string `gorm:"size:64;not null"`
-	Slug      string `gorm:"size:64;not null"`
-	Path      string `gorm:"size:512;not null"`
+type Folder struct {
+	gormutil.Repo[model.Folder]
 }
 
-func (folderModel) TableName() string {
-	return "folders"
+func NewFolderRepo(db *gorm.DB) *Folder {
+	return &Folder{Repo: gormutil.NewRepo[model.Folder](db)}
 }
 
-func (m folderModel) toDomain() domain.Folder {
-	kind := m.OwnerKind
-	if kind == "" {
-		kind = domain.OwnerKindUser
-	}
-
-	return domain.Folder{
-		ID:        m.ID,
-		OwnerKind: kind,
-		OwnerID:   m.OwnerID,
-		Name:      m.Name,
-		Slug:      m.Slug,
-		Path:      m.Path,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
-	}
-}
-
-func folderFromDomain(f *domain.Folder) *folderModel {
-	kind := f.OwnerKind
-	if kind == "" {
-		kind = domain.OwnerKindUser
-	}
-
-	return &folderModel{
-		ID:        f.ID,
-		OwnerKind: kind,
-		OwnerID:   f.OwnerID,
-		Name:      f.Name,
-		Slug:      f.Slug,
-		Path:      f.Path,
-		CreatedAt: f.CreatedAt,
-		UpdatedAt: f.UpdatedAt,
-	}
-}
-
-type FolderStore struct {
-	db *gorm.DB
-}
-
-func NewFolderStore(db *gorm.DB) *FolderStore {
-	return &FolderStore{db: db}
-}
-
-func (s *FolderStore) Create(folder *domain.Folder) error {
-	model := folderFromDomain(folder)
-	if err := s.db.Create(model).Error; err != nil {
+func (s *Folder) Create(folder *domain.Folder) error {
+	m := model.FolderFromDomain(folder)
+	if err := s.Repo.Create(context.Background(), m); err != nil {
 		return err
 	}
 
-	*folder = model.toDomain()
+	*folder = m.ToDomain()
 	return nil
 }
 
-func (s *FolderStore) Update(folder *domain.Folder) error {
-	model := folderFromDomain(folder)
-	if err := s.db.Save(model).Error; err != nil {
+func (s *Folder) Update(folder *domain.Folder) error {
+	m := model.FolderFromDomain(folder)
+	if err := s.Save(context.Background(), m); err != nil {
 		return err
 	}
 
-	*folder = model.toDomain()
+	*folder = m.ToDomain()
 	return nil
 }
 
-func (s *FolderStore) Delete(id uint) error {
-	return s.db.Delete(&folderModel{}, id).Error
+func (s *Folder) Delete(id uint) error {
+	return s.DeleteByID(context.Background(), id)
 }
 
-func (s *FolderStore) FindByID(id uint) (*domain.Folder, error) {
-	var model folderModel
-	err := s.db.First(&model, id).Error
+func (s *Folder) FindByID(id uint) (*domain.Folder, error) {
+	row, err := s.Repo.FindByID(context.Background(), id)
 	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	f := model.toDomain()
+	f := row.ToDomain()
 	return &f, nil
 }
 
-func (s *FolderStore) FindByPath(path string) (*domain.Folder, error) {
-	var model folderModel
-	err := s.db.Where("path = ?", path).First(&model).Error
+func (s *Folder) FindByPath(path string) (*domain.Folder, error) {
+	row, err := s.FindByWhere(context.Background(), "path = ?", path)
 	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	f := model.toDomain()
+	f := row.ToDomain()
 	return &f, nil
 }
 
-func (s *FolderStore) ListForMember(userID uint) ([]domain.Folder, error) {
-	var models []folderModel
-	err := s.db.Model(&folderModel{}).
-		Joins("JOIN folder_members ON folder_members.folder_id = folders.id AND folder_members.deleted_at IS NULL").
-		Where("folder_members.user_id = ?", userID).
-		Order("folders.name ASC").
-		Find(&models).Error
+func (s *Folder) ListForMember(userID uint) ([]domain.Folder, error) {
+	models, err := s.FindAll(context.Background(),
+		gormutil.WithJoins("JOIN folder_members ON folder_members.folder_id = folders.id AND folder_members.deleted_at IS NULL"),
+		gormutil.WithWhere("folder_members.user_id = ?", userID),
+		gormutil.WithOrder("folders.name ASC"),
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	return folderModelsToDomain(models), nil
+	return foldersToDomain(models), nil
 }
 
-func (s *FolderStore) ExistsBySlug(slug string) (bool, error) {
-	var count int64
-	err := s.db.Model(&folderModel{}).
-		Where("slug = ?", slug).
-		Count(&count).Error
-	return count > 0, err
+func (s *Folder) ExistsBySlug(slug string) (bool, error) {
+	return s.QueryExist(context.Background(), "slug = ?", slug)
 }
 
-func folderModelsToDomain(models []folderModel) []domain.Folder {
+func foldersToDomain(models []model.Folder) []domain.Folder {
 	out := make([]domain.Folder, 0, len(models))
 	for _, m := range models {
-		out = append(out, m.toDomain())
+		out = append(out, m.ToDomain())
 	}
-
 	return out
 }

@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"gorm.io/gorm"
+
 	"magomedcoder.ru/repo"
 	"magomedcoder.ru/repo/internal/adapter/git"
 	deliveryhttp "magomedcoder.ru/repo/internal/adapter/http"
@@ -52,20 +54,20 @@ func runServe() {
 	}
 	defer func() { _ = sqlDB.Close() }()
 
-	userStore := sqlite.NewUserStore(db)
-	sessionStore := sqlite.NewSessionStore(db)
-	folderStore := sqlite.NewFolderStore(db)
-	repoStore := sqlite.NewRepositoryStore(db)
-	tokenStore := sqlite.NewAccessTokenStore(db)
-	issueStore := sqlite.NewIssueStore(db)
-	pullStore := sqlite.NewPullRequestStore(db)
-	activityStore := sqlite.NewActivityStore(db)
-	accessStore := sqlite.NewAccessLogStore(db)
-	folderMemberStore := sqlite.NewFolderMemberStore(db)
-	teamStore := sqlite.NewTeamStore(db)
-	teamMemberStore := sqlite.NewTeamMemberStore(db)
-	teamRepoGrantStore := sqlite.NewTeamRepoGrantStore(db)
-	collabStore := sqlite.NewRepoCollaboratorStore(db)
+	userStore := sqlite.NewUserRepo(db)
+	sessionStore := sqlite.NewSessionRepo(db)
+	folderStore := sqlite.NewFolderRepo(db)
+	repoStore := sqlite.NewRepositoryRepo(db)
+	tokenStore := sqlite.NewAccessTokenRepo(db)
+	issueStore := sqlite.NewIssueRepo(db)
+	pullStore := sqlite.NewPullRequestRepo(db)
+	activityStore := sqlite.NewActivityRepo(db)
+	accessStore := sqlite.NewAccessLogRepo(db)
+	folderMemberStore := sqlite.NewFolderMemberRepo(db)
+	teamStore := sqlite.NewTeamRepo(db)
+	teamMemberStore := sqlite.NewTeamMemberRepo(db)
+	teamRepoGrantStore := sqlite.NewTeamRepoGrantRepo(db)
+	collabStore := sqlite.NewRepoCollaboratorRepo(db)
 	accessLog := audit.New(accessStore)
 
 	gitRepo := git.NewRepository(cfg.DataDir)
@@ -81,6 +83,11 @@ func runServe() {
 	authUC.SetAllowRegistration(cfg.AllowRegistration)
 	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, folderMemberStore, gitRepo, authz)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore, authz)
+	if err := setupMirror(repoUC, cfg, db); err != nil {
+		slog.Error("mirror", "err", err)
+		os.Exit(1)
+	}
+
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore, authz)
@@ -130,7 +137,22 @@ func runServe() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	repoUC.SetMirrorRootContext(ctx)
 	go repoUC.RunPullMirrorLoop(ctx, cfg.MirrorPullEvery)
+	authUC.StartAttemptsSweep(ctx, attemptsSweepEvery)
+	gitUC.StartAttemptsSweep(ctx, attemptsSweepEvery)
+
+	maintenanceDone := make(chan struct{})
+	go func() {
+		defer close(maintenanceDone)
+		runMaintenance(ctx, maintenanceDeps{
+			db:       db,
+			sessions: sessionStore,
+			tokens:   tokenStore,
+			activity: activityStore,
+			repos:    repoUC,
+		})
+	}()
 
 	go func() {
 		slog.Info("listening", "addr", cfg.HTTPAddr)
@@ -142,11 +164,106 @@ func runServe() {
 
 	<-ctx.Done()
 	slog.Info("shutting down")
+	repoUC.StopMirrorDebouncers()
+	idle := make(chan struct{})
+	go func() {
+		repoUC.WaitMirrorIdle()
+		close(idle)
+	}()
+	select {
+	case <-idle:
+	case <-time.After(30 * time.Second):
+		slog.Warn("shutdown: mirror work still running")
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown", "err", err)
+	}
+
+	select {
+	case <-maintenanceDone:
+	case <-time.After(5 * time.Second):
+		slog.Warn("shutdown: maintenance still running")
+	}
+
+	accessLog.Close()
+}
+
+const (
+	maintenanceEvery     = time.Hour
+	maintenanceFirstRun  = 15 * time.Second
+	attemptsSweepEvery   = 5 * time.Minute
+	activityRetention    = 90 * 24 * time.Hour
+	softDeletedRetention = 7 * 24 * time.Hour
+)
+
+type repoPurger interface {
+	PurgeSoftDeletedRepos(ctx context.Context, olderThan time.Duration) (int, error)
+}
+
+type maintenanceDeps struct {
+	db       *gorm.DB
+	sessions domain.SessionStore
+	tokens   domain.AccessTokenStore
+	activity domain.ActivityStore
+	repos    repoPurger
+}
+
+func runMaintenance(ctx context.Context, d maintenanceDeps) {
+	timer := time.NewTimer(maintenanceFirstRun)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+
+		maintenanceOnce(ctx, d, time.Now().UTC())
+		timer.Reset(maintenanceEvery)
+	}
+}
+
+func maintenanceOnce(ctx context.Context, d maintenanceDeps, now time.Time) {
+	if d.sessions != nil {
+		if n, err := d.sessions.DeleteExpired(ctx, now); err != nil {
+			slog.Warn("maintenance: sessions", "err", err)
+		} else if n > 0 {
+			slog.Info("maintenance: expired sessions removed", "rows", n)
+		}
+	}
+
+	if d.tokens != nil {
+		if n, err := d.tokens.DeleteExpired(ctx, now); err != nil {
+			slog.Warn("maintenance: access tokens", "err", err)
+		} else if n > 0 {
+			slog.Info("maintenance: expired access tokens removed", "rows", n)
+		}
+	}
+
+	if d.activity != nil {
+		if n, err := d.activity.DeleteOlderThan(ctx, now.Add(-activityRetention)); err != nil {
+			slog.Warn("maintenance: activity", "err", err)
+		} else if n > 0 {
+			slog.Info("maintenance: old activity events removed", "rows", n)
+		}
+	}
+
+	if d.repos != nil {
+		if n, err := d.repos.PurgeSoftDeletedRepos(ctx, softDeletedRetention); err != nil {
+			slog.Warn("maintenance: soft-deleted repositories", "err", err)
+		} else if n > 0 {
+			slog.Info("maintenance: soft-deleted repositories purged", "repos", n)
+		}
+	}
+
+	if d.db != nil {
+		if err := sqlite.CheckpointWAL(d.db); err != nil {
+			slog.Warn("maintenance: wal checkpoint", "err", err)
+		}
 	}
 }
 

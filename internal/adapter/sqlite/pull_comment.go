@@ -1,102 +1,74 @@
 package sqlite
 
 import (
-	"time"
+	"context"
 
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
-type pullCommentModel struct {
-	ID        uint `gorm:"primaryKey"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	PullID    uint   `gorm:"not null;index"`
-	AuthorID  uint   `gorm:"not null"`
-	Body      string `gorm:"not null"`
+func (s *PullRequest) pullComments() *gormutil.Repo[model.PullComment] {
+	r := gormutil.NewRepo[model.PullComment](s.Db)
+	return &r
 }
 
-func (pullCommentModel) TableName() string {
-	return "pull_request_comments"
-}
-
-func (s *PullRequestStore) CountComments(pullID uint) (int, error) {
-	var n int64
-	if err := s.db.Model(&pullCommentModel{}).Where("pull_id = ?", pullID).Count(&n).Error; err != nil {
+func (s *PullRequest) CountComments(pullID uint) (int, error) {
+	n, err := s.pullComments().QueryCount(context.Background(), "pull_id = ?", pullID)
+	if err != nil {
 		return 0, err
 	}
 
 	return int(n), nil
 }
 
-func (s *PullRequestStore) CreateComment(comment *domain.PullRequestComment) error {
-	model := pullCommentFromDomain(comment)
-	if err := s.db.Create(model).Error; err != nil {
+func (s *PullRequest) CreateComment(comment *domain.PullRequestComment) error {
+	m := model.PullCommentFromDomain(comment)
+	if err := s.pullComments().Create(context.Background(), m); err != nil {
 		return err
 	}
 
-	*comment = model.toDomain()
+	*comment = m.ToDomain()
 
 	return nil
 }
 
-func (s *PullRequestStore) UpdateComment(comment *domain.PullRequestComment) error {
-	model := pullCommentFromDomain(comment)
-	if err := s.db.Save(model).Error; err != nil {
+func (s *PullRequest) UpdateComment(comment *domain.PullRequestComment) error {
+	m := model.PullCommentFromDomain(comment)
+	if err := s.pullComments().Save(context.Background(), m); err != nil {
 		return err
 	}
 
-	*comment = model.toDomain()
+	*comment = m.ToDomain()
 
 	return nil
 }
 
-func (s *PullRequestStore) DeleteComment(id uint) error {
-	return s.db.Delete(&pullCommentModel{}, id).Error
+func (s *PullRequest) DeleteComment(id uint) error {
+	return s.pullComments().DeleteByID(context.Background(), id)
 }
 
-func (s *PullRequestStore) FindComment(id uint) (*domain.PullRequestComment, error) {
-	var model pullCommentModel
-	if err := s.db.First(&model, id).Error; err != nil {
+func (s *PullRequest) FindComment(id uint) (*domain.PullRequestComment, error) {
+	row, err := s.pullComments().FindByID(context.Background(), id)
+	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	c := model.toDomain()
+	c := row.ToDomain()
 
 	return &c, nil
 }
 
-func (s *PullRequestStore) ListComments(pullID uint) ([]domain.PullRequestComment, error) {
-	var models []pullCommentModel
-	if err := s.db.Where("pull_id = ?", pullID).Order("id asc").Find(&models).Error; err != nil {
+func (s *PullRequest) ListComments(pullID uint) ([]domain.PullRequestComment, error) {
+	models, err := s.pullComments().FindByWhereAndOrder(context.Background(), "pull_id = ?", "id asc", pullID)
+	if err != nil {
 		return nil, err
 	}
 
 	out := make([]domain.PullRequestComment, 0, len(models))
 	for _, m := range models {
-		out = append(out, m.toDomain())
+		out = append(out, m.ToDomain())
 	}
 
 	return out, nil
-}
-
-func pullCommentFromDomain(c *domain.PullRequestComment) *pullCommentModel {
-	return &pullCommentModel{
-		ID:        c.ID,
-		CreatedAt: c.CreatedAt,
-		UpdatedAt: c.UpdatedAt,
-		PullID:    c.PullID,
-		AuthorID:  c.AuthorID,
-		Body:      c.Body,
-	}
-}
-
-func (m pullCommentModel) toDomain() domain.PullRequestComment {
-	return domain.PullRequestComment{
-		ID:        m.ID,
-		PullID:    m.PullID,
-		AuthorID:  m.AuthorID,
-		Body:      m.Body,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
-	}
 }

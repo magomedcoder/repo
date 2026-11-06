@@ -126,6 +126,10 @@ export interface RepoSummary {
 }
 
 export type MirrorDirection = 'pull' | 'push'
+export type MirrorStatusKind = 'idle' | 'syncing' | 'ok' | 'error' | 'paused' | 'skipped'
+export type MirrorConflictPolicy = 'force' | 'reject'
+export type MirrorSyncTrigger = 'manual' | 'schedule' | 'push' | 'merge' | 'configure' | 'bulk'
+export type MirrorSyncEventStatus = 'ok' | 'failed' | 'skipped' | 'running'
 
 export interface Repository {
   id: number
@@ -146,11 +150,105 @@ export interface Repository {
   mirror_has_password?: boolean
   mirror_last_sync_at?: string
   mirror_last_error?: string
+  mirror_enabled?: boolean
+  mirror_status?: MirrorStatusKind | string
+  mirror_interval?: string
+  mirror_sync_window?: string
+  mirror_force?: boolean
+  mirror_prune?: boolean
+  mirror_refspecs?: string
+  mirror_lfs?: boolean
+  mirror_partial?: boolean
+  mirror_verify_signed?: boolean
+  mirror_max_bytes?: number
+  mirror_conflict_policy?: MirrorConflictPolicy | string
+  mirror_insecure_tls?: boolean
+  mirror_fail_count?: number
+  mirror_next_sync_at?: string
+  mirror_last_progress?: string
+  mirror_remote_head?: string
+  mirror_has_ssh_key?: boolean
+  mirror_owner_only?: boolean
   can_read?: boolean
   can_write?: boolean
   can_admin?: boolean
   created_at: string
   updated_at: string
+}
+
+export interface MirrorStatus {
+  enabled: boolean
+  direction?: MirrorDirection | string
+  status: MirrorStatusKind | string
+  url?: string
+  username?: string
+  has_password?: boolean
+  has_ssh_key?: boolean
+  interval?: string
+  sync_window?: string
+  force?: boolean
+  prune?: boolean
+  refspecs?: string
+  lfs?: boolean
+  max_bytes?: number
+  conflict_policy?: MirrorConflictPolicy | string
+  insecure_tls?: boolean
+  fail_count?: number
+  last_sync_at?: string
+  last_error?: string
+  next_sync_at?: string
+  last_progress?: string
+  remote_head?: string
+  owner_only?: boolean
+}
+
+export interface MirrorSyncEvent {
+  id: number
+  trigger: MirrorSyncTrigger | string
+  direction?: MirrorDirection | string
+  status: MirrorSyncEventStatus | string
+  error?: string
+  started_at: string
+  finished_at?: string
+  duration_ms?: number
+}
+
+export interface MirrorDryRunRef {
+  name: string
+  commit_sha?: string
+  old_sha?: string
+  action?: 'create' | 'update' | 'delete' | 'forced' | string
+}
+
+export interface MirrorDryRun {
+  refs: MirrorDryRunRef[]
+  head?: string
+  default_branch?: string
+  truncated?: boolean
+}
+
+export interface MirrorCheckResult {
+  ok?: boolean
+  message?: string
+  head?: string
+  default_branch?: string
+  refs?: RefInfo[]
+}
+
+export interface AdminMirror {
+  id: number
+  repo_id?: number
+  repo_path: string
+  direction: MirrorDirection | string
+  status: MirrorStatusKind | string
+  url?: string
+  enabled?: boolean
+  paused?: boolean
+  interval?: string
+  fail_count?: number
+  last_sync_at?: string
+  last_error?: string
+  next_sync_at?: string
 }
 
 export interface FolderContents {
@@ -205,13 +303,11 @@ export interface CommitDiff {
 
 export interface RepoStats {
   commit_count: number
-  size_bytes: number
   languages: Record<string, number>
 }
 
 export interface RepoBrowseSummary {
   repo?: Repository
-  branches: RefInfo[]
   tree: TreeEntry[]
   stats?: RepoStats | null
   readme?: BlobContent | null

@@ -34,6 +34,28 @@ type Repository struct {
 	MirrorPassword       string
 	MirrorLastSyncAt     *time.Time
 	MirrorLastError      string
+	MirrorEnabled        bool
+	MirrorInterval       string
+	MirrorSyncWindow     string
+	MirrorForce          bool
+	MirrorPrune          bool
+	MirrorRefspecs       string
+	MirrorSSHPrivateKey  string
+	MirrorSSHPassphrase  string
+	MirrorInsecureTLS    bool
+	MirrorPinnedHosts    string
+	MirrorLFS            bool
+	MirrorMaxBytes       int64
+	MirrorConflictPolicy string
+	MirrorStatus         string
+	MirrorFailCount      int
+	MirrorNextSyncAt     *time.Time
+	MirrorLastProgress   string
+	MirrorRemoteHEAD     string
+	MirrorOwnerOnly      bool
+	MirrorGroupID        uint
+	MirrorPartial        bool
+	MirrorVerifySigned   bool
 	LastActivityAt       *time.Time
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -69,6 +91,16 @@ type RepositoryStore interface {
 
 	ListByMirrorDirection(ctx context.Context, direction string) ([]Repository, error)
 
+	ListMirrors(ctx context.Context, filter MirrorListFilter) ([]Repository, error)
+
+	ListMirrorSchedules(ctx context.Context, f MirrorScheduleFilter) ([]MirrorSchedule, error)
+
+	ResetStaleMirrorSyncing(ctx context.Context) (int64, error)
+
+	CountMirrorsInError(ctx context.Context, since time.Time) (int64, error)
+
+	UpdateMirrorState(ctx context.Context, repo *Repository) error
+
 	FindByID(ctx context.Context, id uint) (*Repository, error)
 
 	SearchByName(ctx context.Context, query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order RepoOrder) ([]Repository, error)
@@ -78,6 +110,8 @@ type RepositoryStore interface {
 	CountByFolderID(folderID uint) (int64, error)
 
 	TouchLastActivity(id uint, at time.Time) error
+
+	PurgeSoftDeleted(ctx context.Context, before time.Time) ([]uint, error)
 }
 
 type BareInitOptions struct {
@@ -87,6 +121,61 @@ type BareInitOptions struct {
 type MirrorAuth struct {
 	Username string
 	Password string
+}
+
+type MirrorOptions struct {
+	Auth          *MirrorAuth
+	SSHPrivateKey string
+	SSHPassphrase string
+	InsecureTLS   bool
+	Force         *bool
+	Prune         *bool
+	RefSpecs      []string
+	LFS           bool
+	MaxBytes      int64
+	Partial       bool
+	PinnedHosts   map[string]string
+	Progress      io.Writer
+}
+
+type MirrorRemoteInfo struct {
+	DefaultBranch string    `json:"default_branch"`
+	Refs          []RefInfo `json:"refs"`
+	Head          string    `json:"head"`
+}
+
+type MirrorRefDiff struct {
+	Name   string `json:"name"`
+	Local  string `json:"local,omitzero"`
+	Remote string `json:"remote,omitzero"`
+	Reason string `json:"reason"`
+}
+
+type MirrorSchedule struct {
+	ID         uint
+	Direction  string
+	URL        string
+	Enabled    bool
+	Interval   string
+	SyncWindow string
+	NextSyncAt *time.Time
+	LastSyncAt *time.Time
+}
+
+type MirrorScheduleFilter struct {
+	Offset    int
+	Limit     int
+	DueBefore *time.Time
+}
+
+type MirrorVerifyResult struct {
+	OK            bool            `json:"ok"`
+	DefaultBranch string          `json:"default_branch,omitzero"`
+	Head          string          `json:"head,omitzero"`
+	Checked       int             `json:"checked"`
+	Diffs         []MirrorRefDiff `json:"diffs,omitzero"`
+	Truncated     bool            `json:"truncated,omitzero"`
+	TotalDiffs    int             `json:"total_diffs,omitzero"`
 }
 
 type RefInfo struct {
@@ -152,7 +241,6 @@ type FileDiff struct {
 
 type RepoStats struct {
 	CommitCount int              `json:"commit_count"`
-	SizeBytes   int64            `json:"size_bytes"`
 	Languages   map[string]int64 `json:"languages"`
 }
 
@@ -166,11 +254,21 @@ type GitRepository interface {
 
 	InitBare(path string, opts BareInitOptions) error
 
-	MirrorClone(ctx context.Context, path, url string, auth *MirrorAuth) (defaultBranch string, err error)
+	MirrorClone(ctx context.Context, path, url string, opts *MirrorOptions) (defaultBranch string, err error)
 
-	MirrorFetch(ctx context.Context, path, url string, auth *MirrorAuth) error
+	MirrorFetch(ctx context.Context, path, url string, opts *MirrorOptions) error
 
-	MirrorPush(ctx context.Context, path, url string, auth *MirrorAuth) error
+	MirrorPush(ctx context.Context, path, url string, opts *MirrorOptions) error
+
+	MirrorCheck(ctx context.Context, url string, opts *MirrorOptions) (*MirrorRemoteInfo, error)
+
+	MirrorDryRunFetch(ctx context.Context, path, url string, opts *MirrorOptions) (*MirrorRemoteInfo, []RefInfo, error)
+
+	MirrorVerify(ctx context.Context, path, url, direction string, opts *MirrorOptions) (*MirrorVerifyResult, error)
+
+	BundleCreate(ctx context.Context, repoPath, bundlePath string) error
+
+	BundleImport(ctx context.Context, repoPath, bundlePath string) error
 
 	Remove(path string) error
 
@@ -185,6 +283,8 @@ type GitRepository interface {
 	EnsureDefaultBranch(repoPath, branch string) error
 
 	DetectHEADBranch(repoPath string) (string, error)
+
+	VerifyCommitSignature(ctx context.Context, repoPath, sha string) error
 
 	ListBranches(repoPath string) ([]RefInfo, error)
 

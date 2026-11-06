@@ -50,6 +50,10 @@ func NewGitUseCase(
 	}
 }
 
+func (uc *GitUseCase) StartAttemptsSweep(ctx context.Context, every time.Duration) {
+	attempts.StartBackgroundSweep(ctx, every, uc.attempts)
+}
+
 func (uc *GitUseCase) ResolveClonePath(ctx context.Context, path string) (*domain.Repository, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

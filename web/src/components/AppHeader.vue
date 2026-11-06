@@ -13,6 +13,8 @@ const searchQ = ref(typeof route.query.q === 'string' ? route.query.q : '')
 
 const openNewFolder = inject<() => void>('openNewFolder', () => {})
 const openNewRepo = inject<() => void>('openNewRepo', () => {})
+const openImportRepo = inject<(url?: string) => void>('openImportRepo', () => {})
+const openMirrorRepo = inject<(url?: string) => void>('openMirrorRepo', () => {})
 
 const username = computed(() => auth.user.value?.username || '')
 const isAdmin = computed(() => auth.isAdmin.value)
@@ -98,6 +100,16 @@ function onNewRepo() {
   openNewRepo()
 }
 
+function onImportRepo() {
+  closeMenus()
+  openImportRepo()
+}
+
+function onMirrorRepo() {
+  closeMenus()
+  openMirrorRepo()
+}
+
 async function onSearch() {
   const q = searchQ.value.trim()
   await router.push({
@@ -156,6 +168,22 @@ async function onLogout() {
             @click="onNewRepo"
           >
             {{ $t('home.newRepository') }}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="block w-full cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-ink hover:bg-path"
+            @click="onImportRepo"
+          >
+            {{ $t('home.importRepository') }}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="block w-full cursor-pointer border-0 bg-transparent px-3 py-1.5 text-left text-ink hover:bg-path"
+            @click="onMirrorRepo"
+          >
+            {{ $t('home.mirrorRepository') }}
           </button>
         </div>
       </div>
@@ -217,6 +245,15 @@ async function onLogout() {
             @click="closeMenus"
           >
             {{ $t('nav.users') }}
+          </RouterLink>
+          <RouterLink
+            v-if="isAdmin"
+            role="menuitem"
+            class="block px-3 py-1.5 text-ink no-underline hover:bg-path hover:no-underline"
+            :to="{ name: 'admin-mirrors' }"
+            @click="closeMenus"
+          >
+            {{ $t('nav.mirrors') }}
           </RouterLink>
           <button
             type="button"

@@ -1,25 +1,60 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { foldersApi, reposApi } from '@/api'
-import type { MirrorDirection, RefInfo, RepoCollaborator, RepoCollabRole } from '@/api/types'
+import type { RefInfo, RepoCollaborator, RepoCollabRole } from '@/api/types'
+import MirrorSettingsForm from '@/components/repo/MirrorSettingsForm.vue'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { useCanWrite } from '@/composables/useCanWrite'
 import { invalidateRepo, useRepo } from '@/composables/useRepo'
 import type { PageError } from '@/i18n'
-import { formatDate, i18n, localizeError } from '@/i18n'
+import { i18n, localizeError } from '@/i18n'
 import { folderKey } from '@/lib/folderNav'
 import { normalizeRepoPath } from '@/lib/repoPath'
 import { repoLocation } from '@/lib/repoNav'
+
+type SettingsSection = 'general' | 'mirror' | 'collaborators' | 'danger'
+
+const SETTINGS_SECTIONS: {
+  id: SettingsSection
+  labelKey: string
+}[] = [
+  { id: 'general', labelKey: 'settings.general' },
+  { id: 'mirror', labelKey: 'settings.mirrorTitle' },
+  { id: 'collaborators', labelKey: 'collaborators.title' },
+  { id: 'danger', labelKey: 'settings.danger' },
+]
 
 const props = defineProps<{
   repoPath: string
 }>()
 
+const route = useRoute()
 const router = useRouter()
 const { repo, loading: repoLoading, error: repoError, reload } = useRepo(() => props.repoPath)
 const { canAdmin } = useCanWrite(repo)
+
+const section = computed<SettingsSection>(() => {
+  const id = route.hash.replace(/^#/, '') as SettingsSection
+  return SETTINGS_SECTIONS.some((s) => s.id === id) ? id : 'general'
+})
+
+function settingsLocation(path: string, sectionId: SettingsSection = section.value) {
+  const loc = repoLocation('repo-settings', path)
+  const base = typeof loc === 'string' ? { path: loc } : { ...loc }
+  return { ...base, hash: `#${sectionId}` }
+}
+
+function navClass(id: SettingsSection) {
+  const active = section.value === id
+  return [
+    'shrink-0 border-b-2 px-3 py-1.5 text-left text-[10pt] no-underline hover:no-underline md:block md:w-full md:border-b-0 md:border-l-2',
+    active
+      ? 'border-ink bg-path font-semibold text-ink'
+      : 'border-transparent text-ink-muted hover:bg-row-hover hover:text-ink',
+  ]
+}
 
 const collaborators = ref<RepoCollaborator[]>([])
 const collabUsername = ref('')
@@ -52,19 +87,6 @@ const saving = ref(false)
 const deleting = ref(false)
 const redirected = ref(false)
 
-const mirrorEnabled = ref(false)
-const mirrorDirection = ref<MirrorDirection>('pull')
-const mirrorURL = ref('')
-const mirrorUsername = ref('')
-const mirrorPassword = ref('')
-const mirrorClearPassword = ref(false)
-const mirrorHasPassword = ref(false)
-const mirrorLastSyncAt = ref('')
-const mirrorLastError = ref('')
-const mirrorBusy = ref(false)
-const mirrorError = ref('')
-const mirrorMessage = ref('')
-
 const loading = computed(() => dataLoading.value)
 
 const branchOptions = computed(() => {
@@ -94,16 +116,6 @@ function syncFormFromRepo() {
   issuesEnabled.value = repo.value.issues_enabled !== false
   defaultBranch.value = repo.value.default_branch
   folderPathKey.value = normalizeRepoPath(repo.value.folder_path || '')
-
-  mirrorEnabled.value = !!repo.value.mirror_direction
-  mirrorDirection.value = (repo.value.mirror_direction === 'push' ? 'push' : 'pull')
-  mirrorURL.value = repo.value.mirror_url || ''
-  mirrorUsername.value = repo.value.mirror_username || ''
-  mirrorPassword.value = ''
-  mirrorClearPassword.value = false
-  mirrorHasPassword.value = !!repo.value.mirror_has_password
-  mirrorLastSyncAt.value = repo.value.mirror_last_sync_at || ''
-  mirrorLastError.value = repo.value.mirror_last_error || ''
 }
 
 async function denyNonOwner() {
@@ -187,7 +199,7 @@ async function save() {
       currentPath = repoFullPath(moved.folder_path || '', moved.name)
       invalidateRepo(props.repoPath)
       invalidateRepo(currentPath)
-      await router.replace(repoLocation('repo-settings', currentPath))
+      await router.replace(settingsLocation(currentPath))
       message.value = i18n.global.t('settings.savedMoved')
       return
     }
@@ -195,7 +207,7 @@ async function save() {
     if (currentPath !== props.repoPath) {
       invalidateRepo(props.repoPath)
       invalidateRepo(currentPath)
-      await router.replace(repoLocation('repo-settings', currentPath))
+      await router.replace(settingsLocation(currentPath))
       message.value = i18n.global.t('settings.saved')
       return
     }
@@ -207,72 +219,6 @@ async function save() {
     formError.value = localizeError(err, 'errors.saveFailed')
   } finally {
     saving.value = false
-  }
-}
-
-async function saveMirror() {
-  if (!canAdmin.value) {
-    return
-  }
-
-  mirrorBusy.value = true
-  mirrorError.value = ''
-  mirrorMessage.value = ''
-  try {
-    if (!mirrorEnabled.value) {
-      await reposApi.configureMirror(props.repoPath, { enabled: false })
-      mirrorMessage.value = i18n.global.t('settings.mirrorDisabled')
-    } else {
-      const body: Parameters<typeof reposApi.configureMirror>[1] = {
-        enabled: true,
-        direction: mirrorDirection.value,
-        url: mirrorURL.value.trim(),
-        username: mirrorUsername.value.trim(),
-      }
-      
-      if (mirrorClearPassword.value) {
-        body.clear_password = true
-      } else if (mirrorPassword.value) {
-        body.password = mirrorPassword.value
-      }
-
-      await reposApi.configureMirror(props.repoPath, body)
-      mirrorMessage.value = i18n.global.t('settings.mirrorSaved')
-    }
-
-    mirrorPassword.value = ''
-    mirrorClearPassword.value = false
-    invalidateRepo(props.repoPath)
-    await reload()
-    syncFormFromRepo()
-  } catch (err) {
-    mirrorError.value = localizeError(err, 'errors.saveFailed')
-  } finally {
-    mirrorBusy.value = false
-  }
-}
-
-async function syncMirrorNow() {
-  if (!canAdmin.value) {
-    return
-  }
-
-  mirrorBusy.value = true
-  mirrorError.value = ''
-  mirrorMessage.value = ''
-  try {
-    await reposApi.syncMirror(props.repoPath)
-    mirrorMessage.value = i18n.global.t('settings.mirrorSynced')
-    invalidateRepo(props.repoPath)
-    await reload()
-    syncFormFromRepo()
-  } catch (err) {
-    mirrorError.value = localizeError(err, 'errors.mirrorSyncFailed')
-    invalidateRepo(props.repoPath)
-    await reload()
-    syncFormFromRepo()
-  } finally {
-    mirrorBusy.value = false
   }
 }
 
@@ -349,202 +295,148 @@ watch([() => props.repoPath, repo, canAdmin], load, { immediate: true })
     :error="repoError"
   >
     <PageState v-if="canAdmin" :loading="loading" :error="loadError">
-      <form class="overflow-hidden border border-line bg-paper" @submit.prevent="save">
-        <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('settings.title') }}</div>
-        <div class="p-3 sm:p-4 space-y-4">
-          <label class="block text-sm">
-            <span class="mb-1 block font-semibold">{{ $t('settings.name') }}</span>
-            <input
-              v-model="name"
-              :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'font-mono']"
-              required
-              :placeholder="$t('modal.repoNamePlaceholder')"
-            />
-          </label>
-          <label class="block text-sm">
-            <span class="mb-1 block font-semibold">{{ $t('settings.description') }}</span>
-            <textarea v-model="description" rows="3" :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-h-20 resize-y']" />
-          </label>
-          <label class="block text-sm">
-            <span class="mb-1 block font-semibold">{{ $t('settings.defaultBranch') }}</span>
-            <select
-              v-model="defaultBranch"
-              :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'font-mono']"
-              :disabled="!branchOptions.length"
-            >
-              <option v-for="b in branchOptions" :key="b" :value="b">{{ b }}</option>
-            </select>
-            <p v-if="!branchOptions.length" class="mt-1 text-xs text-ink-muted">
-              {{ $t('settings.noBranches') }}
-            </p>
-          </label>
-          <label class="flex items-center gap-2 text-sm">
-            <input v-model="isPrivate" type="checkbox" class="accent-ink" @change="isPrivate && (showOnHome = false)" />
-            {{ $t('settings.private') }}
-          </label>
-          <label class="flex items-center gap-2 text-sm" :class="isPrivate && 'opacity-50'">
-            <input v-model="showOnHome" type="checkbox" class="accent-ink" :disabled="isPrivate" />
-            {{ $t('settings.showOnHome') }}
-          </label>
-          <p class="text-xs text-ink-muted">{{ $t('settings.showOnHomeHint') }}</p>
-          <label class="flex items-center gap-2 text-sm">
-            <input v-model="protectBranch" type="checkbox" class="accent-ink" />
-            {{ $t('settings.protectBranch') }}
-          </label>
-          <label class="flex items-center gap-2 text-sm">
-            <input v-model="issuesEnabled" type="checkbox" class="accent-ink" />
-            {{ $t('settings.issues') }}
-          </label>
-          <p class="text-xs text-ink-muted">{{ $t('settings.issuesHint') }}</p>
-          <label class="block text-sm">
-            <span class="mb-1 block font-semibold">{{ $t('settings.folder') }}</span>
-            <select v-model="folderPathKey" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
-              <option v-for="opt in folderOptions" :key="opt.path || 'root'" :value="opt.path">
-                {{ opt.path === '' ? $t('nav.root') : opt.label }}
-              </option>
-            </select>
-          </label>
-          <p v-if="formError" class="text-sm text-warn">{{ formError }}</p>
-          <p v-else-if="message" class="text-sm text-ink">{{ message }}</p>
-          <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="saving">
-            {{ saving ? $t('settings.saving') : $t('settings.save') }}
-          </button>
-        </div>
-      </form>
+      <div class="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
+        <nav
+          class="flex shrink-0 gap-1 overflow-x-auto border-b border-line md:w-44 md:flex-col md:overflow-visible md:border-b-0 md:border-r md:pr-3"
+          :aria-label="$t('settings.title')"
+        >
+          <RouterLink
+            v-for="item in SETTINGS_SECTIONS"
+            :key="item.id"
+            :to="settingsLocation(repoPath, item.id)"
+            :class="navClass(item.id)"
+          >
+            {{ $t(item.labelKey) }}
+          </RouterLink>
+        </nav>
 
-      <form class="overflow-hidden border border-line bg-paper mt-6" @submit.prevent="saveMirror">
-        <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">
-          {{ $t('settings.mirrorTitle') }}
-        </div>
-        <div class="space-y-4 p-3 sm:p-4">
-          <p class="text-xs text-ink-muted">{{ $t('settings.mirrorIntro') }}</p>
-          <label class="flex items-center gap-2 text-sm">
-            <input v-model="mirrorEnabled" type="checkbox" class="accent-ink">
-            {{ $t('settings.mirrorEnable') }}
-          </label>
-          <template v-if="mirrorEnabled">
-            <label class="block text-sm">
-              <span class="mb-1 block font-semibold">{{ $t('settings.mirrorDirection') }}</span>
-              <select v-model="mirrorDirection" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
-                <option value="pull">{{ $t('settings.mirrorPull') }}</option>
-                <option value="push">{{ $t('settings.mirrorPush') }}</option>
-              </select>
-            </label>
-            <p class="text-xs text-ink-muted">
-              {{ mirrorDirection === 'push' ? $t('settings.mirrorPushHint') : $t('settings.mirrorPullHint') }}
-            </p>
-            <label class="block text-sm">
-              <span class="mb-1 block font-semibold">{{ $t('settings.mirrorURL') }}</span>
-              <input
-                v-model="mirrorURL"
-                type="url"
-                required
-                class="w-full border border-line bg-paper px-2 py-1 font-mono text-[10pt] text-ink outline-none"
-                :placeholder="$t('modal.mirrorURLPlaceholder')"
-              >
-            </label>
-            <label class="block text-sm">
-              <span class="mb-1 block font-semibold">{{ $t('settings.mirrorUsername') }}</span>
-              <input
-                v-model="mirrorUsername"
-                class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
-                :placeholder="$t('modal.optional')"
-                autocomplete="off"
-              >
-            </label>
-            <label class="block text-sm">
-              <span class="mb-1 block font-semibold">{{ $t('settings.mirrorPassword') }}</span>
-              <input
-                v-model="mirrorPassword"
-                type="password"
-                class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none"
-                :placeholder="mirrorHasPassword ? $t('settings.mirrorPasswordKeep') : $t('modal.optional')"
-                autocomplete="new-password"
-              >
-            </label>
-            <label v-if="mirrorHasPassword" class="flex items-center gap-2 text-sm">
-              <input v-model="mirrorClearPassword" type="checkbox" class="accent-ink">
-              {{ $t('settings.mirrorClearPassword') }}
-            </label>
-            <p v-if="mirrorLastSyncAt" class="text-xs text-ink-muted">
-              {{ $t('settings.mirrorLastSync', { at: formatDate(mirrorLastSyncAt) }) }}
-            </p>
-            <p v-if="mirrorLastError" class="text-sm text-warn">{{ mirrorLastError }}</p>
-          </template>
-          <p v-if="mirrorError" class="text-sm text-warn">{{ mirrorError }}</p>
-          <p v-else-if="mirrorMessage" class="text-sm text-ink">{{ mirrorMessage }}</p>
-          <div class="flex flex-wrap gap-2">
-            <button
-              type="submit"
-              class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="mirrorBusy"
-            >
-              {{ mirrorBusy ? $t('settings.saving') : $t('settings.mirrorSave') }}
-            </button>
-            <button
-              v-if="mirrorEnabled && mirrorURL"
-              type="button"
-              class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-path disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="mirrorBusy"
-              @click="syncMirrorNow"
-            >
-              {{ $t('settings.mirrorSync') }}
-            </button>
-          </div>
-        </div>
-      </form>
-
-      <div class="overflow-hidden border border-line bg-paper mt-6">
-        <div class="flex items-center justify-between gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">
-          <span>{{ $t('collaborators.title') }}</span>
-          <button type="button" class="inline-flex items-center justify-center border border-ink bg-ink px-2 py-0.5 text-[10pt] text-paper hover:bg-ink-muted" @click="showCollabForm = !showCollabForm">
-            {{ $t('collaborators.add') }}
-          </button>
-        </div>
-        <form v-if="showCollabForm" class="space-y-3 border-b border-line p-3 sm:p-4" @submit.prevent="addCollaborator">
-          <label class="block text-sm">
-            <span class="mb-1 block font-semibold">{{ $t('collaborators.username') }}</span>
-            <input v-model="collabUsername" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" required />
-          </label>
-          <label class="block text-sm">
-            <span class="mb-1 block font-semibold">{{ $t('collaborators.role') }}</span>
-            <select v-model="collabRole" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
-              <option value="read">{{ $t('collaborators.roles.read') }}</option>
-              <option value="write">{{ $t('collaborators.roles.write') }}</option>
-              <option value="admin">{{ $t('collaborators.roles.admin') }}</option>
-            </select>
-          </label>
-          <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:opacity-50" :disabled="collabBusy">
-            {{ $t('collaborators.submit') }}
-          </button>
-        </form>
-        <p v-if="collabError" class="px-3 pt-3 text-sm text-warn">{{ collabError }}</p>
-        <ul class="divide-y divide-line">
-          <li v-for="c in collaborators" :key="c.user_id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
-            <div>
-              <p class="font-semibold">{{ c.username }}</p>
-              <p class="text-xs text-ink-muted">{{ $t(`collaborators.roles.${c.role}`) }}</p>
+        <div class="min-w-0 flex-1">
+          <form
+            v-if="section === 'general'"
+            class="overflow-hidden border border-line bg-paper"
+            @submit.prevent="save"
+          >
+            <div class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('settings.general') }}</div>
+            <div class="space-y-4 p-3 sm:p-4">
+              <label class="block text-sm">
+                <span class="mb-1 block font-semibold">{{ $t('settings.name') }}</span>
+                <input
+                  v-model="name"
+                  :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'font-mono']"
+                  required
+                  :placeholder="$t('modal.repoNamePlaceholder')"
+                />
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block font-semibold">{{ $t('settings.description') }}</span>
+                <textarea v-model="description" rows="3" :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-h-20 resize-y']" />
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block font-semibold">{{ $t('settings.defaultBranch') }}</span>
+                <select
+                  v-model="defaultBranch"
+                  :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'font-mono']"
+                  :disabled="!branchOptions.length"
+                >
+                  <option v-for="b in branchOptions" :key="b" :value="b">{{ b }}</option>
+                </select>
+                <p v-if="!branchOptions.length" class="mt-1 text-xs text-ink-muted">
+                  {{ $t('settings.noBranches') }}
+                </p>
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input v-model="isPrivate" type="checkbox" class="accent-ink" @change="isPrivate && (showOnHome = false)" />
+                {{ $t('settings.private') }}
+              </label>
+              <label class="flex items-center gap-2 text-sm" :class="isPrivate && 'opacity-50'">
+                <input v-model="showOnHome" type="checkbox" class="accent-ink" :disabled="isPrivate" />
+                {{ $t('settings.showOnHome') }}
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input v-model="protectBranch" type="checkbox" class="accent-ink" />
+                {{ $t('settings.protectBranch') }}
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input v-model="issuesEnabled" type="checkbox" class="accent-ink" />
+                {{ $t('settings.issues') }}
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block font-semibold">{{ $t('settings.folder') }}</span>
+                <select v-model="folderPathKey" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
+                  <option v-for="opt in folderOptions" :key="opt.path || 'root'" :value="opt.path">
+                    {{ opt.path === '' ? $t('nav.root') : opt.label }}
+                  </option>
+                </select>
+              </label>
+              <p v-if="formError" class="text-sm text-warn">{{ formError }}</p>
+              <p v-else-if="message" class="text-sm text-ink">{{ message }}</p>
+              <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="saving">
+                {{ saving ? $t('settings.saving') : $t('settings.save') }}
+              </button>
             </div>
-            <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-warn hover:bg-warn-soft" @click="removeCollaborator(c.username)">
-              {{ $t('collaborators.remove') }}
-            </button>
-          </li>
-          <li v-if="!collaborators.length" class="px-3 py-6 text-center text-sm text-ink-muted sm:px-4">
-            {{ $t('collaborators.empty') }}
-          </li>
-        </ul>
-      </div>
+          </form>
 
-      <div class="overflow-hidden border border-line bg-paper mt-6">
-        <h2 class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink text-warn">{{ $t('settings.danger') }}</h2>
-        <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4">
-          <div>
-            <p class="font-medium">{{ $t('settings.delete') }}</p>
-            <p class="text-sm text-ink-muted">{{ $t('settings.dangerText') }}</p>
+          <MirrorSettingsForm
+            v-else-if="section === 'mirror' && repo"
+            :key="repoPath"
+            :repo-path="repoPath"
+            :repo="repo"
+            @changed="invalidateRepo(repoPath)"
+          />
+
+          <div v-else-if="section === 'collaborators'" class="overflow-hidden border border-line bg-paper">
+            <div class="flex items-center justify-between gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">
+              <span>{{ $t('collaborators.title') }}</span>
+              <button type="button" class="inline-flex items-center justify-center border border-ink bg-ink px-2 py-0.5 text-[10pt] text-paper hover:bg-ink-muted" @click="showCollabForm = !showCollabForm">
+                {{ $t('collaborators.add') }}
+              </button>
+            </div>
+            <form v-if="showCollabForm" class="space-y-3 border-b border-line p-3 sm:p-4" @submit.prevent="addCollaborator">
+              <label class="block text-sm">
+                <span class="mb-1 block font-semibold">{{ $t('collaborators.username') }}</span>
+                <input v-model="collabUsername" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none" required />
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block font-semibold">{{ $t('collaborators.role') }}</span>
+                <select v-model="collabRole" class="w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none">
+                  <option value="read">{{ $t('collaborators.roles.read') }}</option>
+                  <option value="write">{{ $t('collaborators.roles.write') }}</option>
+                  <option value="admin">{{ $t('collaborators.roles.admin') }}</option>
+                </select>
+              </label>
+              <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:opacity-50" :disabled="collabBusy">
+                {{ $t('collaborators.submit') }}
+              </button>
+            </form>
+            <p v-if="collabError" class="px-3 pt-3 text-sm text-warn">{{ collabError }}</p>
+            <ul class="divide-y divide-line">
+              <li v-for="c in collaborators" :key="c.user_id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
+                <div>
+                  <p class="font-semibold">{{ c.username }}</p>
+                  <p class="text-xs text-ink-muted">{{ $t(`collaborators.roles.${c.role}`) }}</p>
+                </div>
+                <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-warn hover:bg-warn-soft" @click="removeCollaborator(c.username)">
+                  {{ $t('collaborators.remove') }}
+                </button>
+              </li>
+              <li v-if="!collaborators.length" class="px-3 py-6 text-center text-sm text-ink-muted sm:px-4">
+                {{ $t('collaborators.empty') }}
+              </li>
+            </ul>
           </div>
-          <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-warn hover:bg-warn-soft disabled:cursor-not-allowed disabled:opacity-50" :disabled="deleting" @click="remove">
-            {{ deleting ? $t('settings.deleting') : $t('settings.delete') }}
-          </button>
+
+          <div v-else-if="section === 'danger'" class="overflow-hidden border border-line bg-paper">
+            <h2 class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink text-warn">{{ $t('settings.danger') }}</h2>
+            <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4">
+              <div>
+                <p class="font-medium">{{ $t('settings.delete') }}</p>
+                <p class="text-sm text-ink-muted">{{ $t('settings.dangerText') }}</p>
+              </div>
+              <button type="button" class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-warn hover:bg-warn-soft disabled:cursor-not-allowed disabled:opacity-50" :disabled="deleting" @click="remove">
+                {{ deleting ? $t('settings.deleting') : $t('settings.delete') }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </PageState>

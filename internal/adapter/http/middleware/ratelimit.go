@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const maxRateBuckets = 4096
+
 type rateBucket struct {
 	tokens float64
 	last   time.Time
@@ -58,6 +60,12 @@ func (l *RateLimiter) Allow(key string) bool {
 
 	b, ok := l.buckets[key]
 	if !ok {
+		if len(l.buckets) >= maxRateBuckets {
+			l.sweep(now)
+			l.lastSweep = now
+			l.evictToCap(maxRateBuckets - 1)
+		}
+
 		l.buckets[key] = &rateBucket{
 			tokens: l.burst - 1,
 			last:   now,
@@ -87,6 +95,16 @@ func (l *RateLimiter) sweep(now time.Time) {
 	}
 }
 
+func (l *RateLimiter) evictToCap(n int) {
+	for k := range l.buckets {
+		if len(l.buckets) <= n {
+			return
+		}
+
+		delete(l.buckets, k)
+	}
+}
+
 func writeRateLimited(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Retry-After", "60")
@@ -97,7 +115,7 @@ func writeRateLimited(w http.ResponseWriter) {
 func RateLimit(apiLimiter, authLimiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := ClientIP(r)
+			ip := ClientIPKey(r)
 			if strings.HasPrefix(r.URL.Path, "/api/auth/") {
 				if authLimiter != nil && !authLimiter.Allow(ip) {
 					writeRateLimited(w)
@@ -118,7 +136,7 @@ func RateLimit(apiLimiter, authLimiter *RateLimiter) func(http.Handler) http.Han
 func RateLimitIP(limiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if limiter != nil && !limiter.Allow(ClientIP(r)) {
+			if limiter != nil && !limiter.Allow(ClientIPKey(r)) {
 				writeRateLimited(w)
 				return
 			}

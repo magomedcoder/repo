@@ -23,7 +23,7 @@ const (
 	accessVisitThrottle = time.Minute
 	accessPurgeEveryN   = 128
 	maxVisitPathLen     = 512
-	maxVisitKeys        = 10000
+	maxVisitKeys        = 2048
 	visitBurstPerIP     = 60
 )
 
@@ -32,9 +32,14 @@ type Logger struct {
 	security chan *domain.AccessLog
 	visits   chan *domain.AccessLog
 
-	visitMu   sync.Mutex
-	visitLast map[string]time.Time
-	visitIP   map[string]visitWindow
+	visitMu     sync.Mutex
+	visitLast   map[string]time.Time
+	visitIP     map[string]visitWindow
+	visitLastGC time.Time
+
+	stop      chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
 
 	writes atomic.Uint64
 }
@@ -55,12 +60,27 @@ func New(store domain.AccessLogStore) *Logger {
 		visits:    make(chan *domain.AccessLog, visitQueueSize),
 		visitLast: make(map[string]time.Time),
 		visitIP:   make(map[string]visitWindow),
+		stop:      make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 	go l.worker()
 	return l
 }
 
+func (l *Logger) Close() {
+	if l == nil {
+		return
+	}
+
+	l.closeOnce.Do(func() {
+		close(l.stop)
+	})
+	<-l.done
+}
+
 func (l *Logger) worker() {
+	defer close(l.done)
+
 	for {
 		select {
 		case ev := <-l.security:
@@ -74,7 +94,32 @@ func (l *Logger) worker() {
 			l.write(ev)
 		case ev := <-l.visits:
 			l.write(ev)
+		case <-l.stop:
+			l.drain()
+			return
 		}
+	}
+}
+
+func (l *Logger) drain() {
+	for {
+		select {
+		case ev := <-l.security:
+			l.write(ev)
+		case ev := <-l.visits:
+			l.write(ev)
+		default:
+			return
+		}
+	}
+}
+
+func (l *Logger) stopped() bool {
+	select {
+	case <-l.stop:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -142,12 +187,14 @@ func (l *Logger) VisitPath(r *http.Request, user *domain.User, pathValue string)
 }
 
 func (l *Logger) allowVisit(r *http.Request, pathValue string) bool {
-	ip := middleware.ClientIP(r)
+	ip := middleware.ClientIPKey(r)
 	key := ip + "\n" + pathValue
 	now := time.Now()
 
 	l.visitMu.Lock()
 	defer l.visitMu.Unlock()
+
+	l.gcVisitsLocked(now)
 
 	if last, ok := l.visitLast[key]; ok && now.Sub(last) < accessVisitThrottle {
 		return false
@@ -191,6 +238,25 @@ func (l *Logger) allowVisit(r *http.Request, pathValue string) bool {
 	}
 
 	return true
+}
+
+func (l *Logger) gcVisitsLocked(now time.Time) {
+	if now.Sub(l.visitLastGC) < accessVisitThrottle {
+		return
+	}
+
+	l.visitLastGC = now
+	for k, t := range l.visitLast {
+		if now.Sub(t) >= accessVisitThrottle {
+			delete(l.visitLast, k)
+		}
+	}
+
+	for k, v := range l.visitIP {
+		if now.Sub(v.start) >= accessVisitThrottle {
+			delete(l.visitIP, k)
+		}
+	}
 }
 
 func (l *Logger) Clone(r *http.Request, repoPath string, user *domain.User) {
@@ -254,7 +320,7 @@ func (l *Logger) AdminUserDelete(r *http.Request, actor *domain.User, targetID s
 }
 
 func (l *Logger) record(r *http.Request, action string, user *domain.User, repo, ref, pathValue string) {
-	if l == nil || l.store == nil || r == nil {
+	if l == nil || l.store == nil || r == nil || l.stopped() {
 		return
 	}
 
@@ -291,6 +357,7 @@ func (l *Logger) record(r *http.Request, action string, user *domain.User, repo,
 	defer t.Stop()
 	select {
 	case l.security <- ev:
+	case <-l.stop:
 	case <-t.C:
 		slog.Error("access_log_security_dropped", "action", action)
 	}

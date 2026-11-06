@@ -117,6 +117,9 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	defer func() {
+		_ = body.Close()
+	}()
 
 	w.Header().Set("Content-Type", "application/x-"+string(service)+"-result")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -223,7 +226,17 @@ func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) 
 	return nil, usecase.ErrUnauthorized
 }
 
-func gitPackBody(w http.ResponseWriter, r *http.Request, limit int64) (io.Reader, error) {
+type gzipPackBody struct {
+	io.Reader
+	gz   *gzip.Reader
+	body io.Closer
+}
+
+func (b *gzipPackBody) Close() error {
+	return errors.Join(b.gz.Close(), b.body.Close())
+}
+
+func gitPackBody(w http.ResponseWriter, r *http.Request, limit int64) (io.ReadCloser, error) {
 	body := http.MaxBytesReader(w, r.Body, limit)
 	if !strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
 		return body, nil
@@ -231,10 +244,15 @@ func gitPackBody(w http.ResponseWriter, r *http.Request, limit int64) (io.Reader
 
 	gz, err := gzip.NewReader(body)
 	if err != nil {
+		_ = body.Close()
 		return nil, err
 	}
 
-	return http.MaxBytesReader(w, gz, limit), nil
+	return &gzipPackBody{
+		Reader: http.MaxBytesReader(w, gz, limit),
+		gz:     gz,
+		body:   body,
+	}, nil
 }
 
 func parseGitHTTPPath(urlPath string) (repoPath, action string, err error) {

@@ -17,6 +17,10 @@ const (
 	DefaultSiteName           = "Repo"
 	DefaultBranch             = "main"
 	DefaultMirrorPullInterval = 5 * time.Minute
+	DefaultMirrorWorkers      = 4
+	DefaultMirrorCloneTimeout = 15 * time.Minute
+	DefaultMirrorFetchTimeout = 10 * time.Minute
+	DefaultMirrorPushTimeout  = 10 * time.Minute
 )
 
 type Config struct {
@@ -31,6 +35,15 @@ type Config struct {
 	MirrorPullInterval string   `yaml:"mirror_pull_interval"`
 	TrustedProxyNets   []*net.IPNet
 	MirrorPullEvery    time.Duration `yaml:"-"`
+
+	MirrorWorkers      int    `yaml:"mirror_workers"`
+	MirrorCloneTimeout string `yaml:"mirror_clone_timeout"`
+	MirrorFetchTimeout string `yaml:"mirror_fetch_timeout"`
+	MirrorPushTimeout  string `yaml:"mirror_push_timeout"`
+
+	MirrorCloneTimeoutDur time.Duration `yaml:"-"`
+	MirrorFetchTimeoutDur time.Duration `yaml:"-"`
+	MirrorPushTimeoutDur  time.Duration `yaml:"-"`
 }
 
 func Default() Config {
@@ -41,6 +54,14 @@ func Default() Config {
 		ReceiveMaxBytes:    DefaultReceiveMax,
 		MirrorPullInterval: "5m",
 		MirrorPullEvery:    DefaultMirrorPullInterval,
+
+		MirrorWorkers:         DefaultMirrorWorkers,
+		MirrorCloneTimeout:    "15m",
+		MirrorFetchTimeout:    "10m",
+		MirrorPushTimeout:     "10m",
+		MirrorCloneTimeoutDur: DefaultMirrorCloneTimeout,
+		MirrorFetchTimeoutDur: DefaultMirrorFetchTimeout,
+		MirrorPushTimeoutDur:  DefaultMirrorPushTimeout,
 	}
 }
 
@@ -87,6 +108,10 @@ func Load(path string) (Config, error) {
 
 	cfg.MirrorPullEvery = every
 
+	if err := cfg.normalizeMirror(); err != nil {
+		return Config{}, err
+	}
+
 	nets, err := parseCIDRs(cfg.TrustedProxies)
 	if err != nil {
 		return Config{}, err
@@ -94,6 +119,41 @@ func Load(path string) (Config, error) {
 	cfg.TrustedProxyNets = nets
 
 	return cfg, nil
+}
+
+func (c *Config) normalizeMirror() error {
+	if c.MirrorWorkers <= 0 {
+		c.MirrorWorkers = DefaultMirrorWorkers
+	}
+
+	var err error
+	if c.MirrorCloneTimeoutDur, err = parseDurationDefault("mirror_clone_timeout", c.MirrorCloneTimeout, DefaultMirrorCloneTimeout); err != nil {
+		return err
+	}
+
+	if c.MirrorFetchTimeoutDur, err = parseDurationDefault("mirror_fetch_timeout", c.MirrorFetchTimeout, DefaultMirrorFetchTimeout); err != nil {
+		return err
+	}
+
+	if c.MirrorPushTimeoutDur, err = parseDurationDefault("mirror_push_timeout", c.MirrorPushTimeout, DefaultMirrorPushTimeout); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func parseDurationDefault(field, raw string, def time.Duration) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return def, nil
+	}
+
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("%s: invalid duration %q", field, raw)
+	}
+
+	return d, nil
 }
 
 func (c Config) ValidateSecrets() error {

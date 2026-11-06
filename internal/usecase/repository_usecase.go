@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"net/url"
+	"log/slog"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v6/plumbing"
@@ -57,6 +55,14 @@ type CreateRepositoryInput struct {
 	MirrorURL       string
 	MirrorUsername  string
 	MirrorPassword  string
+
+	MirrorSSHPrivateKey string
+	MirrorSSHPassphrase string
+	MirrorInterval      string
+	MirrorRefspecs      string
+	MirrorLFS           bool
+	MirrorMaxBytes      int64
+	MirrorGroupID       uint
 }
 
 type UpdateRepositoryInput struct {
@@ -105,6 +111,28 @@ type RepositoryItem struct {
 	MirrorHasPassword    bool       `json:"mirror_has_password"`
 	MirrorLastSyncAt     *time.Time `json:"mirror_last_sync_at,omitzero"`
 	MirrorLastError      string     `json:"mirror_last_error,omitzero"`
+	MirrorEnabled        *bool      `json:"mirror_enabled,omitzero"`
+	MirrorStatus         string     `json:"mirror_status,omitzero"`
+	MirrorReadOnly       bool       `json:"mirror_read_only,omitzero"`
+	MirrorRemoteHEAD     string     `json:"mirror_remote_head,omitzero"`
+	MirrorLastProgress   string     `json:"mirror_last_progress,omitzero"`
+	MirrorInterval       string     `json:"mirror_interval,omitzero"`
+	MirrorSyncWindow     string     `json:"mirror_sync_window,omitzero"`
+	MirrorForce          *bool      `json:"mirror_force,omitzero"`
+	MirrorPrune          *bool      `json:"mirror_prune,omitzero"`
+	MirrorRefspecs       string     `json:"mirror_refspecs,omitzero"`
+	MirrorHasSSHKey      bool       `json:"mirror_has_ssh_key,omitzero"`
+	MirrorInsecureTLS    bool       `json:"mirror_insecure_tls,omitzero"`
+	MirrorPinnedHosts    string     `json:"mirror_pinned_hosts,omitzero"`
+	MirrorLFS            bool       `json:"mirror_lfs,omitzero"`
+	MirrorPartial        bool       `json:"mirror_partial,omitzero"`
+	MirrorVerifySigned   bool       `json:"mirror_verify_signed,omitzero"`
+	MirrorMaxBytes       int64      `json:"mirror_max_bytes,omitzero"`
+	MirrorConflictPolicy string     `json:"mirror_conflict_policy,omitzero"`
+	MirrorFailCount      int        `json:"mirror_fail_count,omitzero"`
+	MirrorNextSyncAt     *time.Time `json:"mirror_next_sync_at,omitzero"`
+	MirrorOwnerOnly      bool       `json:"mirror_owner_only,omitzero"`
+	MirrorGroupID        uint       `json:"mirror_group_id,omitzero"`
 	CanRead              bool       `json:"can_read"`
 	CanWrite             bool       `json:"can_write"`
 	CanAdmin             bool       `json:"can_admin"`
@@ -113,14 +141,13 @@ type RepositoryItem struct {
 }
 
 type RepositoryUseCase struct {
-	store       domain.RepositoryStore
-	folders     domain.FolderStore
-	users       domain.UserStore
-	git         domain.GitRepository
-	activity    domain.ActivityStore
-	authz       *Authz
-	mirrorMu    sync.Mutex
-	mirrorLocks map[uint]*sync.Mutex
+	store    domain.RepositoryStore
+	folders  domain.FolderStore
+	users    domain.UserStore
+	git      domain.GitRepository
+	activity domain.ActivityStore
+	authz    *Authz
+	mirror   *mirrorRuntime
 }
 
 func NewRepositoryUseCase(
@@ -138,6 +165,7 @@ func NewRepositoryUseCase(
 		git:      git,
 		activity: activity,
 		authz:    authz,
+		mirror:   newMirrorRuntime(),
 	}
 }
 
@@ -215,24 +243,9 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		return nil, ErrAlreadyExists
 	}
 
-	mirrorURL := strings.TrimSpace(in.MirrorURL)
-	mirrorDir := domain.MirrorNone
-	if mirrorURL != "" {
-		if err := validateMirrorURL(mirrorURL); err != nil {
-			return nil, err
-		}
-
-		var derr error
-		mirrorDir, derr = normalizeMirrorDirection(in.MirrorDirection)
-		if derr != nil {
-			return nil, derr
-		}
-
-		if mirrorDir == domain.MirrorNone {
-			mirrorDir = domain.MirrorPull
-		}
-	} else if strings.TrimSpace(in.MirrorDirection) != "" {
-		return nil, ErrInvalidMirrorURL
+	mspec, err := uc.prepareCreateMirror(in)
+	if err != nil {
+		return nil, err
 	}
 
 	branch := strings.TrimSpace(in.DefaultBranch)
@@ -259,11 +272,8 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		IssuesEnabled:        true,
 		DefaultBranch:        branch,
 		Path:                 repoPath,
-		MirrorDirection:      mirrorDir,
-		MirrorURL:            mirrorURL,
-		MirrorUsername:       strings.TrimSpace(in.MirrorUsername),
-		MirrorPassword:       in.MirrorPassword,
 	}
+	applyCreateMirror(repo, mspec)
 	if err := uc.store.Create(repo); err != nil {
 		if isUniqueViolation(err) {
 			return nil, ErrAlreadyExists
@@ -272,33 +282,11 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		return nil, fmt.Errorf("save repository metadata: %w", err)
 	}
 
-	auth := mirrorAuthFromRepo(repo)
-	switch mirrorDir {
-	case domain.MirrorPull:
-		detected, merr := uc.git.MirrorClone(ctx, repoPath, mirrorURL, auth)
-		if merr != nil {
-			_ = uc.git.Remove(repoPath)
-			_ = uc.store.Delete(repo.ID)
-			return nil, ErrMirrorFailed
+	if mspec != nil && mspec.Direction == domain.MirrorPull {
+		if err := uc.cloneNewMirror(ctx, repo, viewerID); err != nil {
+			return nil, err
 		}
-
-		if detected != "" {
-			if verr := validateBranchName(detected); verr == nil {
-				repo.DefaultBranch = detected
-			}
-		}
-
-		now := time.Now().UTC()
-		repo.MirrorLastSyncAt = &now
-		_ = uc.store.Update(repo)
-		_ = uc.git.EnsureDefaultBranch(repoPath, repo.DefaultBranch)
-	case domain.MirrorPush:
-		if err := uc.git.InitBare(repoPath, domain.BareInitOptions{DefaultBranch: branch}); err != nil {
-			_ = uc.store.Delete(repo.ID)
-			return nil, fmt.Errorf("init bare repository: %w", err)
-		}
-
-	default:
+	} else {
 		if err := uc.git.InitBare(repoPath, domain.BareInitOptions{DefaultBranch: branch}); err != nil {
 			_ = uc.store.Delete(repo.ID)
 			return nil, fmt.Errorf("init bare repository: %w", err)
@@ -316,31 +304,6 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 	})
 
 	return &item, nil
-}
-
-func validateMirrorURL(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return ErrInvalidMirrorURL
-	}
-
-	scheme := strings.ToLower(u.Scheme)
-	if scheme != "https" && scheme != "http" {
-		return ErrInvalidMirrorURL
-	}
-
-	host := strings.ToLower(u.Hostname())
-	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "metadata.google.internal" {
-		return ErrInvalidMirrorURL
-	}
-
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-			return ErrInvalidMirrorURL
-		}
-	}
-
-	return nil
 }
 
 func (uc *RepositoryUseCase) ListOwn(ctx context.Context, ownerID uint, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
@@ -594,7 +557,35 @@ func (uc *RepositoryUseCase) Delete(ctx context.Context, in ResolveRepositoryInp
 	if diskErr != nil {
 		diskErr = fmt.Errorf("delete repository files: %w", diskErr)
 	}
+	if metaErr == nil {
+		uc.releaseMirrorRuntime(repo.ID)
+		if uc.mirror.events != nil {
+			if err := uc.mirror.events.DeleteByRepo(ctx, repo.ID); err != nil {
+				slog.Warn("delete mirror events", "repo_id", repo.ID, "err", err)
+			}
+		}
+	}
+
 	return errors.Join(metaErr, diskErr)
+}
+
+func (uc *RepositoryUseCase) PurgeSoftDeletedRepos(ctx context.Context, olderThan time.Duration) (int, error) {
+	ids, err := uc.store.PurgeSoftDeleted(ctx, time.Now().UTC().Add(-olderThan))
+	if err != nil {
+		return 0, fmt.Errorf("purge soft-deleted repositories: %w", err)
+	}
+
+	var errs []error
+	for _, id := range ids {
+		uc.releaseMirrorRuntime(id)
+		if uc.mirror.events != nil {
+			if err := uc.mirror.events.DeleteByRepo(ctx, id); err != nil {
+				errs = append(errs, fmt.Errorf("delete mirror events for repository %d: %w", id, err))
+			}
+		}
+	}
+
+	return len(ids), errors.Join(errs...)
 }
 
 func (uc *RepositoryUseCase) Move(ctx context.Context, in MoveRepositoryInput) (*RepositoryItem, error) {
@@ -902,15 +893,45 @@ func (uc *RepositoryUseCase) toRepositoryItem(repo *domain.Repository, ownerUser
 	}
 
 	if repo.MirrorDirection != domain.MirrorNone {
-		item.MirrorDirection = repo.MirrorDirection
-		item.MirrorURL = repo.MirrorURL
-		if item.CanAdmin {
-			item.MirrorUsername = repo.MirrorUsername
-			item.MirrorHasPassword = repo.MirrorPassword != ""
-			item.MirrorLastSyncAt = repo.MirrorLastSyncAt
-			item.MirrorLastError = repo.MirrorLastError
-		}
+		fillMirrorItem(&item, repo)
 	}
 
 	return item
+}
+
+func fillMirrorItem(item *RepositoryItem, repo *domain.Repository) {
+	enabled := repo.MirrorEnabled
+	item.MirrorDirection = repo.MirrorDirection
+	item.MirrorURL = domain.RedactURL(repo.MirrorURL)
+	item.MirrorEnabled = &enabled
+	item.MirrorStatus = effectiveMirrorStatus(repo)
+	item.MirrorReadOnly = repo.MirrorDirection == domain.MirrorPull
+	item.MirrorLastSyncAt = repo.MirrorLastSyncAt
+	item.MirrorRemoteHEAD = repo.MirrorRemoteHEAD
+	item.MirrorLastProgress = repo.MirrorLastProgress
+
+	if !item.CanAdmin {
+		return
+	}
+
+	force, prune := repo.MirrorForce, repo.MirrorPrune
+	item.MirrorUsername = repo.MirrorUsername
+	item.MirrorHasPassword = repo.MirrorPassword != ""
+	item.MirrorLastError = repo.MirrorLastError
+	item.MirrorInterval = repo.MirrorInterval
+	item.MirrorSyncWindow = repo.MirrorSyncWindow
+	item.MirrorForce, item.MirrorPrune = &force, &prune
+	item.MirrorRefspecs = repo.MirrorRefspecs
+	item.MirrorHasSSHKey = repo.MirrorSSHPrivateKey != ""
+	item.MirrorInsecureTLS = repo.MirrorInsecureTLS
+	item.MirrorPinnedHosts = repo.MirrorPinnedHosts
+	item.MirrorLFS = repo.MirrorLFS
+	item.MirrorPartial = repo.MirrorPartial
+	item.MirrorVerifySigned = repo.MirrorVerifySigned
+	item.MirrorMaxBytes = repo.MirrorMaxBytes
+	item.MirrorConflictPolicy = repo.MirrorConflictPolicy
+	item.MirrorFailCount = repo.MirrorFailCount
+	item.MirrorNextSyncAt = repo.MirrorNextSyncAt
+	item.MirrorOwnerOnly = repo.MirrorOwnerOnly
+	item.MirrorGroupID = repo.MirrorGroupID
 }

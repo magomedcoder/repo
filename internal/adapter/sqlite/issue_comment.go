@@ -1,99 +1,71 @@
 package sqlite
 
 import (
-	"time"
+	"context"
 
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
-type issueCommentModel struct {
-	ID        uint `gorm:"primaryKey"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	IssueID   uint   `gorm:"not null;index"`
-	AuthorID  uint   `gorm:"not null"`
-	Body      string `gorm:"not null"`
+func (s *Issue) issueComments() *gormutil.Repo[model.IssueComment] {
+	r := gormutil.NewRepo[model.IssueComment](s.Db)
+	return &r
 }
 
-func (issueCommentModel) TableName() string {
-	return "issue_comments"
-}
-
-func (s *IssueStore) CountComments(issueID uint) (int, error) {
-	var n int64
-	if err := s.db.Model(&issueCommentModel{}).Where("issue_id = ?", issueID).Count(&n).Error; err != nil {
+func (s *Issue) CountComments(issueID uint) (int, error) {
+	n, err := s.issueComments().QueryCount(context.Background(), "issue_id = ?", issueID)
+	if err != nil {
 		return 0, err
 	}
 
 	return int(n), nil
 }
 
-func (s *IssueStore) CreateComment(comment *domain.IssueComment) error {
-	model := issueCommentFromDomain(comment)
-	if err := s.db.Create(model).Error; err != nil {
+func (s *Issue) CreateComment(comment *domain.IssueComment) error {
+	m := model.IssueCommentFromDomain(comment)
+	if err := s.issueComments().Create(context.Background(), m); err != nil {
 		return err
 	}
 
-	*comment = model.toDomain()
+	*comment = m.ToDomain()
 	return nil
 }
 
-func (s *IssueStore) UpdateComment(comment *domain.IssueComment) error {
-	model := issueCommentFromDomain(comment)
-	if err := s.db.Save(model).Error; err != nil {
+func (s *Issue) UpdateComment(comment *domain.IssueComment) error {
+	m := model.IssueCommentFromDomain(comment)
+	if err := s.issueComments().Save(context.Background(), m); err != nil {
 		return err
 	}
 
-	*comment = model.toDomain()
+	*comment = m.ToDomain()
 	return nil
 }
 
-func (s *IssueStore) DeleteComment(id uint) error {
-	return s.db.Delete(&issueCommentModel{}, id).Error
+func (s *Issue) DeleteComment(id uint) error {
+	return s.issueComments().DeleteByID(context.Background(), id)
 }
 
-func (s *IssueStore) FindComment(id uint) (*domain.IssueComment, error) {
-	var model issueCommentModel
-	if err := s.db.First(&model, id).Error; err != nil {
+func (s *Issue) FindComment(id uint) (*domain.IssueComment, error) {
+	row, err := s.issueComments().FindByID(context.Background(), id)
+	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	c := model.toDomain()
+	c := row.ToDomain()
 	return &c, nil
 }
 
-func (s *IssueStore) ListComments(issueID uint) ([]domain.IssueComment, error) {
-	var models []issueCommentModel
-	if err := s.db.Where("issue_id = ?", issueID).Order("created_at asc").Find(&models).Error; err != nil {
+func (s *Issue) ListComments(issueID uint) ([]domain.IssueComment, error) {
+	models, err := s.issueComments().FindByWhereAndOrder(context.Background(), "issue_id = ?", "created_at asc", issueID)
+	if err != nil {
 		return nil, err
 	}
 
 	out := make([]domain.IssueComment, 0, len(models))
 	for _, m := range models {
-		out = append(out, m.toDomain())
+		out = append(out, m.ToDomain())
 	}
 
 	return out, nil
-}
-
-func issueCommentFromDomain(c *domain.IssueComment) *issueCommentModel {
-	return &issueCommentModel{
-		ID:        c.ID,
-		IssueID:   c.IssueID,
-		AuthorID:  c.AuthorID,
-		Body:      c.Body,
-		CreatedAt: c.CreatedAt,
-		UpdatedAt: c.UpdatedAt,
-	}
-}
-
-func (m issueCommentModel) toDomain() domain.IssueComment {
-	return domain.IssueComment{
-		ID:        m.ID,
-		IssueID:   m.IssueID,
-		AuthorID:  m.AuthorID,
-		Body:      m.Body,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
-	}
 }

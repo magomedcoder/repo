@@ -1,102 +1,76 @@
 package sqlite
 
 import (
-	"time"
+	"context"
 
 	"gorm.io/gorm"
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
-type folderMemberModel struct {
-	ID        uint `gorm:"primaryKey"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt
-	FolderID  uint   `gorm:"not null"`
-	UserID    uint   `gorm:"not null"`
-	Role      string `gorm:"size:16;not null"`
-	Caps      uint32 `gorm:"not null;default:0"`
+type FolderMember struct {
+	gormutil.Repo[model.FolderMember]
 }
 
-func (folderMemberModel) TableName() string {
-	return "folder_members"
+func NewFolderMemberRepo(db *gorm.DB) *FolderMember {
+	return &FolderMember{Repo: gormutil.NewRepo[model.FolderMember](db)}
 }
 
-func (m folderMemberModel) toDomain() domain.FolderMember {
-	return domain.FolderMember{
-		ID:        m.ID,
-		FolderID:  m.FolderID,
-		UserID:    m.UserID,
-		Role:      domain.FolderRole(m.Role),
-		Caps:      domain.FolderCap(m.Caps),
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
+func (s *FolderMember) Create(mem *domain.FolderMember) error {
+	row := model.FolderMember{
+		FolderID: mem.FolderID,
+		UserID:   mem.UserID,
+		Role:     string(mem.Role),
+		Caps:     uint32(mem.Caps),
 	}
-}
-
-type FolderMemberStore struct {
-	db *gorm.DB
-}
-
-func NewFolderMemberStore(db *gorm.DB) *FolderMemberStore {
-	return &FolderMemberStore{db: db}
-}
-
-func (s *FolderMemberStore) Create(m *domain.FolderMember) error {
-	model := folderMemberModel{
-		FolderID: m.FolderID,
-		UserID:   m.UserID,
-		Role:     string(m.Role),
-		Caps:     uint32(m.Caps),
-	}
-	if err := s.db.Create(&model).Error; err != nil {
+	if err := s.Repo.Create(context.Background(), &row); err != nil {
 		return err
 	}
-	*m = model.toDomain()
+	*mem = row.ToDomain()
 
 	return nil
 }
 
-func (s *FolderMemberStore) Update(m *domain.FolderMember) error {
-	model := folderMemberModel{
-		ID:       m.ID,
-		FolderID: m.FolderID,
-		UserID:   m.UserID,
-		Role:     string(m.Role),
-		Caps:     uint32(m.Caps),
+func (s *FolderMember) Update(mem *domain.FolderMember) error {
+	row := model.FolderMember{
+		ID:       mem.ID,
+		FolderID: mem.FolderID,
+		UserID:   mem.UserID,
+		Role:     string(mem.Role),
+		Caps:     uint32(mem.Caps),
 	}
-	if err := s.db.Save(&model).Error; err != nil {
+	if err := s.Save(context.Background(), &row); err != nil {
 		return err
 	}
-	*m = model.toDomain()
+	*mem = row.ToDomain()
 
 	return nil
 }
 
-func (s *FolderMemberStore) Delete(folderID, userID uint) error {
-	return s.db.Where("folder_id = ? AND user_id = ?", folderID, userID).Delete(&folderMemberModel{}).Error
+func (s *FolderMember) Delete(folderID, userID uint) error {
+	return s.DeleteWhere(context.Background(), "folder_id = ? AND user_id = ?", folderID, userID)
 }
 
-func (s *FolderMemberStore) Find(folderID, userID uint) (*domain.FolderMember, error) {
-	var model folderMemberModel
-	err := s.db.Where("folder_id = ? AND user_id = ?", folderID, userID).First(&model).Error
+func (s *FolderMember) Find(folderID, userID uint) (*domain.FolderMember, error) {
+	row, err := s.FindByWhere(context.Background(), "folder_id = ? AND user_id = ?", folderID, userID)
 	if err != nil {
 		return nil, mapDBErr(err)
 	}
-	out := model.toDomain()
+	out := row.ToDomain()
 
 	return &out, nil
 }
 
-func (s *FolderMemberStore) ListByFolder(folderID uint) ([]domain.FolderMember, error) {
-	var models []folderMemberModel
-	if err := s.db.Where("folder_id = ?", folderID).Order("id ASC").Find(&models).Error; err != nil {
+func (s *FolderMember) ListByFolder(folderID uint) ([]domain.FolderMember, error) {
+	models, err := s.FindByWhereAndOrder(context.Background(), "folder_id = ?", "id ASC", folderID)
+	if err != nil {
 		return nil, err
 	}
 
 	out := make([]domain.FolderMember, 0, len(models))
 	for _, m := range models {
-		out = append(out, m.toDomain())
+		out = append(out, m.ToDomain())
 	}
 
 	return out, nil

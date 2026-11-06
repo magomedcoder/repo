@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type AccessToken struct {
 	ID         uint
@@ -25,4 +28,6 @@ type AccessTokenStore interface {
 	DeleteByUserID(userID uint) error
 
 	TouchLastUsed(id uint, at time.Time) error
+
+	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }

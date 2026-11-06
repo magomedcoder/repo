@@ -7,13 +7,13 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 )
 
-func TestUserStoreRefusesInvalidRole(t *testing.T) {
+func TestUserRepoRefusesInvalidRole(t *testing.T) {
 	dir := t.TempDir()
 	db, err := NewDB(filepath.Join(dir, "data"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := NewUserStore(db)
+	store := NewUserRepo(db)
 
 	err = store.Create(&domain.User{
 		Username:     "badrole",

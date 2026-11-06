@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -200,7 +199,6 @@ func (r *Repository) ListTree(repoPath, ref, dirPath string) ([]domain.TreeEntry
 		}
 	}
 
-	sizeCache := make(map[plumbing.Hash]int64)
 	out := make([]domain.TreeEntry, 0, len(tree.Entries))
 	for _, e := range tree.Entries {
 		entryPath := e.Name
@@ -218,8 +216,6 @@ func (r *Repository) ListTree(repoPath, ref, dirPath string) ([]domain.TreeEntry
 		switch e.Mode {
 		case filemode.Dir:
 			item.Type = "tree"
-			budget := &treeSizeBudget{remaining: maxTreeSizeNodes}
-			item.Size = treeSizeCached(repo, e.Hash, sizeCache, 0, budget)
 		default:
 			item.Type = "blob"
 			if blob, err := repo.BlobObject(e.Hash); err == nil {
@@ -235,54 +231,13 @@ func (r *Repository) ListTree(repoPath, ref, dirPath string) ([]domain.TreeEntry
 
 const (
 	maxTreeHistoryWalk = 100
-	maxTreeSizeDepth   = 8
-	maxTreeSizeNodes   = 5000
 	maxStatsCommits    = 10000
 	maxStatsLangFiles  = 20000
 	maxBlameLines      = 20000
 	maxDiffFiles       = 500
 	maxDiffPatchBytes  = 1 << 20
 	maxCommitOffset    = 10000
-	maxDiskStatFiles   = 50000
 )
-
-type treeSizeBudget struct {
-	remaining int
-}
-
-func treeSizeCached(repo *gogit.Repository, hash plumbing.Hash, cache map[plumbing.Hash]int64, depth int, budget *treeSizeBudget) int64 {
-	if size, ok := cache[hash]; ok {
-		return size
-	}
-	if depth > maxTreeSizeDepth || budget == nil || budget.remaining <= 0 {
-		return 0
-	}
-
-	tree, err := repo.TreeObject(hash)
-	if err != nil {
-		return 0
-	}
-
-	budget.remaining--
-	var total int64
-	for _, e := range tree.Entries {
-		if budget.remaining <= 0 {
-			break
-		}
-		switch e.Mode {
-		case filemode.Dir:
-			total += treeSizeCached(repo, e.Hash, cache, depth+1, budget)
-		default:
-			budget.remaining--
-			if blob, err := repo.BlobObject(e.Hash); err == nil {
-				total += blob.Size
-			}
-		}
-	}
-
-	cache[hash] = total
-	return total
-}
 
 func fillTreeModifiedAt(start *object.Commit, entries []domain.TreeEntry) error {
 	if len(entries) == 0 || start == nil {
@@ -461,6 +416,10 @@ func (r *Repository) getBlame(ctx context.Context, repoPath, ref, filePath strin
 		return nil, ErrBlameTooLarge
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	select {
 	case blameSem <- struct{}{}:
 	case <-ctx.Done():
@@ -600,22 +559,6 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 	stats := &domain.RepoStats{
 		Languages: map[string]int64{},
 	}
-
-	fileCount := 0
-	_ = filepath.Walk(safe, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-
-		stats.SizeBytes += info.Size()
-		fileCount++
-		if fileCount >= maxDiskStatFiles {
-			return filepath.SkipAll
-		}
-
-		return nil
-	})
-
 	if herr != nil {
 		return stats, nil
 	}
@@ -661,7 +604,7 @@ func (r *Repository) GetStats(repoPath, ref string) (*domain.RepoStats, error) {
 		return nil
 	})
 
-	if r.stats != nil && herr == nil {
+	if r.stats != nil {
 		r.stats.put(cacheKey, stats)
 	}
 

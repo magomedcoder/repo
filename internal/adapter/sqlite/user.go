@@ -4,59 +4,27 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
-type userModel struct {
-	ID           uint `gorm:"primaryKey"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	DeletedAt    gorm.DeletedAt
-	Username     string      `gorm:"size:39;not null"`
-	Email        string      `gorm:"not null"`
-	PasswordHash string      `gorm:"not null"`
-	AvatarPath   string      `gorm:"size:255"`
-	Role         domain.Role `gorm:"not null;default:0"`
+type User struct {
+	gormutil.Repo[model.User]
 }
 
-func (userModel) TableName() string {
-	return "users"
+func NewUserRepo(db *gorm.DB) *User {
+	return &User{Repo: gormutil.NewRepo[model.User](db)}
 }
 
-func (m userModel) toDomain() *domain.User {
-	role := m.Role
-	if !role.Valid() {
-		role = domain.RoleUser
-	}
-	return &domain.User{
-		ID:           m.ID,
-		Username:     m.Username,
-		Email:        m.Email,
-		PasswordHash: m.PasswordHash,
-		AvatarPath:   m.AvatarPath,
-		Role:         role,
-		CreatedAt:    m.CreatedAt,
-		UpdatedAt:    m.UpdatedAt,
-	}
-}
-
-type UserStore struct {
-	db *gorm.DB
-}
-
-func NewUserStore(db *gorm.DB) *UserStore {
-	return &UserStore{db: db}
-}
-
-func (s *UserStore) Create(user *domain.User) error {
+func (s *User) Create(user *domain.User) error {
 	if !user.Role.Valid() {
 		return fmt.Errorf("invalid role")
 	}
 
-	model := &userModel{
+	m := &model.User{
 		Username:     user.Username,
 		Email:        user.Email,
 		PasswordHash: user.PasswordHash,
@@ -64,103 +32,99 @@ func (s *UserStore) Create(user *domain.User) error {
 		Role:         user.Role,
 	}
 
-	if err := s.db.Create(model).Error; err != nil {
+	if err := s.Repo.Create(context.Background(), m); err != nil {
 		return err
 	}
 
-	user.ID = model.ID
-	user.Role = model.Role
-	user.CreatedAt = model.CreatedAt
-	user.UpdatedAt = model.UpdatedAt
+	user.ID = m.ID
+	user.Role = m.Role
+	user.CreatedAt = m.CreatedAt
+	user.UpdatedAt = m.UpdatedAt
 	return nil
 }
 
-func (s *UserStore) FindByID(ctx context.Context, id uint) (*domain.User, error) {
-	var model userModel
-	if err := s.db.WithContext(ctx).First(&model, id).Error; err != nil {
+func (s *User) FindByID(ctx context.Context, id uint) (*domain.User, error) {
+	row, err := s.Repo.FindByID(ctx, id)
+	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	return model.toDomain(), nil
+	return row.ToDomain(), nil
 }
 
-func (s *UserStore) FindByIDs(ctx context.Context, ids []uint) (map[uint]*domain.User, error) {
+func (s *User) FindByIDs(ctx context.Context, ids []uint) (map[uint]*domain.User, error) {
 	out := make(map[uint]*domain.User)
 	if len(ids) == 0 {
 		return out, nil
 	}
 
-	var models []userModel
-	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&models).Error; err != nil {
+	models, err := s.Repo.FindByIDs(ctx, ids)
+	if err != nil {
 		return nil, err
 	}
 
 	for i := range models {
-		u := models[i].toDomain()
+		u := models[i].ToDomain()
 		out[u.ID] = u
 	}
 
 	return out, nil
 }
 
-func (s *UserStore) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
-	var model userModel
-	if err := s.db.WithContext(ctx).Where("username = ?", username).First(&model).Error; err != nil {
+func (s *User) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
+	row, err := s.FindByWhere(ctx, "username = ?", username)
+	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	return model.toDomain(), nil
+	return row.ToDomain(), nil
 }
 
-func (s *UserStore) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
-	var model userModel
-	if err := s.db.WithContext(ctx).Where("email = ?", email).First(&model).Error; err != nil {
+func (s *User) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
+	row, err := s.FindByWhere(ctx, "email = ?", email)
+	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	return model.toDomain(), nil
+	return row.ToDomain(), nil
 }
 
-func (s *UserStore) ExistsByUsername(username string) (bool, error) {
-	var count int64
-	err := s.db.Unscoped().Model(&userModel{}).Where("username = ?", username).Count(&count).Error
-
-	return count > 0, err
+func (s *User) ExistsByUsername(username string) (bool, error) {
+	return s.QueryExistOpts(context.Background(), "username = ?", []any{username}, gormutil.WithUnscoped())
 }
 
-func (s *UserStore) ExistsByEmail(email string) (bool, error) {
-	var count int64
-	err := s.db.Unscoped().Model(&userModel{}).Where("email = ?", email).Count(&count).Error
-
-	return count > 0, err
+func (s *User) ExistsByEmail(email string) (bool, error) {
+	return s.QueryExistOpts(context.Background(), "email = ?", []any{email}, gormutil.WithUnscoped())
 }
 
-func (s *UserStore) Update(user *domain.User) error {
+func (s *User) Update(user *domain.User) error {
 	if !user.Role.Valid() {
 		return fmt.Errorf("invalid role")
 	}
 
-	return s.db.Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]any{
+	_, err := s.UpdateByID(context.Background(), user.ID, map[string]any{
 		"email":         user.Email,
 		"password_hash": user.PasswordHash,
 		"avatar_path":   user.AvatarPath,
 		"role":          user.Role,
-	}).Error
+	})
+	return err
 }
 
-func (s *UserStore) Delete(id uint) error {
-	return s.db.Delete(&userModel{}, id).Error
+func (s *User) Delete(id uint) error {
+	return s.DeleteByID(context.Background(), id)
 }
 
-func (s *UserStore) List(filter domain.UserListFilter) ([]domain.User, int, error) {
+func (s *User) List(filter domain.UserListFilter) ([]domain.User, int, error) {
 	limit := filter.Limit
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 
 	offset := max(filter.Offset, 0)
+	ctx := context.Background()
 
-	q := s.db.Model(&userModel{})
+	q := s.Model(ctx)
 	if query := strings.TrimSpace(filter.Query); query != "" {
 		like := "%" + escapeLike(strings.ToLower(query)) + "%"
 		q = q.Where(`lower(username) LIKE ? ESCAPE '\' OR lower(email) LIKE ? ESCAPE '\'`, like, like)
@@ -171,25 +135,23 @@ func (s *UserStore) List(filter domain.UserListFilter) ([]domain.User, int, erro
 		return nil, 0, err
 	}
 
-	var models []userModel
+	var models []model.User
 	if err := q.Order("id ASC").Limit(limit).Offset(offset).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
 
 	out := make([]domain.User, 0, len(models))
 	for i := range models {
-		out = append(out, *models[i].toDomain())
+		out = append(out, *models[i].ToDomain())
 	}
 
 	return out, int(total), nil
 }
 
-func (s *UserStore) CountByRole(role domain.Role) (int64, error) {
+func (s *User) CountByRole(role domain.Role) (int64, error) {
 	if !role.Valid() {
 		role = domain.RoleUser
 	}
 
-	var count int64
-	err := s.db.Model(&userModel{}).Where("role = ?", role).Count(&count).Error
-	return count, err
+	return s.QueryCount(context.Background(), "role = ?", role)
 }

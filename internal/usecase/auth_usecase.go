@@ -152,6 +152,10 @@ func NewAuthUseCase(
 	}
 }
 
+func (uc *AuthUseCase) StartAttemptsSweep(ctx context.Context, every time.Duration) {
+	attempts.StartBackgroundSweep(ctx, every, uc.attempts, uc.userAttempts)
+}
+
 func (uc *AuthUseCase) SetSessionSecret(secret string) {
 	uc.secret = secret
 }

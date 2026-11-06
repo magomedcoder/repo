@@ -31,12 +31,51 @@ func TestMirrorConfigureAndClear(t *testing.T) {
 		t.Fatalf("configure body %s", cfg.Body)
 	}
 
-	cleared := doJSON(t, srv, http.MethodPut, "/api/repos/app/mirror", `{"enabled":false}`, cookies)
+	paused := doJSON(t, srv, http.MethodPut, "/api/repos/app/mirror", `{"enabled":false,"direction":"push","url":"https://example.com/org/app.git"}`, cookies)
+	if paused.StatusCode != http.StatusOK {
+		t.Fatalf("pause %d %s", paused.StatusCode, paused.Body)
+	}
+
+	if !strings.Contains(paused.Body, `"mirror_status":"paused"`) || !strings.Contains(paused.Body, `"mirror_has_password":true`) ||
+		!strings.Contains(paused.Body, `"mirror_direction":"push"`) {
+		t.Fatalf("pause must keep config: %s", paused.Body)
+	}
+
+	cleared := doJSON(t, srv, http.MethodPut, "/api/repos/app/mirror", `{"clear":true}`, cookies)
 	if cleared.StatusCode != http.StatusOK {
 		t.Fatalf("clear %d %s", cleared.StatusCode, cleared.Body)
 	}
 
 	if strings.Contains(cleared.Body, `"mirror_direction":"push"`) {
 		t.Fatalf("mirror still set %s", cleared.Body)
+	}
+}
+
+func TestMirrorStatusHistoryAndAdminGuard(t *testing.T) {
+	env := newTestServer(t)
+	cookies := loginUser(t, env, "mirrorv", "mirrorv@example.com", "password1")
+	srv := env.Server
+
+	if r := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"svc","private":false}`, cookies); r.StatusCode != http.StatusCreated {
+		t.Fatalf("create %d %s", r.StatusCode, r.Body)
+	}
+
+	if r := doJSON(t, srv, http.MethodPut, "/api/repos/svc/mirror", `{"enabled":true,"direction":"push","url":"https://example.com/o/svc.git","interval":"1h","conflict_policy":"reject"}`, cookies); r.StatusCode != http.StatusOK {
+		t.Fatalf("configure %d %s", r.StatusCode, r.Body)
+	}
+
+	st := doJSON(t, srv, http.MethodGet, "/api/repos/svc/mirror", "", cookies)
+	if st.StatusCode != http.StatusOK || !strings.Contains(st.Body, `"direction":"push"`) {
+		t.Fatalf("status %d %s", st.StatusCode, st.Body)
+	}
+
+	hist := doJSON(t, srv, http.MethodGet, "/api/repos/svc/mirror/history", "", cookies)
+	if hist.StatusCode != http.StatusOK {
+		t.Fatalf("history %d %s", hist.StatusCode, hist.Body)
+	}
+
+	adm := doJSON(t, srv, http.MethodGet, "/api/admin/mirrors", "", cookies)
+	if adm.StatusCode != http.StatusForbidden && adm.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("admin mirrors %d %s", adm.StatusCode, adm.Body)
 	}
 }

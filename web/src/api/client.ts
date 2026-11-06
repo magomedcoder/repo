@@ -1,4 +1,4 @@
-import { detectLocale } from '@/i18n'
+import { getLocale } from '@/i18n'
 
 export class ApiError extends Error {
   status: number
@@ -25,7 +25,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   }
   if (!headers.has('Accept-Language')) {
-    headers.set('Accept-Language', detectLocale())
+    headers.set('Accept-Language', getLocale())
   }
 
   const res = await fetch(path, {

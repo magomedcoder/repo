@@ -96,6 +96,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/AccessLogsView.vue'),
       },
       {
+        path: 'settings/mirrors',
+        name: 'admin-mirrors',
+        meta: { requiresAdmin: true },
+        component: () => import('@/views/AdminMirrorsView.vue'),
+      },
+      {
         path: 'search',
         name: 'search',
         meta: { publicRead: true },

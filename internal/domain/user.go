@@ -108,6 +108,8 @@ type SessionStore interface {
 	DeleteByUserIDExcept(userID uint, keepToken string) error
 
 	DeleteByUserID(userID uint) error
+
+	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }
 
 type PasswordHasher interface {

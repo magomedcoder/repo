@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { cloneUrl, reposApi } from '@/api'
-import type { BlobContent, RefInfo, RepoStats, TreeEntry } from '@/api/types'
+import type { BlobContent, RepoStats, TreeEntry } from '@/api/types'
 import FileTable from '@/components/repo/FileTable.vue'
 import LanguageBar from '@/components/repo/LanguageBar.vue'
 import ReadmePanel from '@/components/repo/ReadmePanel.vue'
@@ -19,7 +19,6 @@ const props = defineProps<{
 
 const route = useRoute()
 const { repo, loading, error: repoError } = useRepo(() => props.repoPath)
-const branches = ref<RefInfo[]>([])
 const tree = ref<TreeEntry[]>([])
 const readme = ref<BlobContent | null>(null)
 const stats = ref<RepoStats | null>(null)
@@ -50,7 +49,6 @@ const hasReadme = () => !!readme.value?.content && !readme.value.is_binary
 
 async function loadRoot(ref: string) {
   const summary = await reposApi.summary(props.repoPath, ref)
-  branches.value = summary.branches ?? []
   tree.value = summary.tree ?? []
   stats.value = summary.stats ?? null
   readme.value = summary.readme ?? null
@@ -109,17 +107,6 @@ watch(
           <div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
             <span class="shrink-0 text-ink-muted">{{ $t('repo.clone') }}</span>
             <span class="min-w-0 break-all text-ink">{{ cloneUrl(repoPath) }}</span>
-          </div>
-          <div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
-            <span class="shrink-0 text-ink-muted">{{ $t('repo.branches') }}</span>
-            <span class="min-w-0 text-ink">
-              <template v-if="branches.length">
-                <span v-for="(branch, i) in branches" :key="branch.name">
-                  <span v-if="i">, </span>{{ branch.name }}
-                </span>
-              </template>
-              <span v-else class="text-ink-muted">{{ $t('repo.noneYet') }}</span>
-            </span>
           </div>
           <div v-if="stats" class="flex min-w-0 flex-wrap items-baseline gap-x-2">
             <span class="shrink-0 text-ink-muted">{{ $t('index.log') }}</span>

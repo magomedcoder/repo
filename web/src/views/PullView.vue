@@ -28,6 +28,8 @@ const comment = ref('')
 const strategy = ref<'merge' | 'ff-only'>('merge')
 const error = ref('')
 const dataLoading = ref(false)
+const compareLoading = ref(false)
+const compareError = ref('')
 const busy = ref(false)
 
 const loading = computed(() => dataLoading.value)
@@ -37,19 +39,36 @@ function canEditComment(author: string) {
   return canAdmin.value || username.value === author
 }
 
+async function loadCompare(number: number) {
+  compareLoading.value = true
+  compareError.value = ''
+  try {
+    compare.value = await pullsApi.diff(props.repoPath, number)
+    strategy.value = compare.value.can_fast_forward ? 'ff-only' : 'merge'
+  } catch (err) {
+    compare.value = null
+    compareError.value = localizeError(err, 'errors.loadPull')
+  } finally {
+    compareLoading.value = false
+  }
+}
+
 async function load() {
   dataLoading.value = true
   error.value = ''
+  compareError.value = ''
   try {
     const detail = await pullsApi.get(props.repoPath, Number(props.number))
     pull.value = detail
     if (detail.state === 'open') {
-      compare.value = await pullsApi.diff(props.repoPath, detail.number)
-      strategy.value = compare.value.can_fast_forward ? 'ff-only' : 'merge'
-    } else {
-      compare.value = null
+      dataLoading.value = false
+      await loadCompare(detail.number)
+      return
     }
+    compare.value = null
   } catch (err) {
+    pull.value = null
+    compare.value = null
     error.value = localizeError(err, 'errors.loadPull')
   } finally {
     dataLoading.value = false
@@ -208,17 +227,19 @@ watch([() => props.repoPath, () => props.number], load, { immediate: true })
           <div class="p-3 sm:p-4 flex flex-wrap items-end gap-3">
             <label class="block text-sm">
               <span class="mb-1 block font-semibold">{{ $t('pulls.strategy') }}</span>
-              <select v-model="strategy" :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-w-40']">
+              <select v-model="strategy" :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-w-40']" :disabled="compareLoading">
                 <option value="merge">{{ $t('pulls.strategyMerge') }}</option>
-                <option value="ff-only" :disabled="!!compare && !compare.can_fast_forward">{{ $t('pulls.strategyFf') }}</option>
+                <option value="ff-only" :disabled="!compare?.can_fast_forward">{{ $t('pulls.strategyFf') }}</option>
               </select>
             </label>
-            <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="busy">{{ $t('pulls.merge') }}</button>
+            <button type="submit" class="inline-flex items-center justify-center border border-ink bg-ink px-2.5 py-1 text-[10pt] text-paper hover:bg-ink-muted disabled:cursor-not-allowed disabled:opacity-50" :disabled="busy || compareLoading">{{ $t('pulls.merge') }}</button>
             <p v-if="compare?.can_fast_forward" class="text-xs text-open">{{ $t('pulls.canFf') }}</p>
           </div>
         </form>
 
-        <template v-if="compare">
+        <p v-if="compareLoading" class="mb-4 text-sm text-ink-muted">{{ $t('common.loading') }}</p>
+        <p v-else-if="compareError" class="mb-4 text-sm text-warn">{{ compareError }}</p>
+        <template v-else-if="compare">
           <h2 class="mb-2 text-sm font-semibold">{{ $t('pulls.commitsHeading', { n: compare.commits.length }) }}</h2>
           <div class="mb-4">
             <CommitList :commits="compare.commits" :repo-path="repoPath" />

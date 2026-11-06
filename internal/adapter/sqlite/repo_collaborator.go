@@ -1,97 +1,73 @@
 package sqlite
 
 import (
-	"time"
+	"context"
 
 	"gorm.io/gorm"
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
-type repoCollaboratorModel struct {
-	ID        uint `gorm:"primaryKey"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt
-	RepoID    uint   `gorm:"not null"`
-	UserID    uint   `gorm:"not null"`
-	Role      string `gorm:"size:16;not null"`
+type RepoCollaborator struct {
+	gormutil.Repo[model.RepoCollaborator]
 }
 
-func (repoCollaboratorModel) TableName() string {
-	return "repo_collaborators"
+func NewRepoCollaboratorRepo(db *gorm.DB) *RepoCollaborator {
+	return &RepoCollaborator{Repo: gormutil.NewRepo[model.RepoCollaborator](db)}
 }
 
-func (m repoCollaboratorModel) toDomain() domain.RepoCollaborator {
-	return domain.RepoCollaborator{
-		ID:        m.ID,
-		RepoID:    m.RepoID,
-		UserID:    m.UserID,
-		Role:      domain.RepoCollabRole(m.Role),
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
-	}
-}
-
-type RepoCollaboratorStore struct {
-	db *gorm.DB
-}
-
-func NewRepoCollaboratorStore(db *gorm.DB) *RepoCollaboratorStore {
-	return &RepoCollaboratorStore{db: db}
-}
-
-func (s *RepoCollaboratorStore) Upsert(c *domain.RepoCollaborator) error {
-	var existing repoCollaboratorModel
-	err := s.db.Unscoped().Where("repo_id = ? AND user_id = ?", c.RepoID, c.UserID).First(&existing).Error
+func (s *RepoCollaborator) Upsert(c *domain.RepoCollaborator) error {
+	ctx := context.Background()
+	existing, err := s.FindByWhereWithQuery(ctx, "repo_id = ? AND user_id = ?", []any{c.RepoID, c.UserID}, gormutil.WithUnscoped())
 	if err == nil {
 		existing.DeletedAt = gorm.DeletedAt{}
 		existing.Role = string(c.Role)
-		if err := s.db.Unscoped().Save(&existing).Error; err != nil {
+		if err := s.Save(ctx, existing, gormutil.WithUnscoped()); err != nil {
 			return err
 		}
-		*c = existing.toDomain()
+		*c = existing.ToDomain()
 		return nil
 	}
 
-	model := repoCollaboratorModel{
+	m := model.RepoCollaborator{
 		RepoID: c.RepoID,
 		UserID: c.UserID,
 		Role:   string(c.Role),
 	}
-	if err := s.db.Create(&model).Error; err != nil {
+	if err := s.Repo.Create(ctx, &m); err != nil {
 		return err
 	}
 
-	*c = model.toDomain()
+	*c = m.ToDomain()
 
 	return nil
 }
 
-func (s *RepoCollaboratorStore) Delete(repoID, userID uint) error {
-	return s.db.Where("repo_id = ? AND user_id = ?", repoID, userID).Delete(&repoCollaboratorModel{}).Error
+func (s *RepoCollaborator) Delete(repoID, userID uint) error {
+	return s.DeleteWhere(context.Background(), "repo_id = ? AND user_id = ?", repoID, userID)
 }
 
-func (s *RepoCollaboratorStore) Find(repoID, userID uint) (*domain.RepoCollaborator, error) {
-	var model repoCollaboratorModel
-	err := s.db.Where("repo_id = ? AND user_id = ?", repoID, userID).First(&model).Error
+func (s *RepoCollaborator) Find(repoID, userID uint) (*domain.RepoCollaborator, error) {
+	row, err := s.FindByWhere(context.Background(), "repo_id = ? AND user_id = ?", repoID, userID)
 	if err != nil {
 		return nil, mapDBErr(err)
 	}
 
-	out := model.toDomain()
+	out := row.ToDomain()
 
 	return &out, nil
 }
 
-func (s *RepoCollaboratorStore) ListByRepo(repoID uint) ([]domain.RepoCollaborator, error) {
-	var models []repoCollaboratorModel
-	if err := s.db.Where("repo_id = ?", repoID).Order("id ASC").Find(&models).Error; err != nil {
+func (s *RepoCollaborator) ListByRepo(repoID uint) ([]domain.RepoCollaborator, error) {
+	models, err := s.FindByWhereAndOrder(context.Background(), "repo_id = ?", "id ASC", repoID)
+	if err != nil {
 		return nil, err
 	}
 
 	out := make([]domain.RepoCollaborator, 0, len(models))
 	for _, m := range models {
-		out = append(out, m.toDomain())
+		out = append(out, m.ToDomain())
 	}
 
 	return out, nil

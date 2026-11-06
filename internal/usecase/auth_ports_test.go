@@ -286,6 +286,26 @@ func (s *memSessions) DeleteByUserID(userID uint) error {
 	return nil
 }
 
+func (s *memSessions) DeleteExpired(_ context.Context, now time.Time) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := s.items[:0]
+	var n int64
+	for _, item := range s.items {
+		if item.ExpiresAt.Before(now) {
+			n++
+			continue
+		}
+
+		out = append(out, item)
+	}
+
+	s.items = out
+
+	return n, nil
+}
+
 type memTokens struct {
 	n int
 }
@@ -318,6 +338,10 @@ func (m *memAccessTokens) DeleteByUserAndID(uint, uint) error {
 func (m *memAccessTokens) DeleteByUserID(id uint) error {
 	m.deletedFor = append(m.deletedFor, id)
 	return nil
+}
+
+func (m *memAccessTokens) DeleteExpired(context.Context, time.Time) (int64, error) {
+	return 0, nil
 }
 
 func (m *memAccessTokens) TouchLastUsed(uint, time.Time) error {

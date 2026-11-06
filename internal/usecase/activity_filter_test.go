@@ -33,6 +33,23 @@ func (s *memActivity) ListPublicByOwner(ownerKind string, ownerID uint, limit in
 	return s.ListByOwner(ownerKind, ownerID, limit)
 }
 
+func (s *memActivity) DeleteOlderThan(_ context.Context, before time.Time) (int64, error) {
+	kept := s.events[:0]
+	var n int64
+	for _, ev := range s.events {
+		if ev.CreatedAt.Before(before) {
+			n++
+			continue
+		}
+
+		kept = append(kept, ev)
+	}
+
+	s.events = kept
+
+	return n, nil
+}
+
 type memRepos struct {
 	items []domain.Repository
 }
@@ -111,6 +128,24 @@ func (s *memRepos) ListByMirrorDirection(context.Context, string) ([]domain.Repo
 	return nil, nil
 }
 
+func (s *memRepos) ListMirrors(context.Context, domain.MirrorListFilter) ([]domain.Repository, error) {
+	return nil, nil
+}
+
+func (s *memRepos) ResetStaleMirrorSyncing(context.Context) (int64, error) { return 0, nil }
+
+func (s *memRepos) ListMirrorSchedules(context.Context, domain.MirrorScheduleFilter) ([]domain.MirrorSchedule, error) {
+	return nil, nil
+}
+
+func (s *memRepos) CountMirrorsInError(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (s *memRepos) UpdateMirrorState(context.Context, *domain.Repository) error {
+	return nil
+}
+
 func (s *memRepos) FindByID(_ context.Context, id uint) (*domain.Repository, error) {
 	for i := range s.items {
 		if s.items[i].ID == id {
@@ -132,6 +167,10 @@ func (s *memRepos) ExistsByOwnerFolderName(string, uint, *uint, string) (bool, e
 
 func (s *memRepos) CountByFolderID(uint) (int64, error) {
 	return 0, nil
+}
+
+func (s *memRepos) PurgeSoftDeleted(context.Context, time.Time) ([]uint, error) {
+	return nil, nil
 }
 
 func (s *memRepos) TouchLastActivity(uint, time.Time) error {
