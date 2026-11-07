@@ -103,9 +103,6 @@ onUnmounted(() => {
             {{ copied ? $t('repo.copied') : $t('common.copy') }}
           </button>
         </div>
-        <p class="mt-2 text-[11px] leading-snug text-ink-muted">
-          {{ $t('repo.cloneHint') }}
-        </p>
       </div>
     </Transition>
   </div>

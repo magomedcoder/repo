@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"io"
 	"net/http"
 
@@ -51,7 +50,7 @@ func (h *ProfileHandler) UpdateMe(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.profiles.UpdateEmail(c.Ctx(), user.ID, req.Email, req.CurrentPassword)
+	out, err := h.profiles.UpdateEmail(c.Ctx(), user.ID, req.Email, req.CurrentPassword, middleware.SessionToken(c.R))
 	if err != nil {
 		return mapError(c, err)
 	}
@@ -80,12 +79,7 @@ func (h *ProfileHandler) UploadAvatar(c *httpx.Context) error {
 	}
 	defer file.Close()
 
-	buf := make([]byte, 512)
-	n, _ := file.Read(buf)
-	contentType := http.DetectContentType(buf[:n])
-	reader := io.MultiReader(bytes.NewReader(buf[:n]), file)
-
-	out, err := h.profiles.SetAvatar(c.Ctx(), user.ID, reader, contentType, header.Size)
+	out, err := h.profiles.SetAvatar(c.Ctx(), user.ID, file, header.Size)
 	if err != nil {
 		return mapError(c, err)
 	}
@@ -115,6 +109,8 @@ func (h *ProfileHandler) ServeAvatar(c *httpx.Context) error {
 
 	defer f.Close()
 	c.W.Header().Set("Content-Type", contentType)
+	c.W.Header().Set("X-Content-Type-Options", "nosniff")
+	c.W.Header().Set("Content-Disposition", "inline")
 	c.W.Header().Set("Cache-Control", "public, max-age=3600")
 	_, _ = io.Copy(c.W, f)
 	return nil

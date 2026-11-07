@@ -1,6 +1,6 @@
 import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
-import type { BlameResult, BlobContent, CommitDiff, CommitInfo, MirrorCheckResult, MirrorDryRun, MirrorStatus, MirrorSyncEvent, MirrorTarget, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, Repository, TreeEntry } from './types'
+import type { BlameResult, BlobContent, CommitDiff, CommitInfo, MirrorCheckResult, MirrorDryRun, MirrorStatus, MirrorSyncEvent, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, RepoTeamGrant, Repository, TreeEntry } from './types'
 import type { MirrorConfigureBody } from './mirror'
 export type { MirrorConfigureBody } from './mirror'
 
@@ -71,7 +71,6 @@ export const reposApi = {
   create(body: {
     name: string
     description?: string
-    folder_path?: string
     private?: boolean
     show_on_home?: boolean
     default_branch?: string
@@ -114,19 +113,6 @@ export const reposApi = {
   mirrorDryRun(path: string) {
     return api<MirrorDryRun>(`/api/repos/${encodeRepoPath(path)}/mirror/dry-run`)
   },
-  listMirrorTargets(path: string) {
-    return api<{ targets?: MirrorTarget[] } | MirrorTarget[]>(`/api/repos/${encodeRepoPath(path)}/mirror/targets`)
-  },
-  saveMirrorTarget(path: string, body: { url: string; username?: string; password?: string; enabled?: boolean }, id?: number) {
-    const base = `/api/repos/${encodeRepoPath(path)}/mirror/targets`
-    return api<MirrorTarget>(id ? `${base}/${id}` : base, {
-      method: id ? 'PUT' : 'POST',
-      body: JSON.stringify(body),
-    })
-  },
-  deleteMirrorTarget(path: string, id: number) {
-    return api<void>(`/api/repos/${encodeRepoPath(path)}/mirror/targets/${id}`, { method: 'DELETE' })
-  },
   update(
     path: string,
     body: {
@@ -142,12 +128,6 @@ export const reposApi = {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
-    })
-  },
-  move(path: string, folder_path: string, confirm: string) {
-    return api<Repository>(`/api/repos/${encodeRepoPath(path)}/move`, {
-      method: 'POST',
-      body: JSON.stringify({ folder_path, confirm }),
     })
   },
   remove(path: string, confirm: string, current_password: string) {
@@ -167,6 +147,20 @@ export const reposApi = {
   },
   removeCollaborator(path: string, username: string) {
     return api<void>(`/api/repos/${encodeRepoPath(path)}/collaborators/${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+    })
+  },
+  listTeams(path: string) {
+    return api<{ teams: RepoTeamGrant[] }>(`/api/repos/${encodeRepoPath(path)}/teams`)
+  },
+  grantTeam(path: string, body: { team: string; role: RepoCollabRole | string }) {
+    return api<RepoTeamGrant>(`/api/repos/${encodeRepoPath(path)}/teams`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  revokeTeam(path: string, slug: string) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}`, {
       method: 'DELETE',
     })
   },

@@ -1,33 +1,9 @@
-import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { accessApi, reposApi } from '@/api'
 import { repoLocation } from '@/lib/repoNav'
 import { useAuth } from '@/composables/useAuth'
 import { useRegistration } from '@/composables/useRegistration'
 import { useSite } from '@/composables/useSite'
-
-const REPO_TAB_ROUTES: Record<string, string> = {
-  settings: 'repo-settings',
-  commits: 'repo-commits',
-  blob: 'repo-blob',
-  refs: 'repo-refs',
-  issues: 'repo-issues',
-  pulls: 'repo-pulls',
-}
-
-function redirectReservedRepoTab(to: RouteLocationNormalized) {
-  const name = String(to.params.name || '')
-  const routeName = REPO_TAB_ROUTES[name]
-  if (!routeName) {
-    return true
-  }
-
-  return {
-    name: routeName,
-    params: { repoPath: String(to.params.folder || '') },
-    query: to.query,
-    hash: to.hash,
-  }
-}
 
 const routes: RouteRecordRaw[] = [
   {
@@ -54,9 +30,15 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/home.vue'),
       },
       {
-        path: 'folders',
-        name: 'folders',
-        component: () => import('@/views/folders/index.vue'),
+        path: 'settings/teams',
+        name: 'teams',
+        component: () => import('@/views/profile/teams.vue'),
+      },
+      {
+        path: 'settings/teams/:slug',
+        name: 'team',
+        component: () => import('@/views/profile/team.vue'),
+        props: true,
       },
       {
         path: 'settings/tokens',
@@ -84,22 +66,36 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/profile/password.vue'),
       },
       {
-        path: 'settings/users',
-        name: 'users',
+        path: 'cp',
+        component: () => import('@/layouts/CpLayout.vue'),
         meta: { requiresAdmin: true },
-        component: () => import('@/views/admin/users.vue'),
-      },
-      {
-        path: 'settings/access-logs',
-        name: 'access-logs',
-        meta: { requiresAdmin: true },
-        component: () => import('@/views/admin/access-logs.vue'),
-      },
-      {
-        path: 'settings/mirrors',
-        name: 'admin-mirrors',
-        meta: { requiresAdmin: true },
-        component: () => import('@/views/admin/mirrors.vue'),
+        children: [
+          {
+            path: '',
+            name: 'cp',
+            component: () => import('@/views/admin/overview.vue'),
+          },
+          {
+            path: 'users',
+            name: 'users',
+            component: () => import('@/views/admin/users.vue'),
+          },
+          {
+            path: 'access-logs',
+            name: 'access-logs',
+            component: () => import('@/views/admin/access-logs.vue'),
+          },
+          {
+            path: 'mirrors',
+            name: 'admin-mirrors',
+            component: () => import('@/views/admin/mirrors.vue'),
+          },
+          {
+            path: 'repos',
+            name: 'cp-repos',
+            component: () => import('@/views/admin/repos.vue'),
+          },
+        ],
       },
       {
         path: 'search',
@@ -108,83 +104,73 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/search.vue'),
       },
       {
-        path: ':repoPath(.*)/pulls/:number',
+        path: ':repoPath/pulls/:number',
         name: 'repo-pull',
         meta: { publicRead: true },
         component: () => import('@/views/repo/pull.vue'),
         props: true,
       },
       {
-        path: ':repoPath(.*)/pulls',
+        path: ':repoPath/pulls',
         name: 'repo-pulls',
         meta: { publicRead: true },
         component: () => import('@/views/repo/pulls.vue'),
         props: true,
       },
       {
-        path: ':repoPath(.*)/issues/:number',
+        path: ':repoPath/issues/:number',
         name: 'repo-issue',
         meta: { publicRead: true },
         component: () => import('@/views/repo/issue.vue'),
         props: true,
       },
       {
-        path: ':repoPath(.*)/issues',
+        path: ':repoPath/issues',
         name: 'repo-issues',
         meta: { publicRead: true },
         component: () => import('@/views/repo/issues.vue'),
         props: true,
       },
       {
-        path: ':repoPath(.*)/commits/:sha',
+        path: ':repoPath/commits/:sha',
         name: 'repo-commit',
         meta: { publicRead: true },
         component: () => import('@/views/repo/commit.vue'),
         props: true,
       },
       {
-        path: ':repoPath(.*)/refs',
+        path: ':repoPath/refs',
         name: 'repo-refs',
         meta: { publicRead: true },
         component: () => import('@/views/repo/refs.vue'),
         props: true,
       },
       {
-        path: ':repoPath(.*)/commits',
+        path: ':repoPath/commits',
         name: 'repo-commits',
         meta: { publicRead: true },
         component: () => import('@/views/repo/commits.vue'),
         props: true,
       },
       {
-        path: ':repoPath(.*)/blob',
+        path: ':repoPath/blob',
         name: 'repo-blob',
         meta: { publicRead: true },
         component: () => import('@/views/repo/blob.vue'),
         props: true,
       },
       {
-        path: ':repoPath(.*)/settings',
+        path: ':repoPath/settings',
         name: 'repo-settings',
         meta: { requiresRepoAdmin: true },
         component: () => import('@/views/repo/settings.vue'),
         props: true,
       },
       {
-        path: ':folder/:name',
+        path: ':repoPath',
         name: 'repo',
         meta: { publicRead: true },
-        beforeEnter: redirectReservedRepoTab,
         component: () => import('@/views/repo/home.vue'),
-        props: (route) => ({
-          repoPath: `${String(route.params.folder)}/${String(route.params.name)}`,
-        }),
-      },
-      {
-        path: ':folderPath',
-        name: 'folder',
-        meta: { publicRead: true },
-        component: () => import('@/views/path-entry.vue'),
         props: true,
       },
       {

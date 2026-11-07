@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/secretbox"
 )
 
 func pull(e *mirrorEnv, id uint) error {
@@ -399,7 +400,6 @@ func TestConfigureStoresCredsAndNeverReturnsSecrets(t *testing.T) {
 	repo := e.store.add(domain.Repository{
 		Name:          "app",
 		RepoPath:      "app.git",
-		OwnerKind:     domain.OwnerKindUser,
 		OwnerID:       1,
 		DefaultBranch: "main",
 	})
@@ -419,8 +419,13 @@ func TestConfigureStoresCredsAndNeverReturnsSecrets(t *testing.T) {
 	}
 
 	stored := e.store.get(repo.ID)
-	if stored.MirrorPassword != pw {
-		t.Fatalf("password must be stored: %q", stored.MirrorPassword)
+	if !secretbox.IsSealed(stored.MirrorPassword) {
+		t.Fatalf("password must be sealed: %q", stored.MirrorPassword)
+	}
+
+	plain, err := e.uc.openSecret(stored.MirrorPassword)
+	if err != nil || plain != pw {
+		t.Fatalf("password round-trip: %q %v", plain, err)
 	}
 
 	if !item.MirrorHasPassword || strings.Contains(fmt.Sprintf("%+v", *item), pw) {
@@ -435,6 +440,19 @@ func TestConfigureStoresCredsAndNeverReturnsSecrets(t *testing.T) {
 		URL:       "file:///etc",
 	}); !errors.Is(err, ErrInvalidMirrorURL) {
 		t.Fatalf("bad url: %v", err)
+	}
+}
+
+func TestOpenSecretRejectsUnsealed(t *testing.T) {
+	t.Parallel()
+
+	e := newMirrorEnv()
+	if _, err := e.uc.openSecret("legacy-plaintext"); !errors.Is(err, ErrMirrorSecretUnsealed) {
+		t.Fatalf("want ErrMirrorSecretUnsealed, got %v", err)
+	}
+
+	if plain, err := e.uc.openSecret(""); err != nil || plain != "" {
+		t.Fatalf("empty secret: %q %v", plain, err)
 	}
 }
 

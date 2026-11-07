@@ -5,16 +5,21 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	gogit "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/fsutil"
 )
 
 const lfsOutputCap = 64 << 10
+
+const bundleImportStaging = "refs/bundle-import/"
 
 type cappedBuffer struct {
 	buf []byte
@@ -64,128 +69,58 @@ func gitAvailable() bool {
 	return err == nil
 }
 
-func lfsAvailable(ctx context.Context) bool {
-	if !gitAvailable() {
-		return false
-	}
-
-	return exec.CommandContext(ctx, "git", "lfs", "version").Run() == nil
-}
-
-func lfsRemoteURL(raw string, o *domain.MirrorOptions) string {
-	if isSSHURL(raw) || o.Auth == nil || o.Auth.Password == "" {
-		return raw
-	}
-
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-
-	user := o.Auth.Username
-	if user == "" {
-		user = "git"
-	}
-
-	u.User = url.UserPassword(user, o.Auth.Password)
-
-	return u.String()
+func lfsRemoteURL(raw string, _ *domain.MirrorOptions) string {
+	return raw
 }
 
 func lfsEnv(o *domain.MirrorOptions, keyFile string) []string {
-	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	if o.InsecureTLS {
+	env := filterEnv(os.Environ(), "GIT_TERMINAL_PROMPT", "GIT_SSL_NO_VERIFY", "GIT_SSH_COMMAND")
+	env = append(env, "GIT_TERMINAL_PROMPT=0")
+	if o != nil && o.InsecureTLS {
 		env = append(env, "GIT_SSL_NO_VERIFY=true")
 	}
 
 	if keyFile != "" {
-		ssh := "ssh -i " + keyFile + " -o IdentitiesOnly=yes -o BatchMode=yes"
-		if o.InsecureTLS {
-			ssh += " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-		}
-
+		ssh := "ssh -i " + strconv.Quote(keyFile) + " -o IdentitiesOnly=yes -o BatchMode=yes"
 		env = append(env, "GIT_SSH_COMMAND="+ssh)
 	}
 
 	return env
 }
 
+func filterEnv(env []string, dropKeys ...string) []string {
+	drop := map[string]struct{}{}
+	for _, k := range dropKeys {
+		drop[k] = struct{}{}
+	}
+
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		key, _, _ := strings.Cut(e, "=")
+		if _, ok := drop[key]; ok {
+			continue
+		}
+
+		out = append(out, e)
+	}
+	return out
+}
+
 func lfsRun(ctx context.Context, repoPath, rawURL string, o *domain.MirrorOptions, verb string) error {
-	if !lfsAvailable(ctx) {
-		return domain.ErrMirrorLFSMissing
-	}
-
-	keyFile := ""
-	if isSSHURL(rawURL) && o.SSHPrivateKey != "" {
-		if o.SSHPassphrase != "" {
-			return fmt.Errorf("mirror lfs: passphrase-protected ssh keys are not supported for LFS")
-		}
-
-		f, err := os.CreateTemp("", "mirror-lfs-key-*")
-		if err != nil {
-			return fmt.Errorf("mirror lfs: %w", err)
-		}
-
-		defer os.Remove(f.Name())
-
-		key := o.SSHPrivateKey
-		if !strings.HasSuffix(key, "\n") {
-			key += "\n"
-		}
-
-		if _, err := f.WriteString(key); err != nil {
-			_ = f.Close()
-
-			return fmt.Errorf("mirror lfs: %w", err)
-		}
-
-		_ = f.Close()
-		keyFile = f.Name()
-	}
-
-	remote := lfsRemoteURL(rawURL, o)
-	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "lfs", verb, "--all", remote)
-	cmd.Env = lfsEnv(o, keyFile)
-
-	out := newCappedBuffer(lfsOutputCap)
-	cmd.Stdout = out
-	cmd.Stderr = out
-
-	if err := cmd.Run(); err != nil {
-		msg := out.String()
-		msg = strings.ReplaceAll(msg, remote, domain.RedactURL(rawURL))
-
-		if o.Auth != nil && o.Auth.Password != "" {
-			msg = strings.ReplaceAll(msg, o.Auth.Password, "***")
-		}
-
-		return fmt.Errorf("mirror lfs %s: %w: %s", verb, err, strings.TrimSpace(msg))
-	}
-
-	return nil
+	_ = ctx
+	_ = repoPath
+	_ = rawURL
+	_ = o
+	_ = verb
+	return domain.ErrMirrorLFSUnavailable
 }
 
 func partialMirrorClone(ctx context.Context, path, rawURL string, o *domain.MirrorOptions) (string, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", err
-	}
-
-	remote := lfsRemoteURL(rawURL, o)
-	args := []string{"clone", "--mirror", "--filter=blob:none", remote, path}
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = lfsEnv(o, "")
-
-	out := newCappedBuffer(lfsOutputCap)
-	cmd.Stdout = out
-	cmd.Stderr = out
-	if err := cmd.Run(); err != nil {
-		msg := strings.ReplaceAll(out.String(), remote, domain.RedactURL(rawURL))
-		return "", fmt.Errorf("partial mirror clone: %w: %s", err, strings.TrimSpace(msg))
-	}
-
-	branch, _ := detectHEADBranch(path)
-
-	return branch, nil
+	_ = ctx
+	_ = path
+	_ = rawURL
+	_ = o
+	return "", domain.ErrMirrorPartialUnavailable
 }
 
 func (r *Repository) VerifyCommitSignature(ctx context.Context, repoPath, sha string) error {
@@ -193,12 +128,17 @@ func (r *Repository) VerifyCommitSignature(ctx context.Context, repoPath, sha st
 		return fmt.Errorf("verify-commit: git binary not found")
 	}
 
+	safe, err := fsutil.SafePath(r.Root, repoPath)
+	if err != nil {
+		return err
+	}
+
 	sha = strings.TrimSpace(sha)
 	if sha == "" {
 		return fmt.Errorf("verify-commit: empty sha")
 	}
 
-	out, err := exec.CommandContext(ctx, "git", "-C", repoPath, "verify-commit", sha).CombinedOutput()
+	out, err := exec.CommandContext(ctx, "git", "-C", safe, "verify-commit", sha).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("verify-commit: %w: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -211,11 +151,16 @@ func (r *Repository) BundleCreate(ctx context.Context, repoPath, bundlePath stri
 		return fmt.Errorf("bundle: git binary not found")
 	}
 
+	safe, err := fsutil.SafePath(r.Root, repoPath)
+	if err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(filepath.Dir(bundlePath), 0o700); err != nil {
 		return fmt.Errorf("bundle: %w", err)
 	}
 
-	out, err := exec.CommandContext(ctx, "git", "-C", repoPath, "bundle", "create", bundlePath, "--all").CombinedOutput()
+	out, err := exec.CommandContext(ctx, "git", "-C", safe, "bundle", "create", bundlePath, "--all").CombinedOutput()
 	if err != nil {
 		_ = os.Remove(bundlePath)
 
@@ -225,18 +170,119 @@ func (r *Repository) BundleCreate(ctx context.Context, repoPath, bundlePath stri
 	return nil
 }
 
-func (r *Repository) BundleImport(ctx context.Context, repoPath, bundlePath string) error {
+func (r *Repository) BundleImport(ctx context.Context, repoPath, bundlePath string, protect bool) error {
 	if !gitAvailable() {
 		return fmt.Errorf("bundle: git binary not found")
 	}
 
-	if out, err := exec.CommandContext(ctx, "git", "-C", repoPath, "bundle", "verify", bundlePath).CombinedOutput(); err != nil {
+	safe, err := fsutil.SafePath(r.Root, repoPath)
+	if err != nil {
+		return err
+	}
+
+	defer r.LockRepo(safe)()
+
+	if out, err := exec.CommandContext(ctx, "git", "-C", safe, "bundle", "verify", bundlePath).CombinedOutput(); err != nil {
 		return fmt.Errorf("bundle verify: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
-	out, err := exec.CommandContext(ctx, "git", "-C", repoPath, "fetch", "--force", bundlePath, "+refs/*:refs/*").CombinedOutput()
+	if !protect {
+		out, err := exec.CommandContext(ctx, "git", "-C", safe, "fetch", "--force", bundlePath, "+refs/*:refs/*").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("bundle import: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+
+		return nil
+	}
+
+	return bundleImportProtected(ctx, safe, bundlePath)
+}
+
+func cleanupBundleStaging(safe string) {
+	out, err := exec.Command("git", "-C", safe, "for-each-ref", "--format=%(refname)", bundleImportStaging).Output()
+	if err != nil {
+		return
+	}
+
+	for ref := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		ref = strings.TrimSpace(ref)
+		if ref == "" || !strings.HasPrefix(ref, bundleImportStaging) {
+			continue
+		}
+		_ = exec.Command("git", "-C", safe, "update-ref", "-d", ref).Run()
+	}
+}
+
+func bundleImportProtected(ctx context.Context, safe, bundlePath string) error {
+	defer cleanupBundleStaging(safe)
+
+	out, err := exec.CommandContext(ctx, "git", "-C", safe, "fetch", "--force", bundlePath, "+refs/*:"+bundleImportStaging+"*").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bundle import: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	repo, err := gogit.PlainOpen(safe)
+	if err != nil {
+		return fmt.Errorf("bundle import: open: %w", err)
+	}
+	defer repo.Close()
+
+	storer := repo.Storer
+	iter, err := repo.References()
+	if err != nil {
+		return fmt.Errorf("bundle import: refs: %w", err)
+	}
+	defer iter.Close()
+
+	type update struct {
+		name plumbing.ReferenceName
+		new  plumbing.Hash
+	}
+	var planned []update
+
+	err = iter.ForEach(func(ref *plumbing.Reference) error {
+		if ref == nil || ref.Type() != plumbing.HashReference {
+			return nil
+		}
+
+		name := ref.Name().String()
+		if !strings.HasPrefix(name, bundleImportStaging) {
+			return nil
+		}
+
+		finalName := plumbing.ReferenceName("refs/" + strings.TrimPrefix(name, bundleImportStaging))
+		newHash := ref.Hash()
+		oldHash := plumbing.ZeroHash
+		if cur, rerr := storer.Reference(finalName); rerr == nil && cur != nil && cur.Type() == plumbing.HashReference {
+			oldHash = cur.Hash()
+		}
+
+		ancestor := true
+		if !oldHash.IsZero() && !newHash.IsZero() && strings.HasPrefix(string(finalName), "refs/heads/") {
+			ok, aerr := isAncestorInStorer(ctx, storer, oldHash, newHash)
+			if aerr != nil || !ok {
+				ancestor = false
+			}
+		}
+
+		if err := domain.CheckRefUpdate(true, string(finalName), oldHash.String(), newHash.String(), ancestor); err != nil {
+			return err
+		}
+
+		planned = append(planned, update{
+			name: finalName,
+			new:  newHash,
+		})
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("bundle import: %w", err)
+	}
+
+	for _, u := range planned {
+		if err := storer.SetReference(plumbing.NewHashReference(u.name, u.new)); err != nil {
+			return fmt.Errorf("bundle import: update %s: %w", u.name, err)
+		}
 	}
 
 	return nil

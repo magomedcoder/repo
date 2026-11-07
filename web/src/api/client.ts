@@ -42,7 +42,7 @@ export function clearCSRFToken() {
   csrfToken = ''
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function api<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
@@ -86,6 +86,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       if (typeof body.error === 'string') {
         message = body.error
       }
+
       if (typeof body.code === 'string') {
         code = body.code
       }
@@ -93,6 +94,14 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
     if (code === 'csrf') {
       clearCSRFToken()
+      if (!retried) {
+        const retryHeaders = new Headers(init.headers)
+        retryHeaders.delete('X-CSRF-Token')
+        return api<T>(path, { 
+          ...init, 
+          headers: retryHeaders
+        }, true)
+      }
     }
 
     throw new ApiError(res.status, message, code)

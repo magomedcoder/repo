@@ -50,6 +50,11 @@ func (h *AuthHandler) Registration(c *httpx.Context) error {
 	return httpx.OK(c, registrationResponse{AllowRegistration: h.allowRegistration})
 }
 
+func (h *AuthHandler) CSRF(c *httpx.Context) error {
+	token := middleware.EnsureCSRFCookie(c.W, c.R, h.secure, h.csrfSecret)
+	return httpx.OK(c, map[string]string{"csrf_token": token})
+}
+
 type registerRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`

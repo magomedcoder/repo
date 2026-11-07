@@ -153,6 +153,14 @@ watch(
                       {{ latestSha }}
                     </RouterLink>
                     <span v-if="latest.authored_at">{{ idleAge(latest.authored_at) }}</span>
+                    <RouterLink
+                      v-if="stats"
+                      :to="repoLocation('repo-commits', repoPath)"
+                      class="inline-flex items-center gap-1 text-ink-muted no-underline hover:text-link hover:underline"
+                    >
+                      <Icon name="commit" size="sm" />
+                      {{ commitLabel }}
+                    </RouterLink>
                   </div>
                 </div>
               </template>
@@ -179,16 +187,6 @@ watch(
             <p v-else class="text-sm text-ink-muted">
               {{ $t('repo.noneYet') }}
             </p>
-          </div>
-
-          <div v-if="stats" class="border-t border-line/70 pt-3">
-            <RouterLink
-              :to="repoLocation('repo-commits', repoPath)"
-              class="inline-flex items-center gap-1.5 text-sm text-ink no-underline hover:text-link hover:underline"
-            >
-              <Icon name="commit" size="sm" class="text-ink-muted" />
-              {{ commitLabel }}
-            </RouterLink>
           </div>
 
           <div

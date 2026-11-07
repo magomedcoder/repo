@@ -2,7 +2,13 @@ package domain
 
 import (
 	"context"
+	"strings"
 	"time"
+)
+
+const (
+	TokenScopeGitRead  = "git:read"
+	TokenScopeGitWrite = "git:write"
 )
 
 type AccessToken struct {
@@ -11,9 +17,21 @@ type AccessToken struct {
 	Name       string
 	TokenHash  string
 	Prefix     string
+	Scope      string
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
 	ExpiresAt  *time.Time
+}
+
+func NormalizeTokenScope(scope string) string {
+	switch strings.TrimSpace(strings.ToLower(scope)) {
+	case "", TokenScopeGitWrite, "write":
+		return TokenScopeGitWrite
+	case TokenScopeGitRead, "read":
+		return TokenScopeGitRead
+	default:
+		return ""
+	}
 }
 
 type AccessTokenStore interface {

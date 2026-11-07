@@ -1,8 +1,6 @@
 package gormutil
 
 import (
-	"fmt"
-
 	"gorm.io/gorm"
 )
 
@@ -45,14 +43,4 @@ func Paginate(pagination *Pagination) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Offset(pagination.GetOffset()).Limit(pagination.GetLimit())
 	}
-}
-
-func LimitOffset(limit, offset int) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Offset(offset).Limit(limit)
-	}
-}
-
-func CustomPagination(pagination *Pagination) string {
-	return fmt.Sprintf("LIMIT %d OFFSET %d", pagination.GetLimit(), pagination.GetOffset())
 }

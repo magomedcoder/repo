@@ -19,11 +19,17 @@ func NewAccessTokenRepo(db *gorm.DB) *AccessToken {
 }
 
 func (s *AccessToken) Create(token *domain.AccessToken) error {
+	scope := token.Scope
+	if scope == "" {
+		scope = domain.TokenScopeGitWrite
+	}
+
 	m := &model.AccessToken{
 		UserID:    token.UserID,
 		Name:      token.Name,
 		TokenHash: token.TokenHash,
 		Prefix:    token.Prefix,
+		Scope:     scope,
 		ExpiresAt: token.ExpiresAt,
 	}
 	if err := s.Repo.Create(context.Background(), m); err != nil {

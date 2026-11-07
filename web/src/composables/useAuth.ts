@@ -30,12 +30,14 @@ export function useAuth() {
   async function login(login: string, password: string) {
     clearCSRFToken()
     state.user = await authApi.login({ login, password })
+    clearCSRFToken()
     state.ready = true
   }
 
   async function register(body: { username: string; email: string; password: string }) {
     clearCSRFToken()
     state.user = await authApi.register(body)
+    clearCSRFToken()
     state.ready = true
     return state.user
   }

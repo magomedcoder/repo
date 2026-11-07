@@ -16,6 +16,8 @@ import (
 	appconfig "magomedcoder.ru/repo/internal/config"
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/mirror/metrics"
+	"magomedcoder.ru/repo/pkg/secretbox"
+	"magomedcoder.ru/repo/pkg/ssrf"
 )
 
 var (
@@ -106,7 +108,6 @@ type mirrorRuntime struct {
 	cfg     MirrorConfig
 	metrics *metrics.Metrics
 	events  domain.MirrorSyncStore
-	targets domain.MirrorTargetStore
 	groups  domain.MirrorGroupStore
 	limiter *rateLimiter
 	rootCtx context.Context
@@ -207,18 +208,8 @@ func (uc *RepositoryUseCase) SetMirrorSyncStore(s domain.MirrorSyncStore) {
 	uc.mirror.events = s
 }
 
-func (uc *RepositoryUseCase) SetMirrorTargetStore(s domain.MirrorTargetStore) {
-	uc.mirror.targets = s
-}
-
 func (uc *RepositoryUseCase) SetMirrorGroupStore(s domain.MirrorGroupStore) {
 	uc.mirror.groups = s
-}
-
-func (uc *RepositoryUseCase) SetMetrics(m *metrics.Metrics) {
-	if m != nil {
-		uc.mirror.metrics = m
-	}
 }
 
 func (uc *RepositoryUseCase) MirrorMetrics() *metrics.Metrics {
@@ -253,22 +244,77 @@ func (uc *RepositoryUseCase) goMirror(fn func()) {
 	})
 }
 
+func (uc *RepositoryUseCase) SetMirrorSecretsKey(key []byte) {
+	if uc == nil {
+		return
+	}
+
+	uc.mirrorSecretsKey = key
+}
+
+func (uc *RepositoryUseCase) SetMirrorURLLookup(lookup ssrf.LookupIPFunc) {
+	if uc == nil {
+		return
+	}
+
+	uc.mirrorLookup = lookup
+}
+
 func (uc *RepositoryUseCase) sealSecret(plain string) (string, error) {
-	return plain, nil
+	if plain == "" {
+		return "", nil
+	}
+
+	if len(uc.mirrorSecretsKey) == 0 {
+		return "", fmt.Errorf("mirror secrets key not configured")
+	}
+
+	return secretbox.Seal(uc.mirrorSecretsKey, plain)
 }
 
 func (uc *RepositoryUseCase) openSecret(stored string) (string, error) {
-	return stored, nil
+	if stored == "" {
+		return "", nil
+	}
+
+	if !secretbox.IsSealed(stored) {
+		return "", ErrMirrorSecretUnsealed
+	}
+
+	if len(uc.mirrorSecretsKey) == 0 {
+		return "", fmt.Errorf("mirror secrets key not configured")
+	}
+
+	return secretbox.Open(uc.mirrorSecretsKey, stored)
 }
 
-type mirrorURLPolicy struct{}
+type mirrorURLPolicy struct {
+	lookup ssrf.LookupIPFunc
+}
 
 func (uc *RepositoryUseCase) urlPolicy() mirrorURLPolicy {
-	return mirrorURLPolicy{}
+	return mirrorURLPolicy{lookup: uc.mirrorLookup}
 }
 
 func (uc *RepositoryUseCase) validateMirrorURL(raw string) error {
 	return uc.urlPolicy().validate(raw)
+}
+
+func isSSHMirrorURL(raw string) bool {
+	scheme, _, ok := parseMirrorHost(raw)
+	return ok && scheme == "ssh"
+}
+
+func (uc *RepositoryUseCase) requireSSHKeyIfNeeded(repo *domain.Repository) error {
+	if !isSSHMirrorURL(repo.MirrorURL) {
+		return nil
+	}
+
+	if strings.TrimSpace(repo.MirrorSSHPrivateKey) == "" {
+		return ErrInvalidSSHKey
+	}
+
+	return nil
 }
 
 var scpLikeURL = regexp.MustCompile(`^[A-Za-z0-9._-]+@(\[[0-9a-fA-F:]+\]|[A-Za-z0-9.-]+):[^\s]+$`)
@@ -314,36 +360,20 @@ func parseMirrorHost(raw string) (scheme, host string, ok bool) {
 }
 
 func (p mirrorURLPolicy) validate(raw string) error {
-	_, host, ok := parseMirrorHost(raw)
-	if !ok || host == "" || p.hostBlocked(host) {
+	scheme, host, ok := parseMirrorHost(raw)
+	if !ok || host == "" {
+		return ErrInvalidMirrorURL
+	}
+
+	if scheme == "http" {
+		return ErrMirrorHTTPForbidden
+	}
+
+	if err := ssrf.HostAllowed(context.Background(), host, p.lookup); err != nil {
 		return ErrInvalidMirrorURL
 	}
 
 	return nil
-}
-
-func cloudMetadataHost(host string) bool {
-	return host == "metadata.google.internal" || host == "169.254.169.254" || host == "fd00:ec2::254"
-}
-
-func internalIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
-}
-
-func (p mirrorURLPolicy) hostBlocked(host string) bool {
-	if cloudMetadataHost(host) {
-		return true
-	}
-
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return true
-	}
-
-	if ip := net.ParseIP(host); ip != nil {
-		return internalIP(ip)
-	}
-
-	return false
 }
 
 func (p mirrorURLPolicy) parsePinnedHosts(raw string) (map[string]string, error) {
@@ -358,7 +388,7 @@ func (p mirrorURLPolicy) parsePinnedHosts(raw string) (map[string]string, error)
 			return nil, ErrInvalidMirrorOption
 		}
 
-		if internalIP(ip) {
+		if ssrf.InternalIP(ip) {
 			return nil, ErrInvalidMirrorURL
 		}
 

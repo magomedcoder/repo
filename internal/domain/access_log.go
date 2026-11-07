@@ -19,6 +19,7 @@ const (
 	AccessAdminUserCreate = "admin_user_create"
 	AccessAdminUserUpdate = "admin_user_update"
 	AccessAdminUserDelete = "admin_user_delete"
+	AccessGitToken        = "git_token"
 )
 
 type AccessLog struct {
@@ -38,6 +39,8 @@ type AccessLogFilter struct {
 	Action   string
 	IP       string
 	Username string
+	Since    *time.Time
+	Until    *time.Time
 	Limit    int
 	Offset   int
 }

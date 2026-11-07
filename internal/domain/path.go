@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const MaxPathDepth = 2
+const MaxPathDepth = 1
 
 var (
 	ErrInvalidPath     = errors.New("invalid_path")
@@ -28,16 +28,12 @@ func ParseRepoPath(raw string) (segments []string, err error) {
 		return nil, ErrInvalidPath
 	}
 
-	for i, part := range parts {
+	for _, part := range parts {
 		if !validSegment(part) {
 			return nil, ErrInvalidPath
 		}
 
-		if i == len(parts)-1 && !strings.HasSuffix(part, ".git") {
-			return nil, ErrInvalidPath
-		}
-
-		if i < len(parts)-1 && strings.HasSuffix(part, ".git") {
+		if !strings.HasSuffix(part, ".git") {
 			return nil, ErrInvalidPath
 		}
 	}
@@ -77,16 +73,14 @@ func isZeroHash(hash string) bool {
 	return true
 }
 
-func CheckRefUpdate(protect bool, defaultBranch, refname, oldRev, newRev string, ancestor bool) error {
+func CheckRefUpdate(protect bool, refname, oldRev, newRev string, ancestor bool) error {
 	if !protect {
 		return nil
 	}
 
-	if defaultBranch == "" {
-		defaultBranch = "main"
-	}
-
-	if refname != "refs/heads/"+defaultBranch {
+	isHead := strings.HasPrefix(refname, "refs/heads/")
+	isTag := strings.HasPrefix(refname, "refs/tags/")
+	if !isHead && !isTag {
 		return nil
 	}
 
@@ -98,9 +92,31 @@ func CheckRefUpdate(protect bool, defaultBranch, refname, oldRev, newRev string,
 		return nil
 	}
 
+	if isTag {
+		if !sameRev(oldRev, newRev) {
+			return ErrBranchProtected
+		}
+
+		return nil
+	}
+
 	if !ancestor {
 		return ErrBranchProtected
 	}
 
 	return nil
+}
+
+func sameRev(a, b string) bool {
+	a = strings.TrimSpace(strings.ToLower(a))
+	b = strings.TrimSpace(strings.ToLower(b))
+	if a == "" || b == "" {
+		return false
+	}
+
+	if len(a) > len(b) {
+		return strings.HasPrefix(a, b)
+	}
+
+	return strings.HasPrefix(b, a) || a == b
 }

@@ -112,7 +112,6 @@ func (s *Repository) PurgeSoftDeleted(ctx context.Context, before time.Time) ([]
 			`DELETE FROM labels WHERE repository_id IN ?`,
 			`DELETE FROM team_repo_grants WHERE repo_id IN ?`,
 			`DELETE FROM repo_collaborators WHERE repo_id IN ?`,
-			`DELETE FROM mirror_targets WHERE repo_id IN ?`,
 			`DELETE FROM mirror_sync_events WHERE repo_id IN ?`,
 			`DELETE FROM activity_events WHERE repo_id IN ?`,
 			`DELETE FROM repositories WHERE id IN ?`,
@@ -142,26 +141,13 @@ func (s *Repository) FindByRepoPath(ctx context.Context, repoPath string) (*doma
 	return &repo, nil
 }
 
-func (s *Repository) ListByOwnerID(ctx context.Context, ownerKind string, ownerID uint, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
-	}
-
+func (s *Repository) ListByOwnerID(ctx context.Context, ownerID uint, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
 	limit, offset = clampListBounds(limit, offset)
 	models, err := s.FindAll(ctx,
-		gormutil.WithWhere("owner_kind = ? AND owner_id = ?", ownerKind, ownerID),
+		gormutil.WithWhere("owner_id = ?", ownerID),
 		gormutil.WithOrder(repoOrderClause(order)),
 		gormutil.LimitOffset(limit, offset),
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	return repoModelsToDomain(models), nil
-}
-
-func (s *Repository) ListByFolderID(ctx context.Context, folderID uint) ([]domain.Repository, error) {
-	models, err := s.FindByWhereAndOrder(ctx, "folder_id = ?", "name ASC", folderID)
 	if err != nil {
 		return nil, err
 	}
@@ -197,16 +183,13 @@ func (s *Repository) ListHome(ctx context.Context, limit, offset int, order doma
 	return repoModelsToDomain(models), nil
 }
 
-func (s *Repository) SearchByName(ctx context.Context, query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
+func (s *Repository) SearchByName(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
 	q := "%" + escapeLike(query) + "%"
 	db := s.Model(ctx).Where(`name LIKE ? ESCAPE '\'`, q)
 	if publicOnly {
 		db = db.Where("is_private = ?", false)
 	} else if ownerID > 0 {
-		if ownerKind == "" {
-			ownerKind = domain.OwnerKindUser
-		}
-		db = db.Where("owner_kind = ? AND owner_id = ?", ownerKind, ownerID)
+		db = db.Where("owner_id = ?", ownerID)
 	} else {
 		db = db.Where("is_private = ?", false)
 	}
@@ -220,25 +203,11 @@ func (s *Repository) SearchByName(ctx context.Context, query string, ownerKind s
 	return repoModelsToDomain(models), nil
 }
 
-func (s *Repository) ExistsByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (bool, error) {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
-	}
-
-	opts := []func(*gorm.DB) *gorm.DB{
-		gormutil.WithWhere("owner_kind = ? AND owner_id = ? AND name = ?", ownerKind, ownerID, name),
-	}
-	if folderID == nil {
-		opts = append(opts, gormutil.WithWhere("folder_id IS NULL"))
-	} else {
-		opts = append(opts, gormutil.WithWhere("folder_id = ?", *folderID))
-	}
-
-	return s.QueryExistOpts(context.Background(), "", nil, opts...)
-}
-
-func (s *Repository) CountByFolderID(folderID uint) (int64, error) {
-	return s.QueryCount(context.Background(), "folder_id = ?", folderID)
+func (s *Repository) ExistsByName(name string) (bool, error) {
+	return s.QueryExistOpts(context.Background(), "", nil,
+		gormutil.WithUnscoped(),
+		gormutil.WithWhere("name = ?", name),
+	)
 }
 
 func (s *Repository) TouchLastActivity(id uint, at time.Time) error {
@@ -258,18 +227,6 @@ func (s *Repository) FindByID(ctx context.Context, id uint) (*domain.Repository,
 	repo := row.ToDomain()
 
 	return &repo, nil
-}
-
-func (s *Repository) ListByMirrorDirection(ctx context.Context, direction string) ([]domain.Repository, error) {
-	models, err := s.FindAll(ctx,
-		gormutil.WithWhere("mirror_direction = ? AND mirror_url != ''", direction),
-		gormutil.WithOrder("id ASC"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return repoModelsToDomain(models), nil
 }
 
 func (s *Repository) ListMirrors(ctx context.Context, f domain.MirrorListFilter) ([]domain.Repository, error) {
@@ -375,6 +332,39 @@ func (s *Repository) CountMirrorsInError(ctx context.Context, since time.Time) (
 	)
 }
 
+func (s *Repository) CountAll(ctx context.Context) (int64, error) {
+	return s.QueryCount(ctx, "1 = 1")
+}
+
+func (s *Repository) ListAdmin(ctx context.Context, filter domain.AdminRepoFilter) ([]domain.Repository, int, error) {
+	q := s.Model(ctx)
+	if text := strings.TrimSpace(filter.Query); text != "" {
+		like := "%" + escapeLike(text) + "%"
+		q = q.Where(`(name LIKE ? ESCAPE '\' OR repo_path LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\')`, like, like, like)
+	}
+
+	if filter.Private != nil {
+		q = q.Where("is_private = ?", *filter.Private)
+	}
+
+	if filter.Mirror {
+		q = q.Where("mirror_direction != '' AND mirror_url != ''")
+	}
+
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	limit, offset := clampListBounds(filter.Limit, filter.Offset)
+	var models []model.Repository
+	if err := q.Order(repoOrderClause(filter.Order)).Limit(limit).Offset(offset).Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return repoModelsToDomain(models), int(total), nil
+}
+
 func (s *Repository) UpdateMirrorState(ctx context.Context, repo *domain.Repository) error {
 	_, err := s.UpdateByID(ctx, repo.ID, map[string]any{
 		"default_branch":       repo.DefaultBranch,
@@ -397,12 +387,8 @@ func repoOrderClause(order domain.RepoOrder) string {
 	return "updated_at DESC"
 }
 
-func (s *Repository) CountByOwnerID(ownerKind string, ownerID uint) (int64, error) {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
-	}
-
-	return s.QueryCount(context.Background(), "owner_kind = ? AND owner_id = ?", ownerKind, ownerID)
+func (s *Repository) CountByOwnerID(ownerID uint) (int64, error) {
+	return s.QueryCount(context.Background(), "owner_id = ?", ownerID)
 }
 
 func clampListBounds(limit, offset int) (int, int) {
@@ -421,13 +407,9 @@ func clampListBounds(limit, offset int) (int, int) {
 	return limit, offset
 }
 
-func (s *Repository) ListPublicIDsByOwner(ctx context.Context, ownerKind string, ownerID uint) ([]uint, error) {
-	if ownerKind == "" {
-		ownerKind = domain.OwnerKindUser
-	}
-
+func (s *Repository) ListPublicIDsByOwner(ctx context.Context, ownerID uint) ([]uint, error) {
 	var ids []uint
-	err := s.Pluck(ctx, "id", &ids, "owner_kind = ? AND owner_id = ? AND is_private = ?", ownerKind, ownerID, false)
+	err := s.Pluck(ctx, "id", &ids, "owner_id = ? AND is_private = ?", ownerID, false)
 	return ids, err
 }
 

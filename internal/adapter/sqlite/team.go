@@ -19,10 +19,9 @@ func NewTeamRepo(db *gorm.DB) *Team {
 
 func (s *Team) Create(t *domain.Team) error {
 	m := model.Team{
-		FolderID: t.FolderID,
-		Name:     t.Name,
-		Slug:     t.Slug,
-		Caps:     uint32(t.Caps),
+		OwnerUserID: t.OwnerUserID,
+		Name:        t.Name,
+		Slug:        t.Slug,
 	}
 	if err := s.Repo.Create(context.Background(), &m); err != nil {
 		return err
@@ -34,11 +33,10 @@ func (s *Team) Create(t *domain.Team) error {
 
 func (s *Team) Update(t *domain.Team) error {
 	m := model.Team{
-		ID:       t.ID,
-		FolderID: t.FolderID,
-		Name:     t.Name,
-		Slug:     t.Slug,
-		Caps:     uint32(t.Caps),
+		ID:          t.ID,
+		OwnerUserID: t.OwnerUserID,
+		Name:        t.Name,
+		Slug:        t.Slug,
 	}
 	if err := s.Save(context.Background(), &m); err != nil {
 		return err
@@ -62,8 +60,8 @@ func (s *Team) FindByID(id uint) (*domain.Team, error) {
 	return &out, nil
 }
 
-func (s *Team) FindByFolderSlug(folderID uint, slug string) (*domain.Team, error) {
-	row, err := s.FindByWhere(context.Background(), "folder_id = ? AND slug = ?", folderID, slug)
+func (s *Team) FindByOwnerSlug(ownerUserID uint, slug string) (*domain.Team, error) {
+	row, err := s.FindByWhere(context.Background(), "owner_user_id = ? AND slug = ?", ownerUserID, slug)
 	if err != nil {
 		return nil, mapDBErr(err)
 	}
@@ -72,8 +70,8 @@ func (s *Team) FindByFolderSlug(folderID uint, slug string) (*domain.Team, error
 	return &out, nil
 }
 
-func (s *Team) ListByFolder(folderID uint) ([]domain.Team, error) {
-	models, err := s.FindByWhereAndOrder(context.Background(), "folder_id = ?", "name ASC", folderID)
+func (s *Team) ListByOwner(ownerUserID uint) ([]domain.Team, error) {
+	models, err := s.FindByWhereAndOrder(context.Background(), "owner_user_id = ?", "name ASC", ownerUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +84,6 @@ func (s *Team) ListByFolder(folderID uint) ([]domain.Team, error) {
 	return out, nil
 }
 
-func (s *Team) ExistsByFolderSlug(folderID uint, slug string) (bool, error) {
-	return s.QueryExist(context.Background(), "folder_id = ? AND slug = ?", folderID, slug)
+func (s *Team) ExistsByOwnerSlug(ownerUserID uint, slug string) (bool, error) {
+	return s.QueryExist(context.Background(), "owner_user_id = ? AND slug = ?", ownerUserID, slug)
 }

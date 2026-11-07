@@ -37,19 +37,16 @@ func NewAccessLogUseCase(logs domain.AccessLogStore) *AccessLogUseCase {
 	}
 }
 
-func (uc *AccessLogUseCase) List(ctx context.Context, action, ip, username string, limit, offset int) (*AccessLogListResult, error) {
+func (uc *AccessLogUseCase) ListFilter(ctx context.Context, filter domain.AccessLogFilter) (*AccessLogListResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	offset, limit = ClampPagination(offset, limit, DefaultPageLimit, MaxAccessLimit)
 
-	items, total, err := uc.logs.List(domain.AccessLogFilter{
-		Action:   action,
-		IP:       ip,
-		Username: username,
-		Limit:    limit,
-		Offset:   offset,
-	})
+	offset, limit := ClampPagination(filter.Offset, filter.Limit, DefaultPageLimit, MaxAccessLimit)
+	filter.Limit = limit
+	filter.Offset = offset
+
+	items, total, err := uc.logs.List(filter)
 	if err != nil {
 		return nil, err
 	}

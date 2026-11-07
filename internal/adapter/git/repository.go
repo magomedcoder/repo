@@ -2,9 +2,11 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -98,19 +100,22 @@ func (r *Repository) Remove(path string) error {
 		return nil
 	}
 
-	defer r.LockRepo(path)()
+	safe, err := fsutil.SafePath(r.Root, path)
+	if err != nil {
+		return err
+	}
 
-	if err := os.RemoveAll(path); err != nil {
+	defer r.LockRepo(safe)()
+
+	if err := os.RemoveAll(safe); err != nil {
 		return fmt.Errorf("remove repository: %w", err)
 	}
 
-	if safe, serr := fsutil.SafePath(r.Root, path); serr == nil {
-		if r.opens != nil {
-			r.opens.evict(safe)
-		}
-		if r.stats != nil {
-			r.stats.evictPrefix(safe)
-		}
+	if r.opens != nil {
+		r.opens.evict(safe)
+	}
+	if r.stats != nil {
+		r.stats.evictPrefix(safe)
 	}
 
 	return nil
@@ -121,31 +126,39 @@ func (r *Repository) Move(oldPath, newPath string) error {
 		return nil
 	}
 
-	defer r.lockRepos(oldPath, newPath)()
+	oldSafe, err := fsutil.SafePath(r.Root, oldPath)
+	if err != nil {
+		return err
+	}
 
-	if _, err := os.Stat(oldPath); err != nil {
+	newSafe, err := fsutil.SafePath(r.Root, newPath)
+	if err != nil {
+		return err
+	}
+
+	defer r.lockRepos(oldSafe, newSafe)()
+
+	if _, err := os.Stat(oldSafe); err != nil {
 		return fmt.Errorf("source repository: %w", err)
 	}
 
-	if _, err := os.Stat(newPath); !os.IsNotExist(err) {
-		return fmt.Errorf("destination already exists: %s", newPath)
+	if _, err := os.Stat(newSafe); !os.IsNotExist(err) {
+		return fmt.Errorf("destination already exists: %s", newSafe)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(newPath), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(newSafe), 0o700); err != nil {
 		return fmt.Errorf("create destination directory: %w", err)
 	}
 
-	if err := os.Rename(oldPath, newPath); err != nil {
+	if err := os.Rename(oldSafe, newSafe); err != nil {
 		return fmt.Errorf("move repository: %w", err)
 	}
 
-	if safe, serr := fsutil.SafePath(r.Root, oldPath); serr == nil {
-		if r.opens != nil {
-			r.opens.evict(safe)
-		}
-		if r.stats != nil {
-			r.stats.evictPrefix(safe)
-		}
+	if r.opens != nil {
+		r.opens.evict(oldSafe)
+	}
+	if r.stats != nil {
+		r.stats.evictPrefix(oldSafe)
 	}
 
 	return nil
@@ -204,18 +217,40 @@ func (r *Repository) ServePack(ctx context.Context, repoPath, service string, st
 	if strings.Contains(service, "receive") {
 		req := &transport.ReceivePackRequest{StatelessRPC: true}
 		if receive != nil && receive.ProtectDefaultBranch {
-			defaultBranch := receive.DefaultBranch
 			req.Hooks.PreReceive = func(ctx context.Context, info *transport.PreReceiveInfo) error {
-				return enforceProtectedDefaultBranch(ctx, info, defaultBranch)
+				return enforceProtectedBranches(ctx, info)
 			}
 		}
 
-		return transport.ReceivePack(ctx, repo.Storer, in, out, req)
+		err := transport.ReceivePack(ctx, repo.Storer, in, out, req)
+		if err != nil && (errors.Is(err, domain.ErrBranchProtected) || strings.Contains(err.Error(), domain.ErrBranchProtected.Error())) {
+			_ = r.pruneUnreachable(ctx, repoPath)
+		}
+
+		return err
 	}
 
 	return transport.UploadPack(ctx, repo.Storer, in, out, &transport.UploadPackRequest{
 		StatelessRPC: true,
 	})
+}
+
+func (r *Repository) pruneUnreachable(ctx context.Context, repoPath string) error {
+	if !gitAvailable() {
+		return nil
+	}
+
+	safe, err := fsutil.SafePath(r.Root, repoPath)
+	if err != nil {
+		return err
+	}
+
+	out, err := exec.CommandContext(ctx, "git", "-C", safe, "prune", "--expire=now").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("prune: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	return nil
 }
 
 func (r *Repository) EnsureDefaultBranch(repoPath, branch string) error {

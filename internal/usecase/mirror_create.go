@@ -77,6 +77,14 @@ func (uc *RepositoryUseCase) sealCreateMirror(m *createMirrorSpec) (*createMirro
 		return nil, err
 	}
 
+	if m.LFS {
+		return nil, ErrMirrorLFSUnavailable
+	}
+
+	if isSSHMirrorURL(m.URL) && strings.TrimSpace(m.SSHKey) == "" {
+		return nil, ErrInvalidSSHKey
+	}
+
 	if err := validateSSHKey(m.SSHKey, m.SSHPass); err != nil {
 		return nil, err
 	}
@@ -215,10 +223,9 @@ func (uc *RepositoryUseCase) cleanupFailedClone(repo *domain.Repository, actorID
 	)
 
 	recordActivity(uc.activity, &domain.ActivityEvent{
-		ActorID:   actorID,
-		OwnerKind: repo.OwnerKind,
-		OwnerID:   repo.OwnerID,
-		Type:      domain.ActivityMirrorSync,
-		Summary:   activitySummary("pull mirror %s failed to clone and was removed", repo.Name),
+		ActorID: actorID,
+		OwnerID: repo.OwnerID,
+		Type:    domain.ActivityMirrorSync,
+		Summary: activitySummary("pull mirror %s failed to clone and was removed", repo.Name),
 	})
 }

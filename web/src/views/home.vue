@@ -117,12 +117,13 @@ onMounted(() => load())
         :repos="repos"
         :sort="sort"
         :title="$t('home.pinned')"
-        :hint="$t('home.pinnedHint')"
         :empty-text="$t('home.emptyPinned')"
-        show-folder
         @sort="onSort"
       />
-      <p v-if="hasMore" class="mt-3">
+      <p
+        v-if="hasMore"
+        class="mt-3"
+      >
         <button
           type="button"
           class="btn"

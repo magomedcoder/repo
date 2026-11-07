@@ -49,9 +49,10 @@ func TestDeleteReleasesMirrorRuntimeAndEvents(t *testing.T) {
 		RepoID: repo.ID,
 	})
 
-	if err := e.uc.Delete(context.Background(), ResolveRepositoryInput{
+	if err := e.uc.Delete(context.Background(), DeleteRepositoryInput{
 		Name:     "app",
 		ViewerID: 1,
+		Confirm:  "app",
 	}); err != nil {
 		t.Fatalf("delete: %v", err)
 	}

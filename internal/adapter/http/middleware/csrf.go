@@ -38,6 +38,7 @@ func setCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, value st
 		Name:     CSRFCookie,
 		Value:    value,
 		Path:     "/",
+		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure || IsHTTPS(r),
 	})
@@ -53,6 +54,10 @@ func RotateSessionCSRF(w http.ResponseWriter, r *http.Request, secure bool, secr
 	token := boundCSRFToken(secret, sessionToken)
 	setCSRFCookie(w, r, secure, token)
 	return token
+}
+
+func EnsureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, secret string) string {
+	return ensureCSRFCookie(w, r, secure, secret)
 }
 
 func ensureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, secret string) string {

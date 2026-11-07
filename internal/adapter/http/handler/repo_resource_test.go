@@ -16,13 +16,6 @@ func TestNamedRepoParts(t *testing.T) {
 		t.Fatalf("root parts=%v", parts)
 	}
 
-	folderReq := httptestRequest(http.MethodGet, "/repos/work/api")
-	folderReq.SetPathValue("folder", "work")
-	folderReq.SetPathValue("name", "api")
-	if parts := namedRepoParts(&httpx.Context{R: folderReq}); len(parts) != 2 || parts[0] != "work" || parts[1] != "api" {
-		t.Fatalf("folder parts=%v", parts)
-	}
-
 	emptyReq := httptestRequest(http.MethodGet, "/repos/")
 	if parts := namedRepoParts(&httpx.Context{R: emptyReq}); parts != nil {
 		t.Fatalf("empty parts=%v", parts)
@@ -51,9 +44,16 @@ func TestParseRepoResourceIssuesAndBrowse(t *testing.T) {
 		t.Fatalf("issues: action=%q parts=%v extra=%v ok=%v", action, parts, extra, ok)
 	}
 
-	action, parts, extra, ok = ParseRepoResource("folder/demo/issues/3")
-	if !ok || action != "issue" || len(parts) != 2 || parts[0] != "folder" || parts[1] != "demo" || len(extra) != 1 || extra[0] != "3" {
+	action, parts, extra, ok = ParseRepoResource("demo/issues/3")
+	if !ok || action != "issue" || len(parts) != 1 || parts[0] != "demo" || len(extra) != 1 || extra[0] != "3" {
 		t.Fatalf("issue: action=%q parts=%v extra=%v ok=%v", action, parts, extra, ok)
+	}
+
+	_, nestedParts, _, nestedOK := ParseRepoResource("group/demo/issues/3")
+	if nestedOK {
+		if _, err := repoNameFromParts(nestedParts); err == nil {
+			t.Fatalf("nested path must not yield a repo name: %v", nestedParts)
+		}
 	}
 
 	action, parts, extra, ok = ParseRepoResource("demo/branches")

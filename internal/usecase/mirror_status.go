@@ -25,22 +25,21 @@ type MirrorStatusItem struct {
 	Interval      string     `json:"interval,omitzero"`
 	SyncWindow    string     `json:"sync_window,omitzero"`
 
-	LastError      string             `json:"last_error,omitzero"`
-	NextSyncAt     *time.Time         `json:"next_sync_at,omitzero"`
-	FailCount      int                `json:"fail_count,omitzero"`
-	Force          *bool              `json:"force,omitzero"`
-	Prune          *bool              `json:"prune,omitzero"`
-	Refspecs       string             `json:"refspecs,omitzero"`
-	LFS            *bool              `json:"lfs,omitzero"`
-	MaxBytes       int64              `json:"max_bytes,omitzero"`
-	ConflictPolicy string             `json:"conflict_policy,omitzero"`
-	HasSSHKey      *bool              `json:"has_ssh_key,omitzero"`
-	InsecureTLS    *bool              `json:"insecure_tls,omitzero"`
-	InsecureNotice string             `json:"insecure_tls_warning,omitzero"`
-	PinnedHosts    string             `json:"pinned_hosts,omitzero"`
-	OwnerOnly      *bool              `json:"owner_only,omitzero"`
-	Targets        []MirrorTargetItem `json:"targets,omitzero"`
-	Warnings       []string           `json:"warnings,omitzero"`
+	LastError      string     `json:"last_error,omitzero"`
+	NextSyncAt     *time.Time `json:"next_sync_at,omitzero"`
+	FailCount      int        `json:"fail_count,omitzero"`
+	Force          *bool      `json:"force,omitzero"`
+	Prune          *bool      `json:"prune,omitzero"`
+	Refspecs       string     `json:"refspecs,omitzero"`
+	LFS            *bool      `json:"lfs,omitzero"`
+	MaxBytes       int64      `json:"max_bytes,omitzero"`
+	ConflictPolicy string     `json:"conflict_policy,omitzero"`
+	HasSSHKey      *bool      `json:"has_ssh_key,omitzero"`
+	InsecureTLS    *bool      `json:"insecure_tls,omitzero"`
+	InsecureNotice string     `json:"insecure_tls_warning,omitzero"`
+	PinnedHosts    string     `json:"pinned_hosts,omitzero"`
+	OwnerOnly      *bool      `json:"owner_only,omitzero"`
+	Warnings       []string   `json:"warnings,omitzero"`
 }
 
 type MirrorHistoryItem struct {
@@ -85,34 +84,36 @@ func effectiveMirrorStatus(repo *domain.Repository) string {
 	return repo.MirrorStatus
 }
 
-func (uc *RepositoryUseCase) mirrorStatusFromRepo(ctx context.Context, repo *domain.Repository, canAdmin bool, now time.Time) *MirrorStatusItem {
+func (uc *RepositoryUseCase) mirrorStatusFromRepo(repo *domain.Repository, canAdmin bool, now time.Time) *MirrorStatusItem {
 	st := &MirrorStatusItem{
-		Direction:     repo.MirrorDirection,
-		URL:           domain.RedactURL(repo.MirrorURL),
-		Enabled:       repo.MirrorEnabled,
-		Status:        effectiveMirrorStatus(repo),
-		ReadOnly:      repo.MirrorDirection == domain.MirrorPull,
-		LastSyncAt:    repo.MirrorLastSyncAt,
-		Progress:      repo.MirrorLastProgress,
-		RemoteHead:    repo.MirrorRemoteHEAD,
-		DefaultBranch: repo.DefaultBranch,
-		Interval:      repo.MirrorInterval,
-		SyncWindow:    repo.MirrorSyncWindow,
+		Direction: repo.MirrorDirection,
+		Enabled:   repo.MirrorEnabled,
+		Status:    effectiveMirrorStatus(repo),
+		ReadOnly:  repo.MirrorDirection == domain.MirrorPull,
 	}
+
+	if !canAdmin {
+		return st
+	}
+
+	st.URL = domain.RedactURL(repo.MirrorURL)
+	st.LastSyncAt = repo.MirrorLastSyncAt
+	st.Progress = repo.MirrorLastProgress
+	st.RemoteHead = repo.MirrorRemoteHEAD
+	st.DefaultBranch = repo.DefaultBranch
+	st.Interval = repo.MirrorInterval
+	st.SyncWindow = repo.MirrorSyncWindow
 
 	if repo.MirrorLastSyncAt != nil {
 		lag := int64(now.Sub(*repo.MirrorLastSyncAt).Seconds())
 		st.LagSeconds = &lag
 	}
 
-	if canAdmin {
-		uc.fillMirrorAdminStatus(ctx, st, repo)
-	}
-
+	uc.fillMirrorAdminStatus(st, repo)
 	return st
 }
 
-func (uc *RepositoryUseCase) fillMirrorAdminStatus(ctx context.Context, st *MirrorStatusItem, repo *domain.Repository) {
+func (uc *RepositoryUseCase) fillMirrorAdminStatus(st *MirrorStatusItem, repo *domain.Repository) {
 	force, prune, lfs := repo.MirrorForce, repo.MirrorPrune, repo.MirrorLFS
 	hasKey, insecure, ownerOnly := repo.MirrorSSHPrivateKey != "", repo.MirrorInsecureTLS, repo.MirrorOwnerOnly
 
@@ -127,18 +128,12 @@ func (uc *RepositoryUseCase) fillMirrorAdminStatus(ctx context.Context, st *Mirr
 	st.PinnedHosts = repo.MirrorPinnedHosts
 
 	if insecure {
-		st.InsecureNotice = "TLS certificate verification (and SSH host key checking) is disabled for this mirror"
+		st.InsecureNotice = "TLS certificate verification is disabled for this mirror (HTTPS only; SSH host keys still verified)"
 		st.Warnings = append(st.Warnings, st.InsecureNotice)
 	}
 
 	if prune && repo.MirrorDirection == domain.MirrorPull {
 		st.Warnings = append(st.Warnings, "prune is enabled: refs deleted upstream are deleted locally")
-	}
-
-	if uc.mirror.targets != nil {
-		if list, err := uc.mirror.targets.ListByRepo(ctx, repo.ID); err == nil {
-			st.Targets = mirrorTargetItems(list)
-		}
 	}
 }
 
@@ -147,7 +142,7 @@ func (uc *RepositoryUseCase) GetMirrorStatus(ctx context.Context, in ResolveRepo
 		return nil, err
 	}
 
-	repo, _, _, err := uc.resolve(in)
+	repo, _, err := uc.resolve(in)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +155,7 @@ func (uc *RepositoryUseCase) GetMirrorStatus(ctx context.Context, in ResolveRepo
 		return nil, ErrMirrorNotConfigured
 	}
 
-	return uc.mirrorStatusFromRepo(ctx, repo, uc.authz.CanAdminRepo(repo, in.ViewerID), time.Now()), nil
+	return uc.mirrorStatusFromRepo(repo, uc.authz.CanAdminRepo(repo, in.ViewerID), time.Now()), nil
 }
 
 func (uc *RepositoryUseCase) MirrorHistory(ctx context.Context, in ResolveRepositoryInput, limit int) ([]MirrorHistoryItem, error) {
@@ -172,7 +167,7 @@ func (uc *RepositoryUseCase) MirrorHistory(ctx context.Context, in ResolveReposi
 		return nil, ErrUnauthorized
 	}
 
-	repo, _, _, err := uc.resolve(in)
+	repo, _, err := uc.resolve(in)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +212,7 @@ func (uc *RepositoryUseCase) CheckMirror(ctx context.Context, in CheckMirrorInpu
 		return nil, ErrUnauthorized
 	}
 
-	repo, _, _, err := uc.resolve(in.ResolveRepositoryInput)
+	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
 	if err != nil {
 		return nil, err
 	}

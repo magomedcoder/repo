@@ -16,10 +16,9 @@ import (
 )
 
 var (
-	ErrMirrorTargetNotFound = NewError(KindNotFound, "mirror_target_not_found")
-	ErrMirrorGroupNotFound  = NewError(KindNotFound, "mirror_group_not_found")
-	ErrMirrorBundle         = NewError(KindValidation, "mirror_bundle_failed")
-	ErrMirrorImportLimit    = NewError(KindValidation, "mirror_import_limit")
+	ErrMirrorGroupNotFound = NewError(KindNotFound, "mirror_group_not_found")
+	ErrMirrorBundle        = NewError(KindValidation, "mirror_bundle_failed")
+	ErrMirrorImportLimit   = NewError(KindValidation, "mirror_import_limit")
 )
 
 const (
@@ -218,185 +217,6 @@ func (uc *RepositoryUseCase) MirrorHealth(ctx context.Context, olderThan time.Du
 	}, nil
 }
 
-type MirrorTargetItem struct {
-	ID          uint       `json:"id"`
-	URL         string     `json:"url"`
-	Username    string     `json:"username,omitzero"`
-	HasPassword bool       `json:"has_password"`
-	Direction   string     `json:"direction"`
-	Enabled     bool       `json:"enabled"`
-	LastSyncAt  *time.Time `json:"last_sync_at,omitzero"`
-	LastError   string     `json:"last_error,omitzero"`
-}
-
-type MirrorTargetInput struct {
-	ResolveRepositoryInput
-	TargetID uint
-	URL      string
-	Username *string
-	Password *string
-	Enabled  *bool
-}
-
-func mirrorTargetItems(list []domain.MirrorTarget) []MirrorTargetItem {
-	out := make([]MirrorTargetItem, 0, len(list))
-
-	for _, t := range list {
-		out = append(out, MirrorTargetItem{
-			ID:          t.ID,
-			URL:         domain.RedactURL(t.URL),
-			Username:    t.Username,
-			HasPassword: t.Password != "",
-			Direction:   t.Direction,
-			Enabled:     t.Enabled,
-			LastSyncAt:  t.LastSyncAt,
-			LastError:   t.LastError,
-		})
-	}
-
-	return out
-}
-
-func (uc *RepositoryUseCase) targetRepo(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	if in.ViewerID == 0 {
-		return nil, ErrUnauthorized
-	}
-
-	if uc.mirror.targets == nil {
-		return nil, ErrMirrorNotConfigured
-	}
-
-	repo, _, _, err := uc.resolve(in)
-	if err != nil {
-		return nil, err
-	}
-
-	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
-		return nil, ErrRepoNotFound
-	}
-
-	if repo.MirrorOwnerOnly && !isPersonalOwner(repo, in.ViewerID) && !uc.viewerIsSiteAdmin(ctx, in.ViewerID) {
-		return nil, ErrMirrorOwnerOnly
-	}
-
-	return repo, nil
-}
-
-func (uc *RepositoryUseCase) ListMirrorTargets(ctx context.Context, in ResolveRepositoryInput) ([]MirrorTargetItem, error) {
-	repo, err := uc.targetRepo(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-
-	list, err := uc.mirror.targets.ListByRepo(ctx, repo.ID)
-	if err != nil {
-		return nil, fmt.Errorf("list mirror targets: %w", err)
-	}
-
-	return mirrorTargetItems(list), nil
-}
-
-func (uc *RepositoryUseCase) SaveMirrorTarget(ctx context.Context, in MirrorTargetInput) (*MirrorTargetItem, error) {
-	repo, err := uc.targetRepo(ctx, in.ResolveRepositoryInput)
-	if err != nil {
-		return nil, err
-	}
-
-	if repo.MirrorDirection == domain.MirrorNone {
-		return nil, ErrMirrorNotConfigured
-	}
-
-	t := &domain.MirrorTarget{
-		RepoID:    repo.ID,
-		Direction: domain.MirrorPush,
-		Enabled:   true,
-	}
-	if in.TargetID != 0 {
-		cur, ferr := uc.mirror.targets.FindByID(ctx, repo.ID, in.TargetID)
-		if ferr != nil {
-			return nil, ErrMirrorTargetNotFound
-		}
-
-		t = cur
-	}
-
-	if err := uc.applyTargetInput(t, in); err != nil {
-		return nil, err
-	}
-
-	if in.TargetID == 0 {
-		err = uc.mirror.targets.Create(ctx, t)
-	} else {
-		err = uc.mirror.targets.Update(ctx, t)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("save mirror target: %w", err)
-	}
-
-	recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityMirrorConfigure, activitySummary("updated mirror push target"))
-
-	item := mirrorTargetItems([]domain.MirrorTarget{*t})[0]
-
-	return &item, nil
-}
-
-func (uc *RepositoryUseCase) applyTargetInput(t *domain.MirrorTarget, in MirrorTargetInput) error {
-	if u := strings.TrimSpace(in.URL); u != "" {
-		if err := uc.validateMirrorURL(u); err != nil {
-			return err
-		}
-
-		t.URL = u
-	}
-
-	if t.URL == "" {
-		return ErrInvalidMirrorURL
-	}
-
-	if in.Username != nil {
-		t.Username = strings.TrimSpace(*in.Username)
-	}
-
-	if in.Password != nil {
-		sealed, err := uc.sealSecret(*in.Password)
-		if err != nil {
-			return err
-		}
-
-		t.Password = sealed
-	}
-
-	if in.Enabled != nil {
-		t.Enabled = *in.Enabled
-	}
-
-	return nil
-}
-
-func (uc *RepositoryUseCase) DeleteMirrorTarget(ctx context.Context, in ResolveRepositoryInput, targetID uint) error {
-	repo, err := uc.targetRepo(ctx, in)
-	if err != nil {
-		return err
-	}
-
-	if _, err := uc.mirror.targets.FindByID(ctx, repo.ID, targetID); err != nil {
-		return ErrMirrorTargetNotFound
-	}
-
-	if err := uc.mirror.targets.Delete(ctx, repo.ID, targetID); err != nil {
-		return fmt.Errorf("delete mirror target: %w", err)
-	}
-
-	recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityMirrorConfigure, activitySummary("removed mirror push target"))
-
-	return nil
-}
-
 func (uc *RepositoryUseCase) CreateMirrorGroup(ctx context.Context, viewerID uint, g domain.MirrorGroup) (*domain.MirrorGroup, error) {
 	if err := uc.requireSiteAdmin(ctx, viewerID); err != nil {
 		return nil, err
@@ -471,14 +291,13 @@ func (uc *RepositoryUseCase) DeleteMirrorGroup(ctx context.Context, viewerID, gr
 }
 
 type ImportMirrorsInput struct {
-	ViewerID   uint
-	FolderPath string
-	URLs       []string
-	Username   string
-	Password   string
-	Private    bool
-	GroupID    uint
-	Interval   string
+	ViewerID uint
+	URLs     []string
+	Username string
+	Password string
+	Private  bool
+	GroupID  uint
+	Interval string
 }
 
 type ImportMirrorResult struct {
@@ -537,7 +356,6 @@ func (uc *RepositoryUseCase) ImportOrgMirrors(ctx context.Context, in ImportMirr
 			Name:            res.Name,
 			ViewerID:        in.ViewerID,
 			OwnerID:         in.ViewerID,
-			FolderPath:      in.FolderPath,
 			Private:         in.Private,
 			MirrorDirection: domain.MirrorPull,
 			MirrorURL:       raw,
@@ -585,17 +403,30 @@ func (uc *RepositoryUseCase) importGroupDefaults(ctx context.Context, in ImportM
 	return interval, g.ID, nil
 }
 
-func (uc *RepositoryUseCase) ExportMirrorBundle(ctx context.Context, in ResolveRepositoryInput, w io.Writer) error {
+type BundleInput struct {
+	ResolveRepositoryInput
+	CurrentPassword string
+}
+
+func (uc *RepositoryUseCase) ExportMirrorBundle(ctx context.Context, in BundleInput, w io.Writer) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	repo, _, _, err := uc.resolve(in)
+	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
 	if err != nil {
 		return err
 	}
 
 	if err := uc.authz.CanReadRepo(repo, in.ViewerID); err != nil {
+		return err
+	}
+
+	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
+		return ErrRepoNotFound
+	}
+
+	if err := uc.requireViewerPassword(ctx, in.ViewerID, in.CurrentPassword); err != nil {
 		return err
 	}
 
@@ -621,7 +452,7 @@ func (uc *RepositoryUseCase) ExportMirrorBundle(ctx context.Context, in ResolveR
 	return err
 }
 
-func (uc *RepositoryUseCase) ImportMirrorBundle(ctx context.Context, in ResolveRepositoryInput, r io.Reader) error {
+func (uc *RepositoryUseCase) ImportMirrorBundle(ctx context.Context, in BundleInput, r io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -630,13 +461,17 @@ func (uc *RepositoryUseCase) ImportMirrorBundle(ctx context.Context, in ResolveR
 		return ErrUnauthorized
 	}
 
-	repo, _, _, err := uc.resolve(in)
+	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
 	if err != nil {
 		return err
 	}
 
 	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
 		return ErrRepoNotFound
+	}
+
+	if err := uc.requireViewerPassword(ctx, in.ViewerID, in.CurrentPassword); err != nil {
+		return err
 	}
 
 	lock := uc.mirrorLock(repo.ID)
@@ -651,7 +486,7 @@ func (uc *RepositoryUseCase) ImportMirrorBundle(ctx context.Context, in ResolveR
 	}
 	defer cleanup()
 
-	if err := uc.git.BundleImport(ctx, repo.Path, file); err != nil {
+	if err := uc.git.BundleImport(ctx, repo.Path, file, repo.ProtectDefaultBranch); err != nil {
 		return fmt.Errorf("%w: %v", ErrMirrorBundle, err)
 	}
 

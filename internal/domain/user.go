@@ -45,6 +45,7 @@ type User struct {
 	Role         Role
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	TokenScope   string
 }
 
 func (u *User) IsAdmin() bool {
@@ -64,6 +65,8 @@ type Session struct {
 
 type UserListFilter struct {
 	Query  string
+	Role   *Role
+	Sort   string
 	Limit  int
 	Offset int
 }
@@ -116,6 +119,8 @@ type PasswordHasher interface {
 	Hash(password string) (string, error)
 
 	Compare(hash, password string) error
+
+	NeedsRehash(hash string) bool
 }
 
 type TokenGenerator interface {

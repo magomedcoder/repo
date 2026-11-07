@@ -9,10 +9,13 @@ import (
 )
 
 var (
-	ErrMirrorDiverged   = errors.New("mirror: remote has diverged (non-fast-forward)")
-	ErrMirrorTooLarge   = errors.New("mirror: repository exceeds configured max size")
-	ErrMirrorLFSMissing = errors.New("mirror: git-lfs binary not found")
-	ErrMirrorUnsigned   = errors.New("mirror: upstream tip is not a verified signed commit")
+	ErrMirrorDiverged           = errors.New("mirror: remote has diverged (non-fast-forward)")
+	ErrMirrorTooLarge           = errors.New("mirror: repository exceeds configured max size")
+	ErrMirrorLFSMissing         = errors.New("mirror: git-lfs binary not found")
+	ErrMirrorLFSUnavailable     = errors.New("mirror: LFS sync over system git is unavailable")
+	ErrMirrorPartialUnavailable = errors.New("mirror: partial clone over system git is unavailable")
+	ErrMirrorUnsigned           = errors.New("mirror: upstream tip is not a verified signed commit")
+	ErrMirrorSecretUnsealed     = errors.New("mirror: stored secret is not sealed")
 )
 
 func RedactURL(raw string) string {
@@ -57,7 +60,6 @@ const (
 	MirrorTriggerConfig   = "configure"
 	MirrorTriggerBulk     = "bulk"
 	MirrorTriggerCreate   = "create"
-	MirrorTriggerCLI      = "cli"
 )
 
 const (
@@ -85,26 +87,13 @@ type MirrorSyncEvent struct {
 	ActorID    uint
 }
 
-type MirrorTarget struct {
-	ID         uint
-	RepoID     uint
-	URL        string
-	Username   string
-	Password   string
-	Direction  string
-	Enabled    bool
-	LastSyncAt *time.Time
-	LastError  string
-	CreatedAt  time.Time
-}
-
 type MirrorGroup struct {
-	ID          uint
-	Name        string
-	UpstreamURL string
-	Direction   string
-	Interval    string
-	CreatedAt   time.Time
+	ID          uint      `json:"id"`
+	Name        string    `json:"name"`
+	UpstreamURL string    `json:"upstream_url"`
+	Direction   string    `json:"direction"`
+	Interval    string    `json:"interval"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type MirrorListFilter struct {
@@ -129,22 +118,8 @@ type MirrorSyncStore interface {
 	DeleteByRepo(ctx context.Context, repoID uint) error
 }
 
-type MirrorTargetStore interface {
-	Create(ctx context.Context, t *MirrorTarget) error
-
-	Update(ctx context.Context, t *MirrorTarget) error
-
-	Delete(ctx context.Context, repoID, id uint) error
-
-	FindByID(ctx context.Context, repoID, id uint) (*MirrorTarget, error)
-
-	ListByRepo(ctx context.Context, repoID uint) ([]MirrorTarget, error)
-}
-
 type MirrorGroupStore interface {
 	Create(ctx context.Context, g *MirrorGroup) error
-
-	Update(ctx context.Context, g *MirrorGroup) error
 
 	Delete(ctx context.Context, id uint) error
 

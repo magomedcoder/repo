@@ -11,12 +11,9 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 )
 
-func enforceProtectedDefaultBranch(ctx context.Context, info *transport.PreReceiveInfo, defaultBranch string) error {
+func enforceProtectedBranches(ctx context.Context, info *transport.PreReceiveInfo) error {
 	if info == nil {
 		return nil
-	}
-	if defaultBranch == "" {
-		defaultBranch = "main"
 	}
 
 	for _, cmd := range info.Commands {
@@ -36,7 +33,7 @@ func enforceProtectedDefaultBranch(ctx context.Context, info *transport.PreRecei
 			}
 		}
 
-		if err := domain.CheckRefUpdate(true, defaultBranch, refname, oldRev, newRev, ancestor); err != nil {
+		if err := domain.CheckRefUpdate(true, refname, oldRev, newRev, ancestor); err != nil {
 			return err
 		}
 	}

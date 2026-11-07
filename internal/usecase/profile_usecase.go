@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -23,18 +24,20 @@ var (
 const maxAvatarBytes = 1 << 20 // 1 MiB
 
 type ProfileItem struct {
-	ID        uint        `json:"id"`
-	Username  string      `json:"username"`
-	Email     string      `json:"email,omitzero"`
-	Role      domain.Role `json:"role"`
-	HasAvatar bool        `json:"has_avatar"`
-	CreatedAt time.Time   `json:"created_at"`
+	ID        uint         `json:"id"`
+	Username  string       `json:"username"`
+	Email     string       `json:"email,omitzero"`
+	Role      *domain.Role `json:"role,omitzero"`
+	HasAvatar bool         `json:"has_avatar"`
+	CreatedAt time.Time    `json:"created_at"`
 }
 
 type ProfileUseCase struct {
-	users     domain.UserStore
-	hasher    domain.PasswordHasher
-	avatarDir string
+	users        domain.UserStore
+	hasher       domain.PasswordHasher
+	sessions     domain.SessionStore
+	accessTokens domain.AccessTokenStore
+	avatarDir    string
 }
 
 func NewProfileUseCase(users domain.UserStore, hasher domain.PasswordHasher, dataDir string) *ProfileUseCase {
@@ -43,6 +46,11 @@ func NewProfileUseCase(users domain.UserStore, hasher domain.PasswordHasher, dat
 		hasher:    hasher,
 		avatarDir: filepath.Join(dataDir, "avatars"),
 	}
+}
+
+func (uc *ProfileUseCase) SetSessionStores(sessions domain.SessionStore, tokens domain.AccessTokenStore) {
+	uc.sessions = sessions
+	uc.accessTokens = tokens
 }
 
 func (uc *ProfileUseCase) GetByUsername(ctx context.Context, username string, viewerID uint) (*ProfileItem, error) {
@@ -55,10 +63,18 @@ func (uc *ProfileUseCase) GetByUsername(ctx context.Context, username string, vi
 		return nil, ErrUserNotFound
 	}
 
-	return toProfileItem(user, viewerID == user.ID), nil
+	includeEmail := viewerID == user.ID
+	includeRole := includeEmail
+	if !includeRole && viewerID != 0 {
+		if viewer, verr := uc.users.FindByID(ctx, viewerID); verr == nil && viewer.IsAdmin() {
+			includeRole = true
+		}
+	}
+
+	return toProfileItem(user, includeEmail, includeRole), nil
 }
 
-func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email, currentPassword string) (*ProfileItem, error) {
+func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email, currentPassword, keepSessionToken string) (*ProfileItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -78,7 +94,7 @@ func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email, c
 	}
 
 	if strings.EqualFold(user.Email, email) {
-		return toProfileItem(user, true), nil
+		return toProfileItem(user, true, true), nil
 	}
 
 	if strings.TrimSpace(currentPassword) == "" {
@@ -106,10 +122,22 @@ func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email, c
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 
-	return toProfileItem(user, true), nil
+	if uc.sessions != nil {
+		if err := uc.sessions.DeleteByUserIDExcept(userID, keepSessionToken); err != nil {
+			return nil, fmt.Errorf("revoke sessions: %w", err)
+		}
+	}
+
+	if uc.accessTokens != nil {
+		if err := uc.accessTokens.DeleteByUserID(userID); err != nil {
+			return nil, fmt.Errorf("revoke access tokens: %w", err)
+		}
+	}
+
+	return toProfileItem(user, true, true), nil
 }
 
-func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reader, contentType string, size int64) (*ProfileItem, error) {
+func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reader, size int64) (*ProfileItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -118,10 +146,18 @@ func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reade
 		return nil, ErrAvatarTooLarge
 	}
 
-	ext, err := avatarExt(contentType)
+	head := make([]byte, 16)
+	n, _ := io.ReadFull(r, head)
+	if n < 3 {
+		return nil, ErrInvalidAvatar
+	}
+
+	ext, err := avatarExtFromMagic(head[:n])
 	if err != nil {
 		return nil, err
 	}
+
+	r = io.MultiReader(bytes.NewReader(head[:n]), r)
 
 	user, err := uc.users.FindByID(ctx, userID)
 	if err != nil {
@@ -171,7 +207,7 @@ func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reade
 		return nil, fmt.Errorf("update avatar: %w", err)
 	}
 
-	return toProfileItem(user, true), nil
+	return toProfileItem(user, true, true), nil
 }
 
 func (uc *ProfileUseCase) ClearAvatar(ctx context.Context, userID uint) (*ProfileItem, error) {
@@ -192,7 +228,7 @@ func (uc *ProfileUseCase) ClearAvatar(ctx context.Context, userID uint) (*Profil
 		}
 	}
 
-	return toProfileItem(user, true), nil
+	return toProfileItem(user, true, true), nil
 }
 
 func (uc *ProfileUseCase) OpenAvatar(ctx context.Context, username string) (io.ReadCloser, string, error) {
@@ -218,16 +254,10 @@ func (uc *ProfileUseCase) OpenAvatar(ctx context.Context, username string) (io.R
 	return f, contentTypeForExt(filepath.Ext(user.AvatarPath)), nil
 }
 
-func toProfileItem(user *domain.User, includeEmail bool) *ProfileItem {
-	role := user.Role
-	if !role.Valid() {
-		role = domain.RoleUser
-	}
-
+func toProfileItem(user *domain.User, includeEmail, includeRole bool) *ProfileItem {
 	item := &ProfileItem{
 		ID:        user.ID,
 		Username:  user.Username,
-		Role:      role,
 		HasAvatar: user.AvatarPath != "",
 		CreatedAt: user.CreatedAt,
 	}
@@ -236,22 +266,35 @@ func toProfileItem(user *domain.User, includeEmail bool) *ProfileItem {
 		item.Email = user.Email
 	}
 
+	if includeRole {
+		role := user.Role
+		if !role.Valid() {
+			role = domain.RoleUser
+		}
+		item.Role = &role
+	}
+
 	return item
 }
 
-func avatarExt(contentType string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(contentType)) {
-	case "image/jpeg", "image/jpg":
+func avatarExtFromMagic(header []byte) (string, error) {
+	if len(header) >= 3 && header[0] == 0xff && header[1] == 0xd8 && header[2] == 0xff {
 		return ".jpg", nil
-	case "image/png":
-		return ".png", nil
-	case "image/webp":
-		return ".webp", nil
-	case "image/gif":
-		return ".gif", nil
-	default:
-		return "", ErrInvalidAvatar
 	}
+
+	if len(header) >= 8 && string(header[:8]) == "\x89PNG\r\n\x1a\n" {
+		return ".png", nil
+	}
+
+	if len(header) >= 6 && (string(header[:6]) == "GIF87a" || string(header[:6]) == "GIF89a") {
+		return ".gif", nil
+	}
+
+	if len(header) >= 12 && string(header[:4]) == "RIFF" && string(header[8:12]) == "WEBP" {
+		return ".webp", nil
+	}
+
+	return "", ErrInvalidAvatar
 }
 
 func contentTypeForExt(ext string) string {

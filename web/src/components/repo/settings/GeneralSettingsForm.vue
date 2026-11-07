@@ -5,10 +5,6 @@ import SurfaceHeader from '@/components/ui/SurfaceHeader.vue'
 
 defineProps<{
   branchOptions: string[]
-  folderOptions: { 
-    path: string
-    label: string
-  }[]
   formError: string
   message: string
   saving: boolean
@@ -25,7 +21,6 @@ const isPrivate = defineModel<boolean>('isPrivate', { required: true })
 const showOnHome = defineModel<boolean>('showOnHome', { required: true })
 const protectBranch = defineModel<boolean>('protectBranch', { required: true })
 const issuesEnabled = defineModel<boolean>('issuesEnabled', { required: true })
-const folderPathKey = defineModel<string>('folderPathKey', { required: true })
 
 function onPrivateChange() {
   if (isPrivate.value) {
@@ -82,14 +77,6 @@ function onPrivateChange() {
       <label class="flex items-center gap-2 text-sm">
         <input v-model="issuesEnabled" type="checkbox" class="accent-ink" />
         {{ $t('settings.issues') }}
-      </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-semibold">{{ $t('settings.folder') }}</span>
-        <select v-model="folderPathKey" class="field">
-          <option v-for="opt in folderOptions" :key="opt.path || 'root'" :value="opt.path">
-            {{ opt.path === '' ? $t('nav.root') : opt.label }}
-          </option>
-        </select>
       </label>
       <p v-if="formError" class="text-sm text-warn">{{ formError }}</p>
       <p v-else-if="message" class="text-sm text-ink">{{ message }}</p>

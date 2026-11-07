@@ -5,9 +5,7 @@ func BootstrapModels() []any {
 		&User{},
 		&Session{},
 		&AccessToken{},
-		&Folder{},
 		&Repository{},
-		&FolderMember{},
 		&Team{},
 		&TeamMember{},
 		&TeamRepoGrant{},
@@ -21,7 +19,6 @@ func BootstrapModels() []any {
 		&Activity{},
 		&AccessLog{},
 		&MirrorSyncEvent{},
-		&MirrorTarget{},
 		&MirrorGroup{},
 	}
 }

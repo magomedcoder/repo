@@ -5,7 +5,6 @@ import book from '@/assets/icons/book.svg?raw'
 import branch from '@/assets/icons/branch.svg?raw'
 import check from '@/assets/icons/check.svg?raw'
 import chevronDown from '@/assets/icons/chevron-down.svg?raw'
-import chevronUp from '@/assets/icons/chevron-up.svg?raw'
 import clock from '@/assets/icons/clock.svg?raw'
 import close from '@/assets/icons/close.svg?raw'
 import commit from '@/assets/icons/commit.svg?raw'
@@ -44,7 +43,6 @@ export type IconName =
   | 'branch'
   | 'check'
   | 'chevron-down'
-  | 'chevron-up'
   | 'clock'
   | 'close'
   | 'commit'
@@ -85,7 +83,6 @@ const icons: Record<IconName, string> = {
   branch,
   check,
   'chevron-down': chevronDown,
-  'chevron-up': chevronUp,
   clock,
   close,
   commit,

@@ -4,23 +4,19 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
-	"magomedcoder.ru/repo/internal/adapter/sqlite/migrations"
 	"magomedcoder.ru/repo/pkg/migrate"
 )
 
-func runMigrations(db *gorm.DB, dbPath string) error {
-	if err := migrate.Run(migrate.Options{
-		DB:         db,
-		DBPath:     dbPath,
-		Migrations: migrations.All(),
-		Bootstrap:  bootstrapSchema,
-	}); err != nil {
+func runMigrations(db *gorm.DB, _ string) error {
+	empty, err := migrate.IsEmptySQLite(db)
+	if err != nil {
 		return err
 	}
 
-	latest := migrate.LatestVersion(migrations.All())
-	if err := db.Where("version > ?", latest).Delete(&migrate.Record{}).Error; err != nil {
-		return fmt.Errorf("prune schema_migrations: %w", err)
+	if empty {
+		if err := bootstrapSchema(db); err != nil {
+			return err
+		}
 	}
 
 	if err := ensureMissingTables(db); err != nil {
@@ -60,25 +56,20 @@ func ensureMissingTables(db *gorm.DB) error {
 
 func ensureIndexes(db *gorm.DB) error {
 	for _, stmt := range []string{
-		`DROP INDEX IF EXISTS idx_folder_scope`,
-		`DROP INDEX IF EXISTS idx_repo_scope`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE deleted_at IS NULL`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_path ON folders (path) WHERE deleted_at IS NULL`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_slug ON folders (slug) WHERE deleted_at IS NULL`,
-		`CREATE INDEX IF NOT EXISTS idx_folders_owner_path ON folders (owner_kind, owner_id, path)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repo_scope ON repositories (owner_kind, owner_id, ifnull(folder_id, 0), name) WHERE deleted_at IS NULL`,
+		`DROP INDEX IF EXISTS idx_repo_scope`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repositories_name ON repositories (name) WHERE deleted_at IS NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_repositories_owner ON repositories (owner_id) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repositories_repo_path ON repositories (repo_path) WHERE deleted_at IS NULL`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_folder_members_folder_user ON folder_members (folder_id, user_id) WHERE deleted_at IS NULL`,
-		`CREATE INDEX IF NOT EXISTS idx_folder_members_user ON folder_members (user_id) WHERE deleted_at IS NULL`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_folder_slug ON teams (folder_id, slug) WHERE deleted_at IS NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_owner_slug ON teams (owner_user_id, slug) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_team_user ON team_members (team_id, user_id) WHERE deleted_at IS NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members (user_id) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_team_repo_grants_team_repo ON team_repo_grants (team_id, repo_id) WHERE deleted_at IS NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_team_repo_grants_repo ON team_repo_grants (repo_id) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repo_collaborators_repo_user ON repo_collaborators (repo_id, user_id) WHERE deleted_at IS NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_repo_collaborators_user ON repo_collaborators (user_id) WHERE deleted_at IS NULL`,
-		`CREATE INDEX IF NOT EXISTS idx_activity_events_owner ON activity_events (owner_kind, owner_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_activity_events_owner ON activity_events (owner_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_access_logs_action ON access_logs (action)`,
 		`CREATE INDEX IF NOT EXISTS idx_repositories_mirror ON repositories (mirror_direction, mirror_status) WHERE mirror_direction != ''`,

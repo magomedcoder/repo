@@ -12,8 +12,8 @@ import (
 func NewRouter(
 	authHandler *handler.AuthHandler,
 	repoHandler *handler.RepositoryHandler,
-	folderHandler *handler.FolderHandler,
 	membershipHandler *handler.MembershipHandler,
+	teamHandler *handler.TeamHandler,
 	tokenHandler *handler.TokenHandler,
 	gitHandler *handler.GitHandler,
 	issueHandler *handler.IssueHandler,
@@ -32,6 +32,7 @@ func NewRouter(
 
 	api.GET("/site", siteHandler.Get)
 	api.GET("/auth/registration", authHandler.Registration)
+	api.GET("/auth/csrf", authHandler.CSRF)
 	api.POST("/auth/register", authHandler.Register)
 	api.POST("/auth/login", authHandler.Login)
 	api.POST("/auth/logout", authHandler.Logout)
@@ -65,47 +66,51 @@ func NewRouter(
 		Issues:     issueHandler,
 		Pulls:      pullHandler,
 		Membership: membershipHandler,
+		Teams:      teamHandler,
 	}
 	handler.RegisterRepoRoutes(pub, authed, repoAPI)
 
 	pub.GET("/activity/{owner}", activityHandler.ListOwner)
 
-	folderAPI := &handler.FolderDispatcher{
-		Folders:    folderHandler,
-		Membership: membershipHandler,
-	}
-	authed.POST("/folders", folderHandler.Create)
-	authed.GET("/folders", folderHandler.List)
-	authed.GET("/folders/{path...}", folderAPI.DispatchGet)
-	authed.POST("/folders/{path...}", folderAPI.DispatchPost)
-	authed.PATCH("/folders/{path...}", folderAPI.DispatchPatch)
-	authed.DELETE("/folders/{path...}", folderAPI.DispatchDelete)
+	authed.GET("/teams", teamHandler.List)
+	authed.POST("/teams", teamHandler.Create)
+	authed.GET("/teams/{slug}", teamHandler.Get)
+	authed.PATCH("/teams/{slug}", teamHandler.Update)
+	authed.DELETE("/teams/{slug}", teamHandler.Delete)
+	authed.GET("/teams/{slug}/members", teamHandler.ListMembers)
+	authed.POST("/teams/{slug}/members", teamHandler.AddMember)
+	authed.DELETE("/teams/{slug}/members/{username}", teamHandler.RemoveMember)
+	authed.GET("/teams/{slug}/repos", teamHandler.ListRepos)
+	authed.POST("/teams/{slug}/repos", teamHandler.SetRepo)
+	authed.DELETE("/teams/{slug}/repos/{repo}", teamHandler.RemoveRepo)
 
 	authed.POST("/tokens", tokenHandler.Create)
 	authed.GET("/tokens", tokenHandler.List)
 	authed.DELETE("/tokens/{id}", tokenHandler.Revoke)
 
 	admin := authed.Group("", httpx.HTTPMiddleware(middleware.RequireAdmin()))
+	admin.GET("/admin/overview", adminHandler.Overview)
 	admin.GET("/admin/users", adminHandler.ListUsers)
-	admin.GET("/admin/users/{id}", adminHandler.GetUser)
 	admin.POST("/admin/users", adminHandler.CreateUser)
 	admin.PATCH("/admin/users/{id}", adminHandler.UpdateUser)
 	admin.DELETE("/admin/users/{id}", adminHandler.DeleteUser)
+	admin.GET("/admin/repos", adminHandler.ListRepos)
 	admin.GET("/admin/access-logs", adminHandler.ListAccessLogs)
-	admin.GET("/admin/mirrors", repoHandler.AdminListMirrors)
-	admin.GET("/admin/mirrors/health", repoHandler.MirrorHealth)
-	admin.GET("/admin/mirrors/metrics", repoHandler.MirrorMetrics)
-	admin.POST("/admin/mirrors/verify", repoHandler.AdminVerifyMirrors)
-	admin.POST("/admin/mirrors/import", repoHandler.ImportOrgMirrors)
-	admin.POST("/admin/mirrors/{action}", repoHandler.AdminBulkMirrors)
-	admin.GET("/admin/mirror-groups", repoHandler.ListMirrorGroups)
-	admin.POST("/admin/mirror-groups", repoHandler.CreateMirrorGroup)
-	admin.DELETE("/admin/mirror-groups/{id}", repoHandler.DeleteMirrorGroup)
+	admin.GET("/admin/mirrors", adminHandler.ListMirrors)
+	admin.GET("/admin/mirrors/health", adminHandler.MirrorHealth)
+	admin.GET("/admin/mirrors/metrics", adminHandler.MirrorMetrics)
+	admin.POST("/admin/mirrors/verify", adminHandler.VerifyMirrors)
+	admin.POST("/admin/mirrors/import", adminHandler.ImportOrgMirrors)
+	admin.POST("/admin/mirrors/{action}", adminHandler.BulkMirrors)
+	admin.GET("/admin/mirror-groups", adminHandler.ListMirrorGroups)
+	admin.POST("/admin/mirror-groups", adminHandler.CreateMirrorGroup)
+	admin.DELETE("/admin/mirror-groups/{id}", adminHandler.DeleteMirrorGroup)
 
 	apiLimiter := middleware.NewRateLimiter(180, 60)
 	authLimiter := middleware.NewRateLimiter(30, 10)
-	gitLimiter := middleware.NewRateLimiter(60, 20)
-	apiHandler := middleware.SecurityHeaders(cookieSecure)(middleware.CSRF(cookieSecure, sessionSecret)(middleware.MaxBody(1 << 20)(middleware.RateLimit(apiLimiter, authLimiter)(middleware.Logger(i18n.Middleware(r.Handler()))))))
+	contributeLimiter := middleware.NewRateLimiter(40, 15)
+	gitLimiter := middleware.NewRateLimiter(40, 15)
+	apiHandler := middleware.SecurityHeaders(cookieSecure)(middleware.CSRF(cookieSecure, sessionSecret)(middleware.MaxBody(1 << 20)(middleware.RateLimitWithContribute(apiLimiter, authLimiter, contributeLimiter)(middleware.Logger(i18n.Middleware(r.Handler()))))))
 	gitHTTP := middleware.SecurityHeaders(cookieSecure)(middleware.RateLimitIP(gitLimiter)(middleware.Logger(gitHandler)))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

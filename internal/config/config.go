@@ -11,16 +11,17 @@ import (
 )
 
 const (
-	MinSessionSecretLen       = 32
-	DefaultReceiveMax         = 512 << 20
-	DefaultPath               = "config.yaml"
-	DefaultSiteName           = "Repo"
-	DefaultBranch             = "main"
-	DefaultMirrorPullInterval = 5 * time.Minute
-	DefaultMirrorWorkers      = 4
-	DefaultMirrorCloneTimeout = 15 * time.Minute
-	DefaultMirrorFetchTimeout = 10 * time.Minute
-	DefaultMirrorPushTimeout  = 10 * time.Minute
+	MinSessionSecretLen         = 32
+	DefaultReceiveMax           = 512 << 20
+	DefaultPath                 = "config.yaml"
+	DefaultSiteName             = "Repo"
+	DefaultBranch               = "main"
+	DefaultMirrorPullInterval   = 5 * time.Minute
+	DefaultMirrorWorkers        = 4
+	DefaultMirrorCloneTimeout   = 15 * time.Minute
+	DefaultMirrorFetchTimeout   = 10 * time.Minute
+	DefaultMirrorPushTimeout    = 10 * time.Minute
+	DefaultSoftDeletedRetention = 7 * 24 * time.Hour
 )
 
 type Config struct {
@@ -29,6 +30,7 @@ type Config struct {
 	SiteName           string   `yaml:"site_name"`
 	CookieSecure       bool     `yaml:"cookie_secure"`
 	SessionSecret      string   `yaml:"session_secret"`
+	MirrorSecretsKey   string   `yaml:"mirror_secrets_key"`
 	AllowRegistration  bool     `yaml:"allow_registration"`
 	TrustedProxies     []string `yaml:"trusted_proxies"`
 	ReceiveMaxBytes    int64    `yaml:"receive_max_bytes"`
@@ -41,9 +43,12 @@ type Config struct {
 	MirrorFetchTimeout string `yaml:"mirror_fetch_timeout"`
 	MirrorPushTimeout  string `yaml:"mirror_push_timeout"`
 
-	MirrorCloneTimeoutDur time.Duration `yaml:"-"`
-	MirrorFetchTimeoutDur time.Duration `yaml:"-"`
-	MirrorPushTimeoutDur  time.Duration `yaml:"-"`
+	SoftDeletedRetention string `yaml:"soft_deleted_retention"`
+
+	MirrorCloneTimeoutDur   time.Duration `yaml:"-"`
+	MirrorFetchTimeoutDur   time.Duration `yaml:"-"`
+	MirrorPushTimeoutDur    time.Duration `yaml:"-"`
+	SoftDeletedRetentionDur time.Duration `yaml:"-"`
 }
 
 func Default() Config {
@@ -55,13 +60,15 @@ func Default() Config {
 		MirrorPullInterval: "5m",
 		MirrorPullEvery:    DefaultMirrorPullInterval,
 
-		MirrorWorkers:         DefaultMirrorWorkers,
-		MirrorCloneTimeout:    "15m",
-		MirrorFetchTimeout:    "10m",
-		MirrorPushTimeout:     "10m",
-		MirrorCloneTimeoutDur: DefaultMirrorCloneTimeout,
-		MirrorFetchTimeoutDur: DefaultMirrorFetchTimeout,
-		MirrorPushTimeoutDur:  DefaultMirrorPushTimeout,
+		MirrorWorkers:           DefaultMirrorWorkers,
+		MirrorCloneTimeout:      "15m",
+		MirrorFetchTimeout:      "10m",
+		MirrorPushTimeout:       "10m",
+		MirrorCloneTimeoutDur:   DefaultMirrorCloneTimeout,
+		MirrorFetchTimeoutDur:   DefaultMirrorFetchTimeout,
+		MirrorPushTimeoutDur:    DefaultMirrorPushTimeout,
+		SoftDeletedRetention:    "168h",
+		SoftDeletedRetentionDur: DefaultSoftDeletedRetention,
 	}
 }
 
@@ -139,6 +146,10 @@ func (c *Config) normalizeMirror() error {
 		return err
 	}
 
+	if c.SoftDeletedRetentionDur, err = parseDurationDefault("soft_deleted_retention", c.SoftDeletedRetention, DefaultSoftDeletedRetention); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -161,7 +172,19 @@ func (c Config) ValidateSecrets() error {
 		return fmt.Errorf("session_secret required in config (min %d characters)", MinSessionSecretLen)
 	}
 
+	if k := strings.TrimSpace(c.MirrorSecretsKey); k != "" && len(k) < MinSessionSecretLen {
+		return fmt.Errorf("mirror_secrets_key must be at least %d characters when set", MinSessionSecretLen)
+	}
+
 	return nil
+}
+
+func (c Config) MirrorSecretsMaterial() string {
+	if k := strings.TrimSpace(c.MirrorSecretsKey); k != "" {
+		return k
+	}
+
+	return c.SessionSecret
 }
 
 func parseCIDRs(cidrs []string) ([]*net.IPNet, error) {

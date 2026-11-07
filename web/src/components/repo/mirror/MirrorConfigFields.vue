@@ -159,16 +159,17 @@ const ownerOnly = defineModel<boolean>('ownerOnly', { required: true })
       <span class="mt-1 block text-xs text-ink-muted">{{ $t('mirrorForm.conflictHint') }}</span>
     </label>
 
-    <label class="flex items-center gap-2 text-sm">
-      <input v-model="lfs" type="checkbox" class="accent-ink">
+    <label class="flex items-center gap-2 text-sm text-ink-muted">
+      <input v-model="lfs" type="checkbox" class="accent-ink" disabled>
       {{ $t('mirrorForm.lfs') }}
     </label>
+    <p class="-mt-2 text-xs text-ink-muted">{{ $t('mirrorForm.lfsUnavailable') }}</p>
 
-    <label class="flex items-center gap-2 text-sm">
-      <input v-model="partial" type="checkbox" class="accent-ink">
+    <label class="flex items-center gap-2 text-sm text-ink-muted">
+      <input v-model="partial" type="checkbox" class="accent-ink" disabled>
       {{ $t('mirrorForm.partial') }}
     </label>
-    <p class="-mt-2 text-xs text-ink-muted">{{ $t('mirrorForm.partialHint') }}</p>
+    <p class="-mt-2 text-xs text-ink-muted">{{ $t('mirrorForm.partialUnavailable') }}</p>
 
     <label class="flex items-center gap-2 text-sm">
       <input v-model="verifySigned" type="checkbox" class="accent-ink">

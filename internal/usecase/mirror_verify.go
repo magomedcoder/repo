@@ -31,7 +31,7 @@ func (uc *RepositoryUseCase) VerifyMirror(ctx context.Context, in VerifyMirrorIn
 		return nil, ErrUnauthorized
 	}
 
-	repo, _, _, err := uc.resolve(in.ResolveRepositoryInput)
+	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
 	if err != nil {
 		return nil, err
 	}

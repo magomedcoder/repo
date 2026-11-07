@@ -5,55 +5,6 @@ import (
 	"time"
 )
 
-type FolderCap uint32
-
-const (
-	CapView FolderCap = 1 << iota
-	CapCreateRepos
-	CapManageMembers
-	CapManageSettings
-	CapDeleteFolder
-	CapDeleteRepos
-)
-
-const CapAll = CapView | CapCreateRepos | CapManageMembers | CapManageSettings | CapDeleteFolder | CapDeleteRepos
-
-type FolderRole string
-
-const (
-	FolderRoleOwner  FolderRole = "owner"
-	FolderRoleAdmin  FolderRole = "admin"
-	FolderRoleMember FolderRole = "member"
-)
-
-func (r FolderRole) Valid() bool {
-	switch r {
-	case FolderRoleOwner, FolderRoleAdmin, FolderRoleMember:
-		return true
-	default:
-		return false
-	}
-}
-
-func ParseFolderRole(s string) (FolderRole, bool) {
-	r := FolderRole(strings.ToLower(strings.TrimSpace(s)))
-	if !r.Valid() {
-		return "", false
-	}
-	return r, true
-}
-
-func CapsForRole(role FolderRole) FolderCap {
-	switch role {
-	case FolderRoleOwner:
-		return CapAll
-	case FolderRoleAdmin:
-		return CapAll &^ CapDeleteFolder
-	default:
-		return CapView
-	}
-}
-
 type RepoCollabRole string
 
 const (
@@ -88,24 +39,13 @@ func (r RepoCollabRole) CanAdmin() bool {
 	return r == RepoRoleAdmin
 }
 
-type FolderMember struct {
-	ID        uint
-	FolderID  uint
-	UserID    uint
-	Role      FolderRole
-	Caps      FolderCap
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
 type Team struct {
-	ID        uint
-	FolderID  uint
-	Name      string
-	Slug      string
-	Caps      FolderCap
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          uint
+	OwnerUserID uint
+	Name        string
+	Slug        string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type TeamMember struct {
@@ -133,18 +73,6 @@ type RepoCollaborator struct {
 	UpdatedAt time.Time
 }
 
-type FolderMemberStore interface {
-	Create(m *FolderMember) error
-
-	Update(m *FolderMember) error
-
-	Delete(folderID, userID uint) error
-
-	Find(folderID, userID uint) (*FolderMember, error)
-
-	ListByFolder(folderID uint) ([]FolderMember, error)
-}
-
 type TeamStore interface {
 	Create(t *Team) error
 
@@ -154,11 +82,11 @@ type TeamStore interface {
 
 	FindByID(id uint) (*Team, error)
 
-	FindByFolderSlug(folderID uint, slug string) (*Team, error)
+	FindByOwnerSlug(ownerUserID uint, slug string) (*Team, error)
 
-	ListByFolder(folderID uint) ([]Team, error)
+	ListByOwner(ownerUserID uint) ([]Team, error)
 
-	ExistsByFolderSlug(folderID uint, slug string) (bool, error)
+	ExistsByOwnerSlug(ownerUserID uint, slug string) (bool, error)
 }
 
 type TeamMemberStore interface {
@@ -170,7 +98,7 @@ type TeamMemberStore interface {
 
 	ListByTeam(teamID uint) ([]TeamMember, error)
 
-	ListTeamIDsByFolderUser(folderID, userID uint) ([]uint, error)
+	DeleteByTeam(teamID uint) error
 }
 
 type TeamRepoGrantStore interface {
@@ -179,6 +107,10 @@ type TeamRepoGrantStore interface {
 	Delete(teamID, repoID uint) error
 
 	ListByTeam(teamID uint) ([]TeamRepoGrant, error)
+
+	ListByRepo(repoID uint) ([]TeamRepoGrant, error)
+
+	DeleteByTeam(teamID uint) error
 
 	ListByRepoUser(repoID, userID uint) ([]TeamRepoGrant, error)
 }

@@ -24,6 +24,7 @@ var (
 	ErrNotFastForward       = NewError(KindConflict, "not_fast_forward")
 	ErrInvalidMergeStrategy = NewError(KindValidation, "invalid_merge_strategy")
 	ErrPullNotOpen          = NewError(KindValidation, "pull_not_open")
+	ErrBranchProtected      = NewError(KindForbidden, "branch_protected")
 )
 
 type PullItem struct {
@@ -64,7 +65,6 @@ type pushMirrorScheduler interface {
 type PullRequestUseCase struct {
 	pulls       domain.PullRequestStore
 	repos       domain.RepositoryStore
-	folders     domain.FolderStore
 	users       domain.UserStore
 	git         domain.GitRepository
 	activity    domain.ActivityStore
@@ -79,7 +79,6 @@ func (uc *PullRequestUseCase) SetPushMirrorScheduler(s pushMirrorScheduler) {
 func NewPullRequestUseCase(
 	pulls domain.PullRequestStore,
 	repos domain.RepositoryStore,
-	folders domain.FolderStore,
 	users domain.UserStore,
 	git domain.GitRepository,
 	activity domain.ActivityStore,
@@ -88,7 +87,6 @@ func NewPullRequestUseCase(
 	return &PullRequestUseCase{
 		pulls:    pulls,
 		repos:    repos,
-		folders:  folders,
 		users:    users,
 		git:      git,
 		activity: activity,
@@ -164,6 +162,10 @@ func (uc *PullRequestUseCase) Create(ctx context.Context, in ResolveRepositoryIn
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
+	}
+
+	if !uc.authz.CanContribute(repo, in.ViewerID) {
+		return nil, ErrPullForbidden
 	}
 
 	title = strings.TrimSpace(title)
@@ -429,7 +431,7 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 
 	msg := fmt.Sprintf("Merge pull request #%d from %s", pr.Number, pr.HeadBranch)
 	noreply := fmt.Sprintf("%d+%s@users.noreply.local", user.ID, user.Username)
-	_, err = uc.git.Merge(ctx, repo.Path, pr.BaseBranch, pr.HeadBranch, strategy, user.Username, noreply, msg)
+	_, err = uc.git.Merge(ctx, repo.Path, pr.BaseBranch, pr.HeadBranch, strategy, user.Username, noreply, msg, repo.ProtectDefaultBranch)
 	if err != nil {
 		return nil, mapGitMergeErr(err)
 	}
@@ -474,6 +476,10 @@ func (uc *PullRequestUseCase) AddComment(ctx context.Context, in ResolveReposito
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
+	}
+
+	if !uc.authz.CanContribute(repo, in.ViewerID) {
+		return nil, ErrPullForbidden
 	}
 
 	pr, err := uc.findPull(repo.ID, number)
@@ -741,6 +747,8 @@ func mapGitMergeErr(err error) error {
 		return ErrNotFastForward
 	case errors.Is(err, gitadapter.ErrRefNotFound):
 		return ErrBranchNotFound
+	case errors.Is(err, domain.ErrBranchProtected):
+		return ErrBranchProtected
 	default:
 		return err
 	}

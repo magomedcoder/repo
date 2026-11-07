@@ -34,35 +34,15 @@ var (
 	ErrReservedSlug         = NewError(KindValidation, "reserved_slug")
 	ErrInvalidRole          = NewError(KindValidation, "invalid_role")
 	ErrLastAdmin            = NewError(KindConflict, "last_admin")
+	ErrCannotModifySelf     = NewError(KindForbidden, "cannot_modify_self")
+	ErrConfirmRequired      = NewError(KindValidation, "confirm_required")
+	ErrConfirmMismatch      = NewError(KindValidation, "confirm_mismatch")
+	ErrLastRepoAdmin        = NewError(KindForbidden, "last_repo_admin")
 	ErrAdminRequired        = NewError(KindForbidden, "admin_required")
 )
 
-var reservedSlugs = map[string]struct{}{
-	"api":      {},
-	"cp":       {},
-	"data":     {},
-	"login":    {},
-	"register": {},
-	"folders":  {},
-	"settings": {},
-	"search":   {},
-	"assets":   {},
-	"static":   {},
-	"users":    {},
-	"me":       {},
-	"issues":   {},
-	"pulls":    {},
-	"commits":  {},
-	"commit":   {},
-	"tree":     {},
-	"blob":     {},
-	"refs":     {},
-	"raw":      {},
-}
-
 func IsReservedSlug(slug string) bool {
-	_, ok := reservedSlugs[strings.ToLower(strings.TrimSpace(slug))]
-	return ok
+	return domain.IsReservedSlug(slug)
 }
 
 var (
@@ -79,7 +59,9 @@ const (
 	userMaxFails       = 20
 )
 
-const dummyPasswordHash = "argon2id$v=19$m=65536,t=1,p=4$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+const dummyPasswordHash = "argon2id$v=19$m=65536,t=2,p=4$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+var ErrRegistrationFailed = NewError(KindConflict, "registration_failed")
 
 type AuthOutput struct {
 	User  *domain.User
@@ -176,6 +158,9 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (*AuthOut
 	in.Role = domain.RoleUser
 	user, err := uc.CreateUser(ctx, in)
 	if err != nil {
+		if errors.Is(err, ErrUsernameTaken) || errors.Is(err, ErrEmailTaken) {
+			return nil, ErrRegistrationFailed
+		}
 		return nil, err
 	}
 
@@ -300,6 +285,13 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 
 	if uc.userAttempts != nil {
 		uc.userAttempts.Reset(userKey)
+	}
+
+	if uc.hasher.NeedsRehash(user.PasswordHash) {
+		if hash, herr := uc.hasher.Hash(in.Password); herr == nil {
+			user.PasswordHash = hash
+			_ = uc.users.Update(user)
+		}
 	}
 
 	token, err := uc.createSession(user.ID, in.IP, in.UserAgent)

@@ -9,22 +9,43 @@ const props = defineProps<{
   readme: BlobContent
 }>()
 
-function isExternalHttpUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url)
+const ALLOWED_URI_REGEXP = /^(?:\/(?!\/)|https?:\/\/|#|mailto:)/i
+
+function isExternalUrl(url: string): boolean {
+  return /^(?:https?:)?\/\//i.test(url)
+}
+
+function isBlockedImageUrl(url: string): boolean {
+  const trimmed = url.trim()
+  if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('mailto:')) {
+    return true
+  }
+
+  if (isExternalUrl(trimmed)) {
+    return true
+  }
+
+  return trimmed.includes('://')
 }
 
 function sanitizeReadmeHtml(raw: string): string {
   DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     if (node.tagName === 'A') {
       const href = node.getAttribute('href')
-      if (href && isExternalHttpUrl(href)) {
+      if (href && isExternalUrl(href)) {
+        node.setAttribute('rel', 'noopener noreferrer')
+        if (!node.getAttribute('target')) {
+          node.setAttribute('target', '_blank')
+        }
+      }
+      if (node.getAttribute('target') === '_blank') {
         node.setAttribute('rel', 'noopener noreferrer')
       }
     }
 
     if (node.tagName === 'IMG') {
       const src = node.getAttribute('src')
-      if (src && isExternalHttpUrl(src)) {
+      if (src && isBlockedImageUrl(src)) {
         node.removeAttribute('src')
         node.setAttribute('alt', node.getAttribute('alt') || '')
       }
@@ -34,6 +55,7 @@ function sanitizeReadmeHtml(raw: string): string {
   try {
     return DOMPurify.sanitize(raw, {
       FORBID_ATTR: ['style'],
+      ALLOWED_URI_REGEXP,
     })
   } finally {
     DOMPurify.removeHook('afterSanitizeAttributes')

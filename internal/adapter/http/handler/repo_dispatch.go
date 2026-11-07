@@ -14,6 +14,7 @@ type RepoDispatcher struct {
 	Issues     *IssueHandler
 	Pulls      *PullRequestHandler
 	Membership *MembershipHandler
+	Teams      *TeamHandler
 }
 
 func (d *RepoDispatcher) DispatchGet(c *httpx.Context) error {
@@ -38,6 +39,11 @@ func (d *RepoDispatcher) DispatchGet(c *httpx.Context) error {
 			return c.Error(http.StatusUnauthorized, "unauthorized")
 		}
 		return d.Membership.ListCollaborators(c, in)
+	case action == "teams":
+		if d.Teams == nil {
+			return c.Error(http.StatusNotFound, "not_found")
+		}
+		return d.Teams.ListRepoTeams(c, in)
 	case isPullAction(action):
 		return d.Pulls.get(c, in, action, extra)
 	case isIssueAction(action):
@@ -84,6 +90,12 @@ func (d *RepoDispatcher) DispatchDelete(c *httpx.Context) error {
 	switch {
 	case action == "collaborator" && len(extra) == 1:
 		return d.Membership.RemoveCollaborator(c, in, extra[0])
+	case action == "team" && len(extra) == 1:
+		if d.Teams == nil {
+			return c.Error(http.StatusNotFound, "not_found")
+		}
+
+		return d.Teams.RevokeRepoTeam(c, in, extra[0])
 	case isPullAction(action):
 		return d.Pulls.delete(c, in, action, extra)
 	case isIssueAction(action):
@@ -100,10 +112,6 @@ func (d *RepoDispatcher) DispatchPost(c *httpx.Context) error {
 		return c.Error(http.StatusNotFound, "not_found")
 	}
 
-	if action == "move" {
-		return d.Repos.MoveWithParts(c, repoParts)
-	}
-
 	in, err := repoInputFromParts(c, repoParts)
 	if err != nil {
 		return c.Error(http.StatusBadRequest, err.Error())
@@ -112,6 +120,11 @@ func (d *RepoDispatcher) DispatchPost(c *httpx.Context) error {
 	switch {
 	case action == "collaborators":
 		return d.Membership.AddCollaborator(c, in)
+	case action == "teams":
+		if d.Teams == nil {
+			return c.Error(http.StatusNotFound, "not_found")
+		}
+		return d.Teams.GrantRepoTeam(c, in)
 	case isPullAction(action):
 		return d.Pulls.post(c, in, action, extra)
 	case isIssueAction(action):
@@ -122,7 +135,7 @@ func (d *RepoDispatcher) DispatchPost(c *httpx.Context) error {
 }
 
 func repoInputFromParts(c *httpx.Context, repoParts []string) (usecase.ResolveRepositoryInput, error) {
-	folderPath, name, err := folderAndName(repoParts)
+	name, err := repoNameFromParts(repoParts)
 	if err != nil {
 		return usecase.ResolveRepositoryInput{}, err
 	}
@@ -133,8 +146,7 @@ func repoInputFromParts(c *httpx.Context, repoParts []string) (usecase.ResolveRe
 	}
 
 	return usecase.ResolveRepositoryInput{
-		FolderPath: folderPath,
-		Name:       name,
-		ViewerID:   viewerID,
+		Name:     name,
+		ViewerID: viewerID,
 	}, nil
 }

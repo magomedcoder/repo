@@ -27,6 +27,7 @@ type GitUseCase struct {
 	activity domain.ActivityStore
 	authz    *Authz
 	attempts attempts.Counter
+	pepper   string
 }
 
 func NewGitUseCase(
@@ -50,6 +51,12 @@ func NewGitUseCase(
 	}
 }
 
+func (uc *GitUseCase) SetTokenPepper(pepper string) {
+	if uc != nil {
+		uc.pepper = pepper
+	}
+}
+
 func (uc *GitUseCase) StartAttemptsSweep(ctx context.Context, every time.Duration) {
 	attempts.StartBackgroundSweep(ctx, every, uc.attempts)
 }
@@ -68,10 +75,11 @@ func (uc *GitUseCase) ResolveClonePath(ctx context.Context, path string) (*domai
 	}
 
 	parts := strings.Split(path, "/")
-	if len(parts) < 1 || parts[0] == "" {
+	if len(parts) != domain.MaxPathDepth || parts[0] == "" {
 		return nil, ErrRepoNotFound
 	}
-	if IsReservedSlug(parts[0]) {
+
+	if IsReservedSlug(strings.TrimSuffix(parts[0], ".git")) {
 		return nil, ErrRepoNotFound
 	}
 
@@ -90,10 +98,6 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 
 	username = strings.ToLower(strings.TrimSpace(username))
 	secret = strings.TrimSpace(secret)
-
-	if strings.HasPrefix(username, "repo_") && (secret == "" || secret == "x" || secret == username) {
-		return uc.authenticateTokenWithAttempts(username)
-	}
 
 	if strings.HasPrefix(secret, "repo_") {
 		user, err := uc.authenticateTokenWithAttempts(secret)
@@ -141,7 +145,7 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 }
 
 func (uc *GitUseCase) authenticateTokenWithAttempts(raw string) (*domain.User, error) {
-	attemptKey := "git-token\n" + hashAccessToken(raw)
+	attemptKey := "git-token\n" + hashAccessToken(raw, uc.pepper)
 	if uc.attempts != nil && uc.attempts.Locked(attemptKey) {
 		return nil, ErrTooManyAttempts
 	}
@@ -162,7 +166,7 @@ func (uc *GitUseCase) authenticateTokenWithAttempts(raw string) (*domain.User, e
 }
 
 func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
-	token, err := uc.tokens.FindByHash(hashAccessToken(raw))
+	token, err := lookupAccessTokenHash(uc.tokens, raw, uc.pepper)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
@@ -177,7 +181,14 @@ func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 	}
 
 	_ = uc.tokens.TouchLastUsed(token.ID, time.Now())
-	return sanitizeUser(user), nil
+	out := sanitizeUser(user)
+	scope := token.Scope
+	if scope == "" {
+		scope = domain.TokenScopeGitWrite
+	}
+	out.TokenScope = scope
+
+	return out, nil
 }
 
 func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, viewer *domain.User, service GitService) error {
@@ -195,11 +206,14 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 			return ErrUnauthorized
 		}
 
-		if !uc.authz.CanReadPrivateRepo(repo, viewer.ID) {
-			return ErrRepoForbidden
+		if viewer.TokenScope == domain.TokenScopeGitRead || viewer.TokenScope == domain.TokenScopeGitWrite || viewer.TokenScope == "" {
+			if !uc.authz.CanReadPrivateRepo(repo, viewer.ID) {
+				return ErrRepoForbidden
+			}
+			return nil
 		}
 
-		return nil
+		return ErrRepoForbidden
 	case GitReceivePack:
 		if repo.MirrorDirection == domain.MirrorPull {
 			return ErrMirrorReadOnly
@@ -207,6 +221,10 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 
 		if viewer == nil {
 			return ErrUnauthorized
+		}
+
+		if viewer.TokenScope == domain.TokenScopeGitRead {
+			return ErrRepoForbidden
 		}
 
 		if !uc.authz.CanWriteGit(repo, viewer.ID) {
@@ -257,18 +275,13 @@ func (uc *GitUseCase) TouchActivity(ctx context.Context, repo *domain.Repository
 	}
 
 	_ = uc.repos.TouchLastActivity(repo.ID, time.Now())
-	kind := repo.OwnerKind
-	if kind == "" {
-		kind = domain.OwnerKindUser
-	}
 
 	recordActivity(uc.activity, &domain.ActivityEvent{
-		ActorID:   actorID,
-		OwnerKind: kind,
-		OwnerID:   repo.OwnerID,
-		RepoID:    &repo.ID,
-		Type:      domain.ActivityPush,
-		Summary:   "pushed to repository",
+		ActorID: actorID,
+		OwnerID: repo.OwnerID,
+		RepoID:  &repo.ID,
+		Type:    domain.ActivityPush,
+		Summary: "pushed to repository",
 	})
 
 	return nil

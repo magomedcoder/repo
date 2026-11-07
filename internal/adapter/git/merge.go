@@ -169,7 +169,7 @@ func (r *Repository) canFastForward(ctx context.Context, repoPath, base, head st
 	return seen[baseCommit.Hash], nil
 }
 
-func (r *Repository) Merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
+func (r *Repository) Merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string, protect bool) (string, error) {
 	return r.withTimeout(ctx, func(ctx context.Context) (string, error) {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -178,11 +178,11 @@ func (r *Repository) Merge(ctx context.Context, repoPath, base, head, strategy, 
 		unlock := r.LockRepo(repoPath)
 		defer unlock()
 
-		return r.merge(ctx, repoPath, base, head, strategy, authorName, authorEmail, message)
+		return r.merge(ctx, repoPath, base, head, strategy, authorName, authorEmail, message, protect)
 	})
 }
 
-func (r *Repository) merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error) {
+func (r *Repository) merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string, protect bool) (string, error) {
 	base = strings.TrimSpace(base)
 	head = strings.TrimSpace(head)
 	if base == "" || head == "" {
@@ -224,17 +224,17 @@ func (r *Repository) merge(ctx context.Context, repoPath, base, head, strategy, 
 			return "", ErrNotFastForward
 		}
 
-		return r.fastForward(repoPath, base, head)
+		return r.fastForward(repoPath, base, head, protect)
 	}
 
 	if ff {
-		return r.fastForward(repoPath, base, head)
+		return r.fastForward(repoPath, base, head, protect)
 	}
 
-	return r.mergeTrees(ctx, repoPath, base, head, authorName, authorEmail, message)
+	return r.mergeTrees(ctx, repoPath, base, head, authorName, authorEmail, message, protect)
 }
 
-func (r *Repository) fastForward(repoPath, base, head string) (string, error) {
+func (r *Repository) fastForward(repoPath, base, head string, protect bool) (string, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return "", err
@@ -260,6 +260,10 @@ func (r *Repository) fastForward(repoPath, base, head string) (string, error) {
 		return "", fmt.Errorf("fast-forward: base moved")
 	}
 
+	if err := domain.CheckRefUpdate(protect, refName.String(), oldRef.Hash().String(), headCommit.Hash.String(), true); err != nil {
+		return "", err
+	}
+
 	newRef := plumbing.NewHashReference(refName, headCommit.Hash)
 	if err := repo.Storer.CheckAndSetReference(newRef, oldRef); err != nil {
 		return "", fmt.Errorf("fast-forward: %w", err)
@@ -268,7 +272,7 @@ func (r *Repository) fastForward(repoPath, base, head string) (string, error) {
 	return headCommit.Hash.String(), nil
 }
 
-func (r *Repository) mergeTrees(ctx context.Context, repoPath, base, head, authorName, authorEmail, message string) (string, error) {
+func (r *Repository) mergeTrees(ctx context.Context, repoPath, base, head, authorName, authorEmail, message string, protect bool) (string, error) {
 	repo, err := r.open(repoPath)
 	if err != nil {
 		return "", err
@@ -370,6 +374,10 @@ func (r *Repository) mergeTrees(ctx context.Context, repoPath, base, head, autho
 
 	if oldRef.Hash() != baseCommit.Hash {
 		return "", fmt.Errorf("merge: base moved")
+	}
+
+	if err := domain.CheckRefUpdate(protect, refName.String(), oldRef.Hash().String(), hash.String(), true); err != nil {
+		return "", err
 	}
 
 	newRef := plumbing.NewHashReference(refName, hash)

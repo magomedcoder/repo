@@ -1,6 +1,6 @@
 import type { IconName } from '@/components/ui/Icon.vue'
 
-export type SettingsSection = 'general' | 'mirror' | 'collaborators' | 'danger'
+export type SettingsSection = 'general' | 'mirror' | 'collaborators' | 'teams' | 'danger'
 
 export const SETTINGS_SECTIONS: {
   id: SettingsSection
@@ -10,5 +10,6 @@ export const SETTINGS_SECTIONS: {
   { id: 'general', labelKey: 'settings.general', icon: 'gear' },
   { id: 'mirror', labelKey: 'settings.mirrorTitle', icon: 'mirror' },
   { id: 'collaborators', labelKey: 'collaborators.title', icon: 'users' },
+  { id: 'teams', labelKey: 'repoSettings.teams.title', icon: 'users' },
   { id: 'danger', labelKey: 'settings.danger', icon: 'alert' },
 ]

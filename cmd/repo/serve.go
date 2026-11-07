@@ -24,6 +24,7 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/argon2id"
+	"magomedcoder.ru/repo/pkg/secretbox"
 	"magomedcoder.ru/repo/pkg/token"
 )
 
@@ -56,14 +57,12 @@ func runServe() {
 
 	userStore := sqlite.NewUserRepo(db)
 	sessionStore := sqlite.NewSessionRepo(db)
-	folderStore := sqlite.NewFolderRepo(db)
 	repoStore := sqlite.NewRepositoryRepo(db)
 	tokenStore := sqlite.NewAccessTokenRepo(db)
 	issueStore := sqlite.NewIssueRepo(db)
 	pullStore := sqlite.NewPullRequestRepo(db)
 	activityStore := sqlite.NewActivityRepo(db)
 	accessStore := sqlite.NewAccessLogRepo(db)
-	folderMemberStore := sqlite.NewFolderMemberRepo(db)
 	teamStore := sqlite.NewTeamRepo(db)
 	teamMemberStore := sqlite.NewTeamMemberRepo(db)
 	teamRepoGrantStore := sqlite.NewTeamRepoGrantRepo(db)
@@ -77,34 +76,47 @@ func runServe() {
 
 	middleware.SetTrustedProxies(cfg.TrustedProxyNets)
 
-	authz := usecase.NewAuthz(folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore)
+	authz := usecase.NewAuthz(teamRepoGrantStore, collabStore)
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret(cfg.SessionSecret)
 	authUC.SetAllowRegistration(cfg.AllowRegistration)
-	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, folderMemberStore, gitRepo, authz)
-	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore, authz)
+	repoUC := usecase.NewRepositoryUseCase(repoStore, userStore, gitRepo, activityStore, authz)
+	repoUC.SetPasswordHasher(hasher)
+	if key, err := secretbox.DeriveKey(cfg.MirrorSecretsMaterial()); err != nil {
+		slog.Error("mirror secrets key", "err", err)
+		os.Exit(1)
+	} else {
+		repoUC.SetMirrorSecretsKey(key)
+	}
+
 	if err := setupMirror(repoUC, cfg, db); err != nil {
 		slog.Error("mirror", "err", err)
 		os.Exit(1)
 	}
 
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
+	tokenUC.SetPepper(cfg.SessionSecret)
 	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
-	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore, authz)
-	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore, authz)
-	membershipUC := usecase.NewAccessUseCase(folderStore, repoStore, userStore, folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore, authz)
+	gitUC.SetTokenPepper(cfg.SessionSecret)
+	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, userStore, activityStore, authz)
+	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, userStore, gitRepo, activityStore, authz)
+	membershipUC := usecase.NewAccessUseCase(repoStore, userStore, collabStore, authz)
+	teamUC := usecase.NewTeamUseCase(teamStore, teamMemberStore, teamRepoGrantStore, repoStore, userStore, authz)
 	profileUC := usecase.NewProfileUseCase(userStore, hasher, cfg.DataDir)
+	profileUC.SetSessionStores(sessionStore, tokenStore)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
+	adminUC.SetDataStores(repoStore, accessStore)
 	accessUC := usecase.NewAccessLogUseCase(accessStore)
+	adminMirrorUC := usecase.NewAdminMirrorUseCase(repoUC)
 
 	authHandler := handler.NewAuthHandler(authUC)
 	authHandler.SetCookiePolicy(cfg.CookieSecure, http.SameSiteLaxMode)
 	authHandler.SetCSRFSecret(cfg.SessionSecret)
 	authHandler.SetAllowRegistration(cfg.AllowRegistration)
 	authHandler.SetAccessLogger(accessLog)
-	folderHandler := handler.NewFolderHandler(folderUC)
 	membershipHandler := handler.NewMembershipHandler(membershipUC)
+	teamHandler := handler.NewTeamHandler(teamUC)
 	repoHandler := handler.NewRepositoryHandler(repoUC)
 	repoHandler.SetAccessLogger(accessLog)
 	tokenHandler := handler.NewTokenHandler(tokenUC)
@@ -121,9 +133,10 @@ func runServe() {
 	siteHandler := handler.NewSiteHandler(cfg.SiteName)
 	adminHandler := handler.NewAdminHandler(adminUC, accessUC)
 	adminHandler.SetAccessLogger(accessLog)
+	adminHandler.SetMirrors(adminMirrorUC)
 	accessHandler := handler.NewAccessHandler(accessLog)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, folderHandler, membershipHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.CookieSecure, cfg.SessionSecret)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, membershipHandler, teamHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.CookieSecure, cfg.SessionSecret)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -146,11 +159,12 @@ func runServe() {
 	go func() {
 		defer close(maintenanceDone)
 		runMaintenance(ctx, maintenanceDeps{
-			db:       db,
-			sessions: sessionStore,
-			tokens:   tokenStore,
-			activity: activityStore,
-			repos:    repoUC,
+			db:                   db,
+			sessions:             sessionStore,
+			tokens:               tokenStore,
+			activity:             activityStore,
+			repos:                repoUC,
+			softDeletedRetention: cfg.SoftDeletedRetentionDur,
 		})
 	}()
 
@@ -192,11 +206,10 @@ func runServe() {
 }
 
 const (
-	maintenanceEvery     = time.Hour
-	maintenanceFirstRun  = 15 * time.Second
-	attemptsSweepEvery   = 5 * time.Minute
-	activityRetention    = 90 * 24 * time.Hour
-	softDeletedRetention = 7 * 24 * time.Hour
+	maintenanceEvery    = time.Hour
+	maintenanceFirstRun = 15 * time.Second
+	attemptsSweepEvery  = 5 * time.Minute
+	activityRetention   = 90 * 24 * time.Hour
 )
 
 type repoPurger interface {
@@ -204,11 +217,12 @@ type repoPurger interface {
 }
 
 type maintenanceDeps struct {
-	db       *gorm.DB
-	sessions domain.SessionStore
-	tokens   domain.AccessTokenStore
-	activity domain.ActivityStore
-	repos    repoPurger
+	db                   *gorm.DB
+	sessions             domain.SessionStore
+	tokens               domain.AccessTokenStore
+	activity             domain.ActivityStore
+	repos                repoPurger
+	softDeletedRetention time.Duration
 }
 
 func runMaintenance(ctx context.Context, d maintenanceDeps) {
@@ -253,10 +267,16 @@ func maintenanceOnce(ctx context.Context, d maintenanceDeps, now time.Time) {
 	}
 
 	if d.repos != nil {
-		if n, err := d.repos.PurgeSoftDeletedRepos(ctx, softDeletedRetention); err != nil {
+		retention := d.softDeletedRetention
+		if retention <= 0 {
+			retention = config.DefaultSoftDeletedRetention
+		}
+
+		slog.Debug("maintenance: soft-deleted purge", "retention", retention.String())
+		if n, err := d.repos.PurgeSoftDeletedRepos(ctx, retention); err != nil {
 			slog.Warn("maintenance: soft-deleted repositories", "err", err)
 		} else if n > 0 {
-			slog.Info("maintenance: soft-deleted repositories purged", "repos", n)
+			slog.Info("maintenance: soft-deleted repositories purged", "repos", n, "retention", retention.String())
 		}
 	}
 

@@ -18,10 +18,10 @@ func (s *memActivity) Create(ev *domain.ActivityEvent) error {
 	return nil
 }
 
-func (s *memActivity) ListByOwner(ownerKind string, ownerID uint, limit int) ([]domain.ActivityEvent, error) {
+func (s *memActivity) ListByOwner(ownerID uint, limit int) ([]domain.ActivityEvent, error) {
 	var out []domain.ActivityEvent
 	for _, ev := range s.events {
-		if ev.OwnerKind == ownerKind && ev.OwnerID == ownerID {
+		if ev.OwnerID == ownerID {
 			out = append(out, ev)
 		}
 	}
@@ -29,8 +29,8 @@ func (s *memActivity) ListByOwner(ownerKind string, ownerID uint, limit int) ([]
 	return out, nil
 }
 
-func (s *memActivity) ListPublicByOwner(ownerKind string, ownerID uint, limit int) ([]domain.ActivityEvent, error) {
-	return s.ListByOwner(ownerKind, ownerID, limit)
+func (s *memActivity) ListPublicByOwner(ownerID uint, limit int) ([]domain.ActivityEvent, error) {
+	return s.ListByOwner(ownerID, limit)
 }
 
 func (s *memActivity) DeleteOlderThan(_ context.Context, before time.Time) (int64, error) {
@@ -77,12 +77,12 @@ func (s *memRepos) FindByRepoPath(_ context.Context, repoPath string) (*domain.R
 	return nil, errors.New("not found")
 }
 
-func (s *memRepos) ListByOwnerID(_ context.Context, ownerKind string, ownerID uint, limit, offset int, _ domain.RepoOrder) ([]domain.Repository, error) {
+func (s *memRepos) ListByOwnerID(_ context.Context, ownerID uint, limit, offset int, _ domain.RepoOrder) ([]domain.Repository, error) {
 	_ = limit
 	_ = offset
 	var out []domain.Repository
 	for _, r := range s.items {
-		if r.OwnerKind == ownerKind && r.OwnerID == ownerID {
+		if r.OwnerID == ownerID {
 			out = append(out, r)
 		}
 	}
@@ -90,10 +90,10 @@ func (s *memRepos) ListByOwnerID(_ context.Context, ownerKind string, ownerID ui
 	return out, nil
 }
 
-func (s *memRepos) CountByOwnerID(ownerKind string, ownerID uint) (int64, error) {
+func (s *memRepos) CountByOwnerID(ownerID uint) (int64, error) {
 	var n int64
 	for _, r := range s.items {
-		if r.OwnerKind == ownerKind && r.OwnerID == ownerID {
+		if r.OwnerID == ownerID {
 			n++
 		}
 	}
@@ -101,10 +101,10 @@ func (s *memRepos) CountByOwnerID(ownerKind string, ownerID uint) (int64, error)
 	return n, nil
 }
 
-func (s *memRepos) ListPublicIDsByOwner(_ context.Context, ownerKind string, ownerID uint) ([]uint, error) {
+func (s *memRepos) ListPublicIDsByOwner(_ context.Context, ownerID uint) ([]uint, error) {
 	var out []uint
 	for _, r := range s.items {
-		if r.OwnerKind == ownerKind && r.OwnerID == ownerID && !r.IsPrivate {
+		if r.OwnerID == ownerID && !r.IsPrivate {
 			out = append(out, r.ID)
 		}
 	}
@@ -112,19 +112,11 @@ func (s *memRepos) ListPublicIDsByOwner(_ context.Context, ownerKind string, own
 	return out, nil
 }
 
-func (s *memRepos) ListByFolderID(context.Context, uint) ([]domain.Repository, error) {
-	return nil, nil
-}
-
 func (s *memRepos) ListPublic(context.Context, int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
 }
 
 func (s *memRepos) ListHome(context.Context, int, int, domain.RepoOrder) ([]domain.Repository, error) {
-	return nil, nil
-}
-
-func (s *memRepos) ListByMirrorDirection(context.Context, string) ([]domain.Repository, error) {
 	return nil, nil
 }
 
@@ -139,6 +131,14 @@ func (s *memRepos) ListMirrorSchedules(context.Context, domain.MirrorScheduleFil
 }
 
 func (s *memRepos) CountMirrorsInError(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (s *memRepos) ListAdmin(context.Context, domain.AdminRepoFilter) ([]domain.Repository, int, error) {
+	return nil, 0, nil
+}
+
+func (s *memRepos) CountAll(context.Context) (int64, error) {
 	return 0, nil
 }
 
@@ -157,16 +157,12 @@ func (s *memRepos) FindByID(_ context.Context, id uint) (*domain.Repository, err
 	return nil, errors.New("not found")
 }
 
-func (s *memRepos) SearchByName(context.Context, string, string, uint, bool, int, int, domain.RepoOrder) ([]domain.Repository, error) {
+func (s *memRepos) SearchByName(context.Context, string, uint, bool, int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
 }
 
-func (s *memRepos) ExistsByOwnerFolderName(string, uint, *uint, string) (bool, error) {
+func (s *memRepos) ExistsByName(string) (bool, error) {
 	return false, nil
-}
-
-func (s *memRepos) CountByFolderID(uint) (int64, error) {
-	return 0, nil
 }
 
 func (s *memRepos) PurgeSoftDeleted(context.Context, time.Time) ([]uint, error) {
@@ -184,14 +180,12 @@ func TestListOwnerHidesPrivateActivity(t *testing.T) {
 	repos := &memRepos{items: []domain.Repository{
 		{
 			ID:        privID,
-			OwnerKind: domain.OwnerKindUser,
 			OwnerID:   1,
 			IsPrivate: true,
 			Name:      "secret",
 		},
 		{
 			ID:        pubID,
-			OwnerKind: domain.OwnerKindUser,
 			OwnerID:   1,
 			IsPrivate: false,
 			Name:      "open",
@@ -199,7 +193,7 @@ func TestListOwnerHidesPrivateActivity(t *testing.T) {
 	}}
 	events := &memActivity{events: []domain.ActivityEvent{
 		{
-			ID: 1, OwnerKind: domain.OwnerKindUser,
+			ID:      1,
 			OwnerID: 1,
 			ActorID: 1,
 			RepoID:  &privID,
@@ -207,7 +201,7 @@ func TestListOwnerHidesPrivateActivity(t *testing.T) {
 			Summary: "secret push",
 		},
 		{
-			ID: 2, OwnerKind: domain.OwnerKindUser,
+			ID:      2,
 			OwnerID: 1,
 			ActorID: 1,
 			RepoID:  &pubID,

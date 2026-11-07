@@ -382,6 +382,14 @@ func mirrorAuth(username, password string) *domain.MirrorAuth {
 }
 
 func (uc *RepositoryUseCase) mirrorOptions(repo *domain.Repository) (*domain.MirrorOptions, error) {
+	if repo.MirrorLFS {
+		return nil, ErrMirrorLFSUnavailable
+	}
+
+	if repo.MirrorPartial {
+		return nil, ErrMirrorPartialUnavailable
+	}
+
 	pw, err := uc.openSecret(repo.MirrorPassword)
 	if err != nil {
 		return nil, err
@@ -412,9 +420,9 @@ func (uc *RepositoryUseCase) mirrorOptions(repo *domain.Repository) (*domain.Mir
 		Force:         &force,
 		Prune:         &prune,
 		RefSpecs:      parseRefspecs(repo.MirrorRefspecs),
-		LFS:           repo.MirrorLFS,
+		LFS:           false,
 		MaxBytes:      repo.MirrorMaxBytes,
-		Partial:       repo.MirrorPartial,
+		Partial:       false,
 		PinnedHosts:   pins,
 	}, nil
 }
@@ -492,9 +500,17 @@ func (uc *RepositoryUseCase) afterPull(ctx context.Context, repo *domain.Reposit
 }
 
 func (uc *RepositoryUseCase) performSync(ctx context.Context, repo *domain.Repository) error {
+	if err := uc.validateMirrorURL(repo.MirrorURL); err != nil {
+		return err
+	}
+
 	opts, err := uc.mirrorOptions(repo)
 	if err != nil {
 		return err
+	}
+
+	if isSSHMirrorURL(repo.MirrorURL) && strings.TrimSpace(opts.SSHPrivateKey) == "" {
+		return ErrInvalidSSHKey
 	}
 
 	cfg := uc.mirrorConfig()
@@ -533,73 +549,7 @@ func (uc *RepositoryUseCase) performSync(ctx context.Context, repo *domain.Repos
 		return ErrInvalidMirrorDirection
 	}
 
-	uc.syncTargets(ctx, repo, opts)
-
 	return nil
-}
-
-func (uc *RepositoryUseCase) syncTargets(ctx context.Context, repo *domain.Repository, base *domain.MirrorOptions) {
-	if uc.mirror.targets == nil {
-		return
-	}
-
-	list, err := uc.mirror.targets.ListByRepo(ctx, repo.ID)
-	if err != nil {
-		slog.Warn("mirror targets list", "repo_id", repo.ID, "err", err)
-
-		return
-	}
-
-	cfg := uc.mirrorConfig()
-	ok, failed := 0, 0
-
-	for i := range list {
-		t := &list[i]
-		if !t.Enabled || t.Direction != domain.MirrorPush {
-			continue
-		}
-
-		err := uc.pushTarget(ctx, repo, t, base, cfg)
-
-		now := time.Now().UTC()
-		if err != nil {
-			failed++
-			t.LastError = truncateErr(uc.sanitizeMirrorErr(repo, t.URL, err), 500)
-		} else {
-			ok++
-			t.LastSyncAt = &now
-			t.LastError = ""
-		}
-
-		if uerr := uc.mirror.targets.Update(ctx, t); uerr != nil {
-			slog.Warn("mirror target update", "repo_id", repo.ID, "target_id", t.ID, "err", uerr)
-		}
-	}
-
-	if ok+failed > 0 {
-		repo.MirrorLastProgress = truncateErr(fmt.Sprintf("%s; targets ok=%d failed=%d", repo.MirrorLastProgress, ok, failed), 500)
-	}
-}
-
-func (uc *RepositoryUseCase) pushTarget(ctx context.Context, repo *domain.Repository, t *domain.MirrorTarget, base *domain.MirrorOptions, cfg MirrorConfig) error {
-	pw, err := uc.openSecret(t.Password)
-	if err != nil {
-		return err
-	}
-
-	o := *base
-	o.Auth = mirrorAuth(t.Username, pw)
-	o.Progress = nil
-
-	if repo.MirrorConflictPolicy == domain.MirrorConflictReject {
-		f := false
-		o.Force = &f
-	}
-
-	sctx, cancel := context.WithTimeout(ctx, cfg.PushTimeout)
-	defer cancel()
-
-	return uc.git.MirrorPush(sctx, repo.Path, t.URL, &o)
 }
 
 func (uc *RepositoryUseCase) sanitizeMirrorErr(repo *domain.Repository, rawURL string, err error) string {
@@ -772,8 +722,10 @@ func classifyMirrorErr(err error) string {
 		return "diverged"
 	case errors.Is(err, domain.ErrMirrorTooLarge):
 		return "too_large"
-	case errors.Is(err, domain.ErrMirrorLFSMissing):
+	case errors.Is(err, domain.ErrMirrorLFSMissing), errors.Is(err, domain.ErrMirrorLFSUnavailable), errors.Is(err, ErrMirrorLFSUnavailable):
 		return "lfs"
+	case errors.Is(err, domain.ErrMirrorPartialUnavailable), errors.Is(err, ErrMirrorPartialUnavailable):
+		return "partial"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
 	case errors.Is(err, context.Canceled):

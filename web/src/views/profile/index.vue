@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { activityApi, foldersApi, usersApi } from '@/api'
-import type { ActivityEvent, Folder, Profile } from '@/api/types'
+import { activityApi, teamsApi, usersApi } from '@/api'
+import type { ActivityEvent, Profile, Team } from '@/api/types'
 import ActivityFeed from '@/components/ActivityFeed.vue'
 import PageState from '@/components/ui/PageState.vue'
 import { useAuth } from '@/composables/useAuth'
-import { folderLocation } from '@/lib/folderNav'
 import { i18n, localizeError } from '@/i18n'
 import Icon from '@/components/ui/Icon.vue'
 import GlassTable from '@/components/ui/GlassTable.vue'
@@ -20,9 +19,9 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const activity = ref<ActivityEvent[]>([])
 const activityError = ref('')
 const activityLoading = ref(true)
-const folders = ref<Folder[]>([])
-const foldersError = ref('')
-const foldersLoading = ref(true)
+const teams = ref<Team[]>([])
+const teamsError = ref('')
+const teamsLoading = ref(true)
 
 const avatarBust = ref(0)
 const avatarSrc = computed(() => {
@@ -45,16 +44,16 @@ async function load() {
 
     profile.value = await usersApi.get(username)
 
-    foldersLoading.value = true
-    foldersError.value = ''
+    teamsLoading.value = true
+    teamsError.value = ''
     try {
-      const folderRes = await foldersApi.list()
-      folders.value = (folderRes.folders ?? []).slice().sort((a, b) => a.path.localeCompare(b.path))
+      const teamRes = await teamsApi.list()
+      teams.value = (teamRes.teams ?? []).slice().sort((a, b) => a.name.localeCompare(b.name))
     } catch (err) {
-      foldersError.value = localizeError(err, 'errors.loadFailed')
-      folders.value = []
+      teamsError.value = localizeError(err, 'errors.loadFailed')
+      teams.value = []
     } finally {
-      foldersLoading.value = false
+      teamsLoading.value = false
     }
 
     activityLoading.value = true
@@ -73,14 +72,6 @@ async function load() {
   } finally {
     loading.value = false
   }
-}
-
-function folderRoleLabel(folder: Folder) {
-  const role = folder.role
-  if (role === 'owner' || role === 'admin' || role === 'member') {
-    return `folderAccess.roles.${role}`
-  }
-  return ''
 }
 
 function joinedDate(value: string) {
@@ -198,42 +189,40 @@ onMounted(load)
                 :to="{ name: 'tokens' }"
                 class="inline-flex items-center gap-1.5 text-link no-underline hover:underline"
               ><Icon name="key" size="sm" />{{ $t('nav.accessTokens') }}</RouterLink>
+              <RouterLink
+                :to="{ name: 'teams' }"
+                class="inline-flex items-center gap-1.5 text-link no-underline hover:underline"
+              ><Icon name="users" size="sm" />{{ $t('nav.teams') }}</RouterLink>
             </nav>
           </div>
         </section>
 
         <section>
           <div class="mb-2 flex items-baseline justify-between gap-3 border-b border-white/40 pb-1.5">
-            <h2 class="inline-flex items-center gap-1.5 font-bold text-ink"><Icon name="folder" size="sm" class="text-ink-muted" />{{ $t('profile.folders') }}</h2>
-            <span class="text-[85%] text-ink-muted">{{ folders.length }}</span>
+            <h2 class="inline-flex items-center gap-1.5 font-bold text-ink"><Icon name="users" size="sm" class="text-ink-muted" />{{ $t('profile.teams') }}</h2>
+            <span class="text-[85%] text-ink-muted">{{ teams.length }}</span>
           </div>
-          <p v-if="foldersLoading" class="text-ink-muted">{{ $t('common.loading') }}</p>
-          <p v-else-if="foldersError" class="text-warn">{{ foldersError }}</p>
-          <GlassTable v-else-if="folders.length">
+          <p v-if="teamsLoading" class="text-ink-muted">{{ $t('common.loading') }}</p>
+          <p v-else-if="teamsError" class="text-warn">{{ teamsError }}</p>
+          <GlassTable v-else-if="teams.length">
             <thead>
               <tr>
                 <th>{{ $t('index.name') }}</th>
-                <th class="hidden sm:table-cell">{{ $t('index.path') }}</th>
-                <th class="w-[22%]">{{ $t('profile.folderRole') }}</th>
+                <th class="hidden sm:table-cell">{{ $t('teams.slug') }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="folder in folders" :key="folder.path">
+              <tr v-for="team in teams" :key="team.slug">
                 <td class="truncate">
-                  <RouterLink :to="folderLocation(folder)" class="inline-flex items-center gap-1.5"><Icon name="folder" size="sm" class="text-ink-muted" />{{ folder.name }}</RouterLink>
+                  <RouterLink :to="{ name: 'team', params: { slug: team.slug } }" class="inline-flex items-center gap-1.5"><Icon name="users" size="sm" class="text-ink-muted" />{{ team.name }}</RouterLink>
                 </td>
                 <td class="hidden truncate font-mono text-[90%] text-ink-muted sm:table-cell">
-                  {{ folder.path }}
-                </td>
-                <td class="whitespace-nowrap text-ink-muted">
-                  <template v-if="folderRoleLabel(folder)">
-                    {{ $t(folderRoleLabel(folder)) }}
-                  </template>
+                  {{ team.slug }}
                 </td>
               </tr>
             </tbody>
           </GlassTable>
-          <p v-else class="text-ink-muted">{{ $t('profile.noFolders') }}</p>
+          <p v-else class="text-ink-muted">{{ $t('profile.noTeams') }}</p>
         </section>
 
         <ActivityFeed

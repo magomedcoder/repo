@@ -362,6 +362,10 @@ func (memHasher) Compare(hash, password string) error {
 	return errors.New("mismatch")
 }
 
+func (memHasher) NeedsRehash(string) bool {
+	return false
+}
+
 func testAuth(users *memUsers, sessions domain.SessionStore) *AuthUseCase {
 	uc := NewAuthUseCase(users, sessions, &memAccessTokens{}, memHasher{}, &memTokens{})
 	uc.SetSessionSecret("0123456789abcdef0123456789abcdef")

@@ -15,7 +15,7 @@ func TestIsGitHTTPPathSuffixOnly(t *testing.T) {
 		path string
 		ok   bool
 	}{
-		{"/work/demo.git/info/refs", true},
+		{"/demo.git/info/refs", true},
 		{"/demo.git/git-upload-pack", true},
 		{"/demo.git/git-receive-pack", true},
 		{"/demo.git/info/refs-extra", false},

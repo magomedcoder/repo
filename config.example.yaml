@@ -14,3 +14,4 @@ mirror_workers: 4
 mirror_clone_timeout: 15m
 mirror_fetch_timeout: 10m
 mirror_push_timeout: 10m
+mirror_secrets_key: "" # openssl rand -hex 32

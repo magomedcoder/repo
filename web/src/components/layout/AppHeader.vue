@@ -13,7 +13,6 @@ const route = useRoute()
 const router = useRouter()
 const searchQ = ref(typeof route.query.q === 'string' ? route.query.q : '')
 
-const openNewFolder = inject<() => void>('openNewFolder', () => {})
 const openNewRepo = inject<() => void>('openNewRepo', () => {})
 const openImportRepo = inject<(url?: string) => void>('openImportRepo', () => {})
 const openMirrorRepo = inject<(url?: string) => void>('openMirrorRepo', () => {})
@@ -95,11 +94,6 @@ function toggleMenu() {
   menuOpen.value = !menuOpen.value
 }
 
-function onNewFolder() {
-  closeMenus()
-  openNewFolder()
-}
-
 function onNewRepo() {
   closeMenus()
   openNewRepo()
@@ -165,10 +159,6 @@ async function onLogout() {
             role="menu"
             class="glass-menu absolute right-0 top-full z-[70] mt-1 min-w-48 overflow-hidden py-1"
           >
-            <button type="button" role="menuitem" class="menu-item" @click="onNewFolder">
-              <Icon name="folder" size="sm" class="text-ink-muted" />
-              {{ $t('home.newFolder') }}
-            </button>
             <button type="button" role="menuitem" class="menu-item" @click="onNewRepo">
               <Icon name="repo" size="sm" class="text-ink-muted" />
               {{ $t('home.newRepository') }}
@@ -231,34 +221,23 @@ async function onLogout() {
               {{ $t('nav.profile') }}
             </RouterLink>
             <RouterLink
-              v-if="isAdmin"
               role="menuitem"
               class="menu-item"
-              :to="{ name: 'access-logs' }"
-              @click="closeMenus"
-            >
-              <Icon name="list" size="sm" class="text-ink-muted" />
-              {{ $t('nav.accessLogs') }}
-            </RouterLink>
-            <RouterLink
-              v-if="isAdmin"
-              role="menuitem"
-              class="menu-item"
-              :to="{ name: 'users' }"
+              :to="{ name: 'teams' }"
               @click="closeMenus"
             >
               <Icon name="users" size="sm" class="text-ink-muted" />
-              {{ $t('nav.users') }}
+              {{ $t('nav.teams') }}
             </RouterLink>
             <RouterLink
               v-if="isAdmin"
               role="menuitem"
               class="menu-item"
-              :to="{ name: 'admin-mirrors' }"
+              :to="{ name: 'cp' }"
               @click="closeMenus"
             >
-              <Icon name="mirror" size="sm" class="text-ink-muted" />
-              {{ $t('nav.mirrors') }}
+              <Icon name="gear" size="sm" class="text-ink-muted" />
+              {{ $t('nav.controlPanel') }}
             </RouterLink>
             <button type="button" role="menuitem" class="menu-item" @click="onLogout">
               <Icon name="logout" size="sm" class="text-ink-muted" />

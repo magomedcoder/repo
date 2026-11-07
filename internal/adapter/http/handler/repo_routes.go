@@ -11,10 +11,7 @@ import (
 func RegisterRepoRoutes(pub, authed *httpx.Router, d *RepoDispatcher) {
 	mountRepoCRUD(pub, authed, d, "/repos/{name}")
 	mountRepoCollectionRoutes(pub, authed, d, "/repos/{name}")
-
-	mountRepoCRUD(pub, authed, d, "/repos/{folder}/{name}")
-	mountRepoCollectionRoutes(pub, authed, d, "/repos/{folder}/{name}")
-	mountRepoDetailRoutes(pub, authed, d, "/repos/{folder}/{name}")
+	mountRepoDetailRoutes(pub, authed, d, "/repos/{name}")
 
 	pub.GET("/repos/{path...}", d.DispatchGet)
 	authed.PATCH("/repos/{path...}", d.DispatchPatch)
@@ -37,11 +34,9 @@ func mountRepoCollectionRoutes(pub, authed *httpx.Router, d *RepoDispatcher, bas
 	pub.GET(base+"/pulls", d.explicitGet("pulls"))
 	authed.POST(base+"/pulls", d.explicitPost("pulls"))
 
-	for _, action := range []string{"branches", "tags", "commits", "tree", "blob", "raw", "blame", "readme", "stats", "summary"} {
+	for _, action := range []string{"branches", "tags", "commits", "tree", "blob", "raw", "blame", "summary"} {
 		pub.GET(base+"/"+action, d.explicitGet(action))
 	}
-
-	authed.POST(base+"/move", d.explicitPost("move"))
 
 	authed.PUT(base+"/mirror", d.Repos.ConfigureMirror)
 	authed.POST(base+"/mirror/sync", d.Repos.SyncMirror)
@@ -52,13 +47,12 @@ func mountRepoCollectionRoutes(pub, authed *httpx.Router, d *RepoDispatcher, bas
 	authed.GET(base+"/mirror/dry-run", d.Repos.DryRunMirror)
 	authed.GET(base+"/mirror/bundle", d.Repos.ExportMirrorBundle)
 	authed.POST(base+"/mirror/bundle", d.Repos.ImportMirrorBundle)
-	authed.GET(base+"/mirror/targets", d.Repos.ListMirrorTargets)
-	authed.POST(base+"/mirror/targets", d.Repos.SaveMirrorTarget)
-	authed.PUT(base+"/mirror/targets/{target}", d.Repos.SaveMirrorTarget)
-	authed.DELETE(base+"/mirror/targets/{target}", d.Repos.DeleteMirrorTarget)
 
 	authed.GET(base+"/collaborators", d.explicitGet("collaborators"))
 	authed.POST(base+"/collaborators", d.explicitPost("collaborators"))
+
+	authed.GET(base+"/teams", d.explicitGet("teams"))
+	authed.POST(base+"/teams", d.explicitPost("teams"))
 }
 
 func mountRepoDetailRoutes(pub, authed *httpx.Router, d *RepoDispatcher, base string) {
@@ -85,6 +79,7 @@ func mountRepoDetailRoutes(pub, authed *httpx.Router, d *RepoDispatcher, base st
 	pub.GET(base+"/commits/{sha}/diff", d.explicitGet("commit-diff"))
 
 	authed.DELETE(base+"/collaborators/{username}", d.explicitDelete("collaborator"))
+	authed.DELETE(base+"/teams/{slug}", d.explicitDelete("team"))
 }
 
 func (d *RepoDispatcher) explicitGet(action string) httpx.Handler {
@@ -97,6 +92,12 @@ func (d *RepoDispatcher) explicitGet(action string) httpx.Handler {
 		switch {
 		case action == "collaborators":
 			return d.Membership.ListCollaborators(c, in)
+		case action == "teams":
+			if d.Teams == nil {
+				return c.Error(http.StatusNotFound, "not_found")
+			}
+
+			return d.Teams.ListRepoTeams(c, in)
 		case action == "commit-diff":
 			return d.Repos.serveBrowseGet(c, in, "commits", []string{c.Param("sha"), "diff"})
 		case isPullAction(action):
@@ -111,9 +112,6 @@ func (d *RepoDispatcher) explicitGet(action string) httpx.Handler {
 
 func (d *RepoDispatcher) explicitPost(action string) httpx.Handler {
 	return func(c *httpx.Context) error {
-		if action == "move" {
-			return d.Repos.MoveWithParts(c, namedRepoParts(c))
-		}
 		in, err := resolveNamedRepo(c)
 		if err != nil {
 			return c.Error(http.StatusBadRequest, err.Error())
@@ -122,6 +120,12 @@ func (d *RepoDispatcher) explicitPost(action string) httpx.Handler {
 		switch {
 		case action == "collaborators":
 			return d.Membership.AddCollaborator(c, in)
+		case action == "teams":
+			if d.Teams == nil {
+				return c.Error(http.StatusNotFound, "not_found")
+			}
+
+			return d.Teams.GrantRepoTeam(c, in)
 		case isPullAction(action):
 			return d.Pulls.post(c, in, action, extra)
 		case isIssueAction(action):
@@ -161,6 +165,12 @@ func (d *RepoDispatcher) explicitDelete(action string) httpx.Handler {
 		switch {
 		case action == "collaborator":
 			return d.Membership.RemoveCollaborator(c, in, c.Param("username"))
+		case action == "team":
+			if d.Teams == nil {
+				return c.Error(http.StatusNotFound, "not_found")
+			}
+
+			return d.Teams.RevokeRepoTeam(c, in, c.Param("slug"))
 		case isPullAction(action):
 			return d.Pulls.delete(c, in, action, extra)
 		case isIssueAction(action):
@@ -177,11 +187,6 @@ func resolveNamedRepo(c *httpx.Context) (usecase.ResolveRepositoryInput, error) 
 
 func namedRepoParts(c *httpx.Context) []string {
 	name := strings.Trim(c.Param("name"), "/")
-	folder := strings.Trim(c.Param("folder"), "/")
-	if folder != "" {
-		return []string{folder, name}
-	}
-
 	if name == "" {
 		return nil
 	}

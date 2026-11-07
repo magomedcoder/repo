@@ -62,9 +62,28 @@ func (s *TeamRepoGrant) ListByTeam(teamID uint) ([]domain.TeamRepoGrant, error) 
 	return out, nil
 }
 
+func (s *TeamRepoGrant) ListByRepo(repoID uint) ([]domain.TeamRepoGrant, error) {
+	models, err := s.FindByWhereAndOrder(context.Background(), "repo_id = ?", "id ASC", repoID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.TeamRepoGrant, 0, len(models))
+	for _, m := range models {
+		out = append(out, m.ToDomain())
+	}
+
+	return out, nil
+}
+
+func (s *TeamRepoGrant) DeleteByTeam(teamID uint) error {
+	return s.DeleteWhere(context.Background(), "team_id = ?", teamID)
+}
+
 func (s *TeamRepoGrant) ListByRepoUser(repoID, userID uint) ([]domain.TeamRepoGrant, error) {
 	models, err := s.FindAll(context.Background(),
 		gormutil.WithJoins("JOIN team_members ON team_members.team_id = team_repo_grants.team_id AND team_members.deleted_at IS NULL"),
+		gormutil.WithJoins("JOIN teams ON teams.id = team_repo_grants.team_id AND teams.deleted_at IS NULL"),
 		gormutil.WithWhere("team_repo_grants.repo_id = ? AND team_members.user_id = ?", repoID, userID),
 	)
 	if err != nil {

@@ -26,16 +26,47 @@ type AdminListResult struct {
 }
 
 type AdminCreateInput struct {
-	Username string
-	Email    string
-	Password string
-	Role     domain.Role
+	Username        string
+	Email           string
+	Password        string
+	Role            domain.Role
+	CurrentPassword string
 }
 
 type AdminUpdateInput struct {
-	Email    *string
-	Role     *domain.Role
-	Password *string
+	Email           *string
+	Role            *domain.Role
+	Password        *string
+	CurrentPassword string
+}
+
+type AdminOverview struct {
+	Users        int             `json:"users"`
+	Repos        int             `json:"repos"`
+	MirrorsError int64           `json:"mirrors_error"`
+	Events24h    int             `json:"events_24h"`
+	RecentLogs   []AccessLogItem `json:"recent_logs"`
+}
+
+type AdminRepoItem struct {
+	ID              uint       `json:"id"`
+	Name            string     `json:"name"`
+	Description     string     `json:"description"`
+	Owner           string     `json:"owner"`
+	RepoPath        string     `json:"repo_path"`
+	IsPrivate       bool       `json:"is_private"`
+	ShowOnHome      bool       `json:"show_on_home"`
+	MirrorDirection string     `json:"mirror_direction,omitzero"`
+	MirrorStatus    string     `json:"mirror_status,omitzero"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	LastActivityAt  *time.Time `json:"last_activity_at,omitzero"`
+}
+
+type AdminRepoListResult struct {
+	Repos  []AdminRepoItem `json:"repos"`
+	Total  int             `json:"total"`
+	Limit  int             `json:"limit"`
+	Offset int             `json:"offset"`
 }
 
 type AdminUseCase struct {
@@ -44,6 +75,8 @@ type AdminUseCase struct {
 	tokens   domain.AccessTokenStore
 	auth     *AuthUseCase
 	hasher   domain.PasswordHasher
+	repos    domain.RepositoryStore
+	logs     domain.AccessLogStore
 }
 
 func NewAdminUseCase(users domain.UserStore, sessions domain.SessionStore, tokens domain.AccessTokenStore, auth *AuthUseCase, hasher domain.PasswordHasher) *AdminUseCase {
@@ -56,20 +89,89 @@ func NewAdminUseCase(users domain.UserStore, sessions domain.SessionStore, token
 	}
 }
 
-func (uc *AdminUseCase) List(ctx context.Context, query string, limit, offset int) (*AdminListResult, error) {
+func (uc *AdminUseCase) SetDataStores(repos domain.RepositoryStore, logs domain.AccessLogStore) {
+	uc.repos = repos
+	uc.logs = logs
+}
+
+func (uc *AdminUseCase) Overview(ctx context.Context) (*AdminOverview, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if limit <= 0 || limit > 100 {
-		limit = 50
+
+	out := &AdminOverview{
+		RecentLogs: []AccessLogItem{},
 	}
 
-	if offset < 0 {
-		offset = 0
+	if _, total, err := uc.users.List(domain.UserListFilter{Limit: 1}); err != nil {
+		return nil, fmt.Errorf("count users: %w", err)
+	} else {
+		out.Users = total
 	}
+
+	if uc.repos != nil {
+		if n, err := uc.repos.CountAll(ctx); err != nil {
+			return nil, fmt.Errorf("count repos: %w", err)
+		} else {
+			out.Repos = int(n)
+		}
+
+		if n, err := uc.repos.CountMirrorsInError(ctx, time.Now().Add(-time.Hour)); err != nil {
+			return nil, fmt.Errorf("count mirror errors: %w", err)
+		} else {
+			out.MirrorsError = n
+		}
+	}
+
+	if uc.logs != nil {
+		since := time.Now().Add(-24 * time.Hour)
+		items, total, err := uc.logs.List(domain.AccessLogFilter{
+			Since: &since,
+			Limit: 8,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list access logs: %w", err)
+		}
+
+		out.Events24h = total
+		out.RecentLogs = make([]AccessLogItem, 0, len(items))
+		for _, item := range items {
+			out.RecentLogs = append(out.RecentLogs, AccessLogItem{
+				ID:        item.ID,
+				Action:    item.Action,
+				IP:        item.IP,
+				UserAgent: item.UserAgent,
+				UserID:    item.UserID,
+				Username:  item.Username,
+				Path:      item.Path,
+				Repo:      item.Repo,
+				Ref:       item.Ref,
+				CreatedAt: item.CreatedAt,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+type AdminListInput struct {
+	Query  string
+	Role   *domain.Role
+	Sort   string
+	Limit  int
+	Offset int
+}
+
+func (uc *AdminUseCase) ListUsers(ctx context.Context, in AdminListInput) (*AdminListResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	offset, limit := ClampPagination(in.Offset, in.Limit, DefaultPageLimit, 100)
 
 	users, total, err := uc.users.List(domain.UserListFilter{
-		Query:  query,
+		Query:  in.Query,
+		Role:   in.Role,
+		Sort:   in.Sort,
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -90,24 +192,66 @@ func (uc *AdminUseCase) List(ctx context.Context, query string, limit, offset in
 	}, nil
 }
 
-func (uc *AdminUseCase) Get(ctx context.Context, id uint) (*AdminUserItem, error) {
+func (uc *AdminUseCase) ListRepos(ctx context.Context, filter domain.AdminRepoFilter) (*AdminRepoListResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
-	user, err := uc.users.FindByID(ctx, id)
-	if err != nil {
-		return nil, ErrUserNotFound
+	if uc.repos == nil {
+		return nil, ErrUnauthorized
 	}
 
-	item := toAdminUserItem(user)
+	offset, limit := ClampPagination(filter.Offset, filter.Limit, DefaultPageLimit, 100)
+	filter.Limit = limit
+	filter.Offset = offset
 
-	return &item, nil
+	repos, total, err := uc.repos.ListAdmin(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("list repos: %w", err)
+	}
+
+	owners := map[uint]string{}
+	items := make([]AdminRepoItem, 0, len(repos))
+	for i := range repos {
+		r := &repos[i]
+		owner, ok := owners[r.OwnerID]
+		if !ok {
+			if u, uerr := uc.users.FindByID(ctx, r.OwnerID); uerr == nil {
+				owner = u.Username
+			}
+
+			owners[r.OwnerID] = owner
+		}
+
+		items = append(items, AdminRepoItem{
+			ID:              r.ID,
+			Name:            r.Name,
+			Description:     r.Description,
+			Owner:           owner,
+			RepoPath:        r.RepoPath,
+			IsPrivate:       r.IsPrivate,
+			ShowOnHome:      r.ShowOnHome,
+			MirrorDirection: r.MirrorDirection,
+			MirrorStatus:    r.MirrorStatus,
+			UpdatedAt:       r.UpdatedAt,
+			LastActivityAt:  r.LastActivityAt,
+		})
+	}
+
+	return &AdminRepoListResult{
+		Repos:  items,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	}, nil
 }
 
-func (uc *AdminUseCase) Create(ctx context.Context, in AdminCreateInput) (*AdminUserItem, error) {
+func (uc *AdminUseCase) Create(ctx context.Context, actorID uint, in AdminCreateInput) (*AdminUserItem, error) {
 	if !in.Role.Valid() {
 		return nil, ErrInvalidRole
+	}
+
+	if err := uc.requireStepUp(ctx, actorID, in.CurrentPassword); err != nil {
+		return nil, err
 	}
 
 	user, err := uc.auth.CreateUser(ctx, RegisterInput{
@@ -138,6 +282,20 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 	prevRole := user.Role
 	if !prevRole.Valid() {
 		prevRole = domain.RoleUser
+	}
+
+	roleChange := in.Role != nil && *in.Role != prevRole
+	passwordChange := in.Password != nil
+	emailChange := false
+	if in.Email != nil {
+		nextEmail := strings.ToLower(strings.TrimSpace(*in.Email))
+		emailChange = nextEmail != "" && !strings.EqualFold(nextEmail, user.Email)
+	}
+
+	if roleChange || passwordChange || emailChange {
+		if err := uc.requireStepUp(ctx, actorID, in.CurrentPassword); err != nil {
+			return nil, err
+		}
 	}
 
 	if in.Email != nil {
@@ -171,6 +329,10 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 		}
 
 		if role != prevRole {
+			if actorID == id && prevRole == domain.RoleAdmin && role != domain.RoleAdmin {
+				return nil, ErrCannotModifySelf
+			}
+
 			if prevRole == domain.RoleAdmin && role != domain.RoleAdmin {
 				if err := uc.ensureNotLastAdmin(); err != nil {
 					return nil, err
@@ -214,10 +376,19 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 	return &item, nil
 }
 
-func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint) error {
+func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint, currentPassword string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
+	if actorID == id {
+		return ErrCannotModifySelf
+	}
+
+	if err := uc.requireStepUp(ctx, actorID, currentPassword); err != nil {
+		return err
+	}
+
 	user, err := uc.users.FindByID(ctx, id)
 	if err != nil {
 		return ErrUserNotFound
@@ -268,6 +439,24 @@ func (uc *AdminUseCase) ensureNotLastAdmin() error {
 
 	if n <= 1 {
 		return ErrLastAdmin
+	}
+
+	return nil
+}
+
+func (uc *AdminUseCase) requireStepUp(ctx context.Context, actorID uint, currentPassword string) error {
+	currentPassword = strings.TrimSpace(currentPassword)
+	if currentPassword == "" {
+		return ErrPasswordRequired
+	}
+
+	actor, err := uc.users.FindByID(ctx, actorID)
+	if err != nil {
+		return ErrUnauthorized
+	}
+
+	if err := uc.hasher.Compare(actor.PasswordHash, currentPassword); err != nil {
+		return ErrCurrentPasswordWrong
 	}
 
 	return nil

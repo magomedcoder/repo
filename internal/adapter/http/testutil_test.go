@@ -2,12 +2,15 @@ package http_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"magomedcoder.ru/repo/internal/adapter/git"
@@ -16,8 +19,22 @@ import (
 	"magomedcoder.ru/repo/internal/adapter/sqlite"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/argon2id"
+	"magomedcoder.ru/repo/pkg/secretbox"
+	"magomedcoder.ru/repo/pkg/ssrf"
 	"magomedcoder.ru/repo/pkg/token"
 )
+
+func testMirrorLookup(_ context.Context, host string) ([]net.IP, error) {
+	if ssrf.HostBlockedLiteral(host) {
+		return nil, ssrf.ErrBlockedHost
+	}
+
+	if strings.Contains(host, "nip.io") || strings.Contains(host, "sslip.io") {
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+
+	return []net.IP{net.ParseIP("203.0.113.10")}, nil
+}
 
 type testEnv struct {
 	Server *httptest.Server
@@ -75,13 +92,11 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 
 	userStore := sqlite.NewUserRepo(db)
 	sessionStore := sqlite.NewSessionRepo(db)
-	folderStore := sqlite.NewFolderRepo(db)
 	repoStore := sqlite.NewRepositoryRepo(db)
 	tokenStore := sqlite.NewAccessTokenRepo(db)
 	issueStore := sqlite.NewIssueRepo(db)
 	pullStore := sqlite.NewPullRequestRepo(db)
 	activityStore := sqlite.NewActivityRepo(db)
-	folderMemberStore := sqlite.NewFolderMemberRepo(db)
 	teamStore := sqlite.NewTeamRepo(db)
 	teamMemberStore := sqlite.NewTeamMemberRepo(db)
 	teamRepoGrantStore := sqlite.NewTeamRepoGrantRepo(db)
@@ -90,17 +105,24 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 	hasher := argon2id.NewHasher()
 	tokens := token.NewGenerator()
 
-	authz := usecase.NewAuthz(folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore)
+	authz := usecase.NewAuthz(teamRepoGrantStore, collabStore)
 	authUC = usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
-	folderUC := usecase.NewFolderUseCase(folderStore, repoStore, folderMemberStore, gitRepo, authz)
-	repoUC := usecase.NewRepositoryUseCase(repoStore, folderStore, userStore, gitRepo, activityStore, authz)
+	repoUC := usecase.NewRepositoryUseCase(repoStore, userStore, gitRepo, activityStore, authz)
+	if key, err := secretbox.DeriveKey("0123456789abcdef0123456789abcdef"); err == nil {
+		repoUC.SetMirrorSecretsKey(key)
+	}
+	repoUC.SetMirrorURLLookup(testMirrorLookup)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
-	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
-	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, folderStore, userStore, activityStore, authz)
-	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, folderStore, userStore, gitRepo, activityStore, authz)
-	membershipUC := usecase.NewAccessUseCase(folderStore, repoStore, userStore, folderMemberStore, teamStore, teamMemberStore, teamRepoGrantStore, collabStore, authz)
+	tokenUC.SetPepper("0123456789abcdef0123456789abcdef")
 	profileUC := usecase.NewProfileUseCase(userStore, hasher, dataDir)
+	profileUC.SetSessionStores(sessionStore, tokenStore)
+	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
+	gitUC.SetTokenPepper("0123456789abcdef0123456789abcdef")
+	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, userStore, activityStore, authz)
+	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, userStore, gitRepo, activityStore, authz)
+	membershipUC := usecase.NewAccessUseCase(repoStore, userStore, collabStore, authz)
+	teamUC := usecase.NewTeamUseCase(teamStore, teamMemberStore, teamRepoGrantStore, repoStore, userStore, authz)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 
@@ -109,8 +131,8 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 	router = deliveryhttp.NewRouter(
 		authHandler,
 		handler.NewRepositoryHandler(repoUC),
-		handler.NewFolderHandler(folderUC),
 		handler.NewMembershipHandler(membershipUC),
+		handler.NewTeamHandler(teamUC),
 		handler.NewTokenHandler(tokenUC),
 		handler.NewGitHandler(gitUC),
 		handler.NewIssueHandler(issueUC),

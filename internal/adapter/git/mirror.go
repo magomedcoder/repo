@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,8 +22,9 @@ import (
 	githttp "github.com/go-git/go-git/v6/plumbing/transport/http"
 	xssh "github.com/go-git/go-git/v6/plumbing/transport/ssh"
 	"github.com/go-git/go-git/v6/storage/memory"
-	gossh "golang.org/x/crypto/ssh"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/fsutil"
+	"magomedcoder.ru/repo/pkg/ssrf"
 )
 
 const (
@@ -115,22 +115,29 @@ func sshUser(raw string, auth *domain.MirrorAuth) string {
 	return "git"
 }
 
+func assertMirrorRemote(ctx context.Context, rawURL string) error {
+	if err := ssrf.AssertGitRemoteAllowed(ctx, rawURL, nil); err != nil {
+		return fmt.Errorf("mirror remote blocked: %w", err)
+	}
+
+	return nil
+}
+
 func clientOptions(rawURL string, o *domain.MirrorOptions) ([]client.Option, error) {
+	o = orZeroOptions(o)
 	var out []client.Option
 
 	if isSSHURL(rawURL) {
-		if o.SSHPrivateKey != "" {
-			keys, err := xssh.NewPublicKeys(sshUser(rawURL, o.Auth), []byte(o.SSHPrivateKey), o.SSHPassphrase)
-			if err != nil {
-				return nil, fmt.Errorf("ssh key: %w", err)
-			}
-
-			if o.InsecureTLS {
-				keys.HostKeyCallback = gossh.InsecureIgnoreHostKey()
-			}
-
-			out = append(out, client.WithSSHAuth(keys))
+		if strings.TrimSpace(o.SSHPrivateKey) == "" {
+			return nil, fmt.Errorf("ssh mirror requires a private key (ssh-agent is disabled)")
 		}
+
+		keys, err := xssh.NewPublicKeys(sshUser(rawURL, o.Auth), []byte(o.SSHPrivateKey), o.SSHPassphrase)
+		if err != nil {
+			return nil, fmt.Errorf("ssh key: %w", err)
+		}
+
+		out = append(out, client.WithSSHAuth(keys))
 	} else if o.Auth != nil && (o.Auth.Username != "" || o.Auth.Password != "") {
 		user := o.Auth.Username
 		if user == "" {
@@ -144,36 +151,53 @@ func clientOptions(rawURL string, o *domain.MirrorOptions) ([]client.Option, err
 		out = append(out, client.WithInsecureSkipTLS())
 	}
 
-	if len(o.PinnedHosts) > 0 {
-		dial := pinnedDialer(o.PinnedHosts)
-		out = append(out, client.WithDialer(dial))
+	dial := ssrf.SafeDialContext(o.PinnedHosts, nil)
+	out = append(out, client.WithDialer(dial))
 
-		if !isSSHURL(rawURL) {
-			tr := &http.Transport{DialContext: dial, ForceAttemptHTTP2: true}
-			if o.InsecureTLS {
-				tr.TLSClientConfig = insecureTLS()
-			}
-
-			out = append(out, client.WithHTTPClient(&http.Client{Transport: tr}))
+	if !isSSHURL(rawURL) {
+		tr := &http.Transport{DialContext: dial, ForceAttemptHTTP2: true}
+		if o.InsecureTLS {
+			tr.TLSClientConfig = insecureTLS()
 		}
+
+		httpClient := &http.Client{
+			Transport: tr,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return mirrorCheckRedirect(req, via, nil)
+			},
+		}
+		out = append(out, client.WithHTTPClient(httpClient))
 	}
 
 	return out, nil
 }
 
-func pinnedDialer(pins map[string]string) transport.DialContextFunc {
-	d := &net.Dialer{Timeout: 30 * time.Second}
-
-	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
-		if err == nil {
-			if ip, ok := pins[strings.ToLower(host)]; ok {
-				addr = net.JoinHostPort(ip, port)
-			}
-		}
-
-		return d.DialContext(ctx, network, addr)
+func mirrorCheckRedirect(req *http.Request, via []*http.Request, lookup ssrf.LookupIPFunc) error {
+	if len(via) >= 10 {
+		return errors.New("too many redirects")
 	}
+
+	if req.URL == nil {
+		return errors.New("redirect missing url")
+	}
+
+	scheme := strings.ToLower(req.URL.Scheme)
+	if scheme != "https" && scheme != "ssh" {
+		return errors.New("insecure redirect scheme")
+	}
+
+	if len(via) > 0 && via[len(via)-1].URL != nil {
+		prev := strings.ToLower(via[len(via)-1].URL.Scheme)
+		if prev == "https" && scheme != "https" {
+			return errors.New("https to insecure redirect forbidden")
+		}
+	}
+
+	if err := ssrf.HostAllowed(req.Context(), req.URL.Hostname(), lookup); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type redactedError struct {
@@ -338,6 +362,10 @@ func (r *Repository) MirrorCheck(ctx context.Context, rawURL string, opts *domai
 		return nil, fmt.Errorf("mirror url required")
 	}
 
+	if err := assertMirrorRemote(ctx, rawURL); err != nil {
+		return nil, err
+	}
+
 	o := orZeroOptions(opts)
 	co, err := clientOptions(rawURL, o)
 	if err != nil {
@@ -383,9 +411,19 @@ func (r *Repository) MirrorDryRunFetch(ctx context.Context, path, rawURL string,
 		return nil, nil, err
 	}
 
+	var err error
+	path, err = r.confine(path)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return nil, nil, fmt.Errorf("mirror url required")
+	}
+
+	if err := assertMirrorRemote(ctx, rawURL); err != nil {
+		return nil, nil, err
 	}
 
 	o := orZeroOptions(opts)
@@ -449,9 +487,19 @@ func (r *Repository) MirrorVerify(ctx context.Context, path, rawURL, direction s
 		return nil, err
 	}
 
+	var err error
+	path, err = r.confine(path)
+	if err != nil {
+		return nil, err
+	}
+
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return nil, fmt.Errorf("mirror url required")
+	}
+
+	if err := assertMirrorRemote(ctx, rawURL); err != nil {
+		return nil, err
 	}
 
 	o := orZeroOptions(opts)
@@ -647,6 +695,10 @@ func destPatternCovers(pattern, name string) bool {
 	return strings.HasPrefix(name, parts[0]) && strings.HasSuffix(name, parts[1]) && len(name) >= len(parts[0])+len(parts[1])
 }
 
+func (r *Repository) confine(path string) (string, error) {
+	return fsutil.SafePath(r.Root, path)
+}
+
 func localRefHashes(path string) map[string]string {
 	out := map[string]string{}
 
@@ -680,9 +732,19 @@ func (r *Repository) MirrorClone(ctx context.Context, path, rawURL string, opts 
 		return "", err
 	}
 
+	var err error
+	path, err = r.confine(path)
+	if err != nil {
+		return "", err
+	}
+
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return "", fmt.Errorf("mirror url required")
+	}
+
+	if err := assertMirrorRemote(ctx, rawURL); err != nil {
+		return "", err
 	}
 
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -694,26 +756,12 @@ func (r *Repository) MirrorClone(ctx context.Context, path, rawURL string, opts 
 	}
 
 	o := orZeroOptions(opts)
-	if o.Partial && gitAvailable() {
-		head, err := partialMirrorClone(ctx, path, rawURL, o)
-		if err != nil {
-			_ = os.RemoveAll(path)
-			return "", err
-		}
+	if o.Partial {
+		return "", domain.ErrMirrorPartialUnavailable
+	}
 
-		if o.LFS {
-			if err := lfsRun(ctx, path, rawURL, o, "fetch"); err != nil {
-				_ = os.RemoveAll(path)
-				return "", err
-			}
-		}
-
-		if err := os.Chmod(path, 0o700); err != nil {
-			_ = os.RemoveAll(path)
-			return "", err
-		}
-
-		return head, nil
+	if o.LFS {
+		return "", domain.ErrMirrorLFSUnavailable
 	}
 
 	repo, err := gogit.PlainInit(path, true)
@@ -724,10 +772,6 @@ func (r *Repository) MirrorClone(ctx context.Context, path, rawURL string, opts 
 
 	head, err := r.mirrorFetchInto(ctx, repo, path, rawURL, o)
 	_ = repo.Close()
-
-	if err == nil && o.LFS {
-		err = lfsRun(ctx, path, rawURL, o, "fetch")
-	}
 
 	if err != nil {
 		_ = os.RemoveAll(path)
@@ -751,9 +795,19 @@ func (r *Repository) MirrorFetch(ctx context.Context, path, rawURL string, opts 
 		return err
 	}
 
+	var err error
+	path, err = r.confine(path)
+	if err != nil {
+		return err
+	}
+
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return fmt.Errorf("mirror url required")
+	}
+
+	if err := assertMirrorRemote(ctx, rawURL); err != nil {
+		return err
 	}
 
 	defer r.LockRepo(path)()
@@ -765,12 +819,16 @@ func (r *Repository) MirrorFetch(ctx context.Context, path, rawURL string, opts 
 	defer repo.Close()
 
 	o := orZeroOptions(opts)
-	if _, err := r.mirrorFetchInto(ctx, repo, path, rawURL, o); err != nil {
-		return err
+	if o.Partial {
+		return domain.ErrMirrorPartialUnavailable
 	}
 
 	if o.LFS {
-		return lfsRun(ctx, path, rawURL, o, "fetch")
+		return domain.ErrMirrorLFSUnavailable
+	}
+
+	if _, err := r.mirrorFetchInto(ctx, repo, path, rawURL, o); err != nil {
+		return err
 	}
 
 	return nil
@@ -848,9 +906,19 @@ func (r *Repository) MirrorPush(ctx context.Context, path, rawURL string, opts *
 		return err
 	}
 
+	var err error
+	path, err = r.confine(path)
+	if err != nil {
+		return err
+	}
+
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return fmt.Errorf("mirror url required")
+	}
+
+	if err := assertMirrorRemote(ctx, rawURL); err != nil {
+		return err
 	}
 
 	defer r.LockRepo(path)()
@@ -878,9 +946,7 @@ func (r *Repository) MirrorPush(ctx context.Context, path, rawURL string, opts *
 	}
 
 	if o.LFS {
-		if err := lfsRun(ctx, path, rawURL, o, "push"); err != nil {
-			return err
-		}
+		return domain.ErrMirrorLFSUnavailable
 	}
 
 	po := &gogit.PushOptions{

@@ -130,13 +130,29 @@ func (s *User) List(filter domain.UserListFilter) ([]domain.User, int, error) {
 		q = q.Where(`lower(username) LIKE ? ESCAPE '\' OR lower(email) LIKE ? ESCAPE '\'`, like, like)
 	}
 
+	if filter.Role != nil && filter.Role.Valid() {
+		q = q.Where("role = ?", *filter.Role)
+	}
+
+	order := "id ASC"
+	switch strings.ToLower(strings.TrimSpace(filter.Sort)) {
+	case "username", "name":
+		order = "username COLLATE NOCASE ASC, id ASC"
+	case "email":
+		order = "email COLLATE NOCASE ASC, id ASC"
+	case "created", "created_at":
+		order = "created_at DESC, id DESC"
+	case "role":
+		order = "role ASC, username COLLATE NOCASE ASC, id ASC"
+	}
+
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	var models []model.User
-	if err := q.Order("id ASC").Limit(limit).Offset(offset).Find(&models).Error; err != nil {
+	if err := q.Order(order).Limit(limit).Offset(offset).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
 

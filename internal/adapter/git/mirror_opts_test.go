@@ -101,7 +101,7 @@ func TestMirrorCheckAndDryRun(t *testing.T) {
 		t.Fatal("check of missing remote must fail")
 	}
 
-	dst := filepath.Join(t.TempDir(), "dst.git")
+	dst := filepath.Join(r.Root, "dst.git")
 	if _, err := r.MirrorClone(t.Context(), dst, remote, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestMirrorCheckAndDryRun(t *testing.T) {
 func TestMirrorSelectiveRefspecsAndPrune(t *testing.T) {
 	remote := newRemote(t)
 	r := NewRepository(t.TempDir())
-	dst := filepath.Join(t.TempDir(), "sel.git")
+	dst := filepath.Join(r.Root, "sel.git")
 
 	keep := false
 	opts := &domain.MirrorOptions{RefSpecs: []string{"refs/heads/main:refs/heads/main"}, Prune: &keep}
@@ -150,7 +150,7 @@ func TestMirrorSelectiveRefspecsAndPrune(t *testing.T) {
 		t.Fatalf("selective refspec must only fetch main: %v", refs)
 	}
 
-	full := filepath.Join(t.TempDir(), "full.git")
+	full := filepath.Join(r.Root, "full.git")
 	if _, err := r.MirrorClone(t.Context(), full, remote, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -183,12 +183,12 @@ func TestMirrorPushDivergedRejectedWithoutForce(t *testing.T) {
 	src := newRemote(t)
 	r := NewRepository(t.TempDir())
 
-	local := filepath.Join(t.TempDir(), "local.git")
+	local := filepath.Join(r.Root, "local.git")
 	if _, err := r.MirrorClone(t.Context(), local, src, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	target := filepath.Join(t.TempDir(), "target.git")
+	target := filepath.Join(r.Root, "target.git")
 	if _, err := gogit.PlainInit(target, true); err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestMirrorPushDivergedRejectedWithoutForce(t *testing.T) {
 func TestMirrorCloneMaxBytesCleansUp(t *testing.T) {
 	remote := newRemote(t)
 	r := NewRepository(t.TempDir())
-	dst := filepath.Join(t.TempDir(), "big.git")
+	dst := filepath.Join(r.Root, "big.git")
 
 	_, err := r.MirrorClone(t.Context(), dst, remote, &domain.MirrorOptions{MaxBytes: 1})
 	if !errors.Is(err, domain.ErrMirrorTooLarge) {
@@ -238,7 +238,7 @@ func TestMirrorCloneMaxBytesCleansUp(t *testing.T) {
 
 func TestMirrorCloneFailureCleansUp(t *testing.T) {
 	r := NewRepository(t.TempDir())
-	dst := filepath.Join(t.TempDir(), "missing.git")
+	dst := filepath.Join(r.Root, "missing.git")
 
 	if _, err := r.MirrorClone(t.Context(), dst, filepath.Join(t.TempDir(), "nope"), nil); err == nil {
 		t.Fatal("expected clone failure")
@@ -249,31 +249,38 @@ func TestMirrorCloneFailureCleansUp(t *testing.T) {
 	}
 }
 
-func TestMirrorLFSOnlyFailsWhenEnabledAndMissing(t *testing.T) {
+func TestMirrorLFSAndPartialUnavailable(t *testing.T) {
 	remote := newRemote(t)
 	r := NewRepository(t.TempDir())
 
-	t.Setenv("PATH", t.TempDir())
-
-	plain := filepath.Join(t.TempDir(), "plain.git")
+	plain := filepath.Join(r.Root, "plain.git")
 	if _, err := r.MirrorClone(t.Context(), plain, remote, &domain.MirrorOptions{}); err != nil {
-		t.Fatalf("LFS disabled must not require git-lfs: %v", err)
+		t.Fatalf("plain mirror must work: %v", err)
 	}
 
-	withLFS := filepath.Join(t.TempDir(), "lfs.git")
-	if _, err := r.MirrorClone(t.Context(), withLFS, remote, &domain.MirrorOptions{LFS: true}); err == nil {
-		t.Fatal("LFS enabled without git-lfs must fail")
+	withLFS := filepath.Join(r.Root, "lfs.git")
+	if _, err := r.MirrorClone(t.Context(), withLFS, remote, &domain.MirrorOptions{LFS: true}); !errors.Is(err, domain.ErrMirrorLFSUnavailable) {
+		t.Fatalf("LFS must be fail-closed: %v", err)
 	}
 
 	if _, err := os.Stat(withLFS); !os.IsNotExist(err) {
 		t.Fatal("failed LFS clone must be cleaned up")
+	}
+
+	withPartial := filepath.Join(r.Root, "partial.git")
+	if _, err := r.MirrorClone(t.Context(), withPartial, remote, &domain.MirrorOptions{Partial: true}); !errors.Is(err, domain.ErrMirrorPartialUnavailable) {
+		t.Fatalf("partial must be fail-closed: %v", err)
+	}
+
+	if _, err := os.Stat(withPartial); !os.IsNotExist(err) {
+		t.Fatal("failed partial clone must be cleaned up")
 	}
 }
 
 func TestMirrorVerifyPullAndDetectDrift(t *testing.T) {
 	remote := newRemote(t)
 	r := NewRepository(t.TempDir())
-	dst := filepath.Join(t.TempDir(), "dst.git")
+	dst := filepath.Join(r.Root, "dst.git")
 
 	if _, err := r.MirrorClone(t.Context(), dst, remote, nil); err != nil {
 		t.Fatal(err)
@@ -308,12 +315,12 @@ func TestMirrorVerifyPullAndDetectDrift(t *testing.T) {
 func TestMirrorVerifyPush(t *testing.T) {
 	src := newRemote(t)
 	r := NewRepository(t.TempDir())
-	local := filepath.Join(t.TempDir(), "local.git")
+	local := filepath.Join(r.Root, "local.git")
 	if _, err := r.MirrorClone(t.Context(), local, src, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	target := filepath.Join(t.TempDir(), "target.git")
+	target := filepath.Join(r.Root, "target.git")
 	if _, err := gogit.PlainInit(target, true); err != nil {
 		t.Fatal(err)
 	}

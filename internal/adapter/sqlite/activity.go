@@ -20,13 +20,12 @@ func NewActivityRepo(db *gorm.DB) *Activity {
 
 func (s *Activity) Create(ev *domain.ActivityEvent) error {
 	m := &model.Activity{
-		ActorID:   ev.ActorID,
-		OwnerKind: ev.OwnerKind,
-		OwnerID:   ev.OwnerID,
-		RepoID:    ev.RepoID,
-		Type:      ev.Type,
-		Summary:   ev.Summary,
-		Ref:       ev.Ref,
+		ActorID: ev.ActorID,
+		OwnerID: ev.OwnerID,
+		RepoID:  ev.RepoID,
+		Type:    ev.Type,
+		Summary: ev.Summary,
+		Ref:     ev.Ref,
 	}
 	if err := s.Repo.Create(context.Background(), m); err != nil {
 		return err
@@ -37,13 +36,13 @@ func (s *Activity) Create(ev *domain.ActivityEvent) error {
 	return nil
 }
 
-func (s *Activity) ListByOwner(ownerKind string, ownerID uint, limit int) ([]domain.ActivityEvent, error) {
+func (s *Activity) ListByOwner(ownerID uint, limit int) ([]domain.ActivityEvent, error) {
 	if limit <= 0 {
 		limit = 30
 	}
 
 	models, err := s.FindAll(context.Background(),
-		gormutil.WithWhere("owner_kind = ? AND owner_id = ?", ownerKind, ownerID),
+		gormutil.WithWhere("owner_id = ?", ownerID),
 		gormutil.WithOrder("created_at DESC"),
 		gormutil.WithLimit(limit),
 	)
@@ -54,7 +53,7 @@ func (s *Activity) ListByOwner(ownerKind string, ownerID uint, limit int) ([]dom
 	return activityRowsToDomain(models), nil
 }
 
-func (s *Activity) ListPublicByOwner(ownerKind string, ownerID uint, limit int) ([]domain.ActivityEvent, error) {
+func (s *Activity) ListPublicByOwner(ownerID uint, limit int) ([]domain.ActivityEvent, error) {
 	if limit <= 0 {
 		limit = 30
 	}
@@ -62,7 +61,7 @@ func (s *Activity) ListPublicByOwner(ownerKind string, ownerID uint, limit int) 
 	models, err := s.FindAll(context.Background(),
 		gormutil.WithSelect("activity_events.*"),
 		gormutil.WithJoins("JOIN repositories ON repositories.id = activity_events.repo_id AND repositories.deleted_at IS NULL AND repositories.is_private = ?", false),
-		gormutil.WithWhere("activity_events.owner_kind = ? AND activity_events.owner_id = ?", ownerKind, ownerID),
+		gormutil.WithWhere("activity_events.owner_id = ?", ownerID),
 		gormutil.WithOrder("activity_events.created_at DESC, activity_events.id DESC"),
 		gormutil.WithLimit(limit),
 	)

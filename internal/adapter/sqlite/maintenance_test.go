@@ -22,8 +22,8 @@ func TestMaintenancePurges(t *testing.T) {
 
 	users := NewUserRepo(db)
 	u := &domain.User{
-		Username:     "bob",
-		Email:        "bob@example.com",
+		Username:     "utest2",
+		Email:        "utest2@example.com",
 		PasswordHash: "x",
 	}
 	if err := users.Create(u); err != nil {
@@ -65,11 +65,10 @@ func TestMaintenancePurges(t *testing.T) {
 
 	acts := NewActivityRepo(db)
 	ev := &domain.ActivityEvent{
-		ActorID:   u.ID,
-		OwnerKind: domain.OwnerKindUser,
-		OwnerID:   u.ID,
-		Type:      domain.ActivityPush,
-		Summary:   "x",
+		ActorID: u.ID,
+		OwnerID: u.ID,
+		Type:    domain.ActivityPush,
+		Summary: "x",
 	}
 	if err := acts.Create(ev); err != nil {
 		t.Fatal(err)
@@ -111,7 +110,6 @@ func TestPurgeSoftDeleted(t *testing.T) {
 	mk := func(name string) *domain.Repository {
 		r := &domain.Repository{
 			Name:          name,
-			OwnerKind:     domain.OwnerKindUser,
 			OwnerID:       u.ID,
 			DefaultBranch: "main",
 			Path:          filepath.Join(dir, name+".git"),
@@ -129,12 +127,11 @@ func TestPurgeSoftDeleted(t *testing.T) {
 	for _, r := range []*domain.Repository{gone, live} {
 		id := r.ID
 		if err := acts.Create(&domain.ActivityEvent{
-			ActorID:   u.ID,
-			OwnerKind: domain.OwnerKindUser,
-			OwnerID:   u.ID,
-			RepoID:    &id,
-			Type:      domain.ActivityPush,
-			Summary:   "x",
+			ActorID: u.ID,
+			OwnerID: u.ID,
+			RepoID:  &id,
+			Type:    domain.ActivityPush,
+			Summary: "x",
 		}); err != nil {
 			t.Fatal(err)
 		}

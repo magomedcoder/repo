@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { foldersApi, reposApi } from '@/api'
-import type { RefInfo, RepoCollaborator, RepoCollabRole } from '@/api/types'
+import { reposApi, teamsApi } from '@/api'
+import type { RefInfo, RepoCollaborator, RepoCollabRole, RepoTeamGrant, Team } from '@/api/types'
 import MirrorSettingsForm from '@/components/repo/MirrorSettingsForm.vue'
 import CollaboratorsSection from '@/components/repo/settings/CollaboratorsSection.vue'
 import DangerZone from '@/components/repo/settings/DangerZone.vue'
 import GeneralSettingsForm from '@/components/repo/settings/GeneralSettingsForm.vue'
 import SettingsNav from '@/components/repo/settings/SettingsNav.vue'
+import TeamsSection from '@/components/repo/settings/TeamsSection.vue'
 import { SETTINGS_SECTIONS, type SettingsSection } from '@/components/repo/settings/types'
 import RepoShell from '@/components/repo/RepoShell.vue'
 import PageState from '@/components/ui/PageState.vue'
@@ -15,8 +16,7 @@ import { useCanWrite } from '@/composables/useCanWrite'
 import { invalidateRepo, useRepo } from '@/composables/useRepo'
 import type { PageError } from '@/i18n'
 import { i18n, localizeError } from '@/i18n'
-import { folderKey } from '@/lib/folderNav'
-import { normalizeRepoPath } from '@/lib/repoPath'
+import { repositoryPath } from '@/lib/repoPath'
 import { repoLocation } from '@/lib/repoNav'
 
 const props = defineProps<{
@@ -46,6 +46,14 @@ const collabBusy = ref(false)
 const collabError = ref('')
 const showCollabForm = ref(false)
 
+const teamGrants = ref<RepoTeamGrant[]>([])
+const ownTeams = ref<Team[]>([])
+const teamSlug = ref('')
+const teamRole = ref<RepoCollabRole>('read')
+const teamBusy = ref(false)
+const teamError = ref('')
+const showTeamForm = ref(false)
+
 const name = ref('')
 const description = ref('')
 const isPrivate = ref(false)
@@ -54,14 +62,6 @@ const protectBranch = ref(true)
 const issuesEnabled = ref(true)
 const defaultBranch = ref('main')
 const branches = ref<RefInfo[]>([])
-const folderPathKey = ref('')
-const folderOptions = ref<{
-  path: string
-  label: string
-}[]>([{
-  path: '',
-  label: i18n.global.t('nav.root'),
-}])
 const loadError = ref<PageError | string>('')
 const formError = ref('')
 const message = ref('')
@@ -81,11 +81,6 @@ const branchOptions = computed(() => {
   return names
 })
 
-function repoFullPath(folder: string, repoName: string) {
-  const f = normalizeRepoPath(folder || '')
-  return f ? `${f}/${repoName}` : repoName
-}
-
 function syncFormFromRepo() {
   if (!repo.value) {
     return
@@ -98,7 +93,6 @@ function syncFormFromRepo() {
   protectBranch.value = repo.value.protect_default_branch !== false
   issuesEnabled.value = repo.value.issues_enabled !== false
   defaultBranch.value = repo.value.default_branch
-  folderPathKey.value = normalizeRepoPath(repo.value.folder_path || '')
 }
 
 async function denyNonOwner() {
@@ -124,24 +118,18 @@ async function load() {
   loadError.value = ''
   message.value = ''
   collabError.value = ''
+  teamError.value = ''
   try {
     syncFormFromRepo()
-    const [folderRes, branchRes, collabRes] = await Promise.all([
-      foldersApi.list(),
+    const [branchRes, collabRes, teamRes, ownRes] = await Promise.all([
       reposApi.branches(props.repoPath),
       reposApi.listCollaborators(props.repoPath),
+      reposApi.listTeams(props.repoPath),
+      teamsApi.list().catch(() => ({ teams: [] as Team[] })),
     ])
     collaborators.value = collabRes.collaborators ?? []
-    folderOptions.value = [
-      {
-        path: '',
-        label: i18n.global.t('nav.root'),
-      },
-      ...(folderRes.folders ?? []).map((folder) => ({
-        path: folderKey(folder),
-        label: folder.path || folder.name,
-      })),
-    ]
+    teamGrants.value = teamRes.teams ?? []
+    ownTeams.value = ownRes.teams ?? []
     branches.value = branchRes.branches ?? []
     if (branches.value.length && !branches.value.some((b) => b.name === defaultBranch.value)) {
       defaultBranch.value = branches.value[0]?.name || defaultBranch.value
@@ -173,19 +161,7 @@ async function save() {
       issues_enabled: issuesEnabled.value,
     })
 
-    let currentPath = repoFullPath(updated.folder_path || '', updated.name)
-    const currentFolder = normalizeRepoPath(updated.folder_path || '')
-    const nextFolder = normalizeRepoPath(folderPathKey.value)
-
-    if (currentFolder !== nextFolder) {
-      const moved = await reposApi.move(currentPath, nextFolder, updated.name)
-      currentPath = repoFullPath(moved.folder_path || '', moved.name)
-      invalidateRepo(props.repoPath)
-      invalidateRepo(currentPath)
-      await router.replace(settingsLocation(currentPath))
-      message.value = i18n.global.t('settings.savedMoved')
-      return
-    }
+    const currentPath = repositoryPath(updated)
 
     if (currentPath !== props.repoPath) {
       invalidateRepo(props.repoPath)
@@ -270,6 +246,40 @@ async function removeCollaborator(username: string) {
   }
 }
 
+async function grantTeam() {
+  teamBusy.value = true
+  teamError.value = ''
+  try {
+    await reposApi.grantTeam(props.repoPath, {
+      team: teamSlug.value,
+      role: teamRole.value,
+    })
+    teamSlug.value = ''
+    showTeamForm.value = false
+    const res = await reposApi.listTeams(props.repoPath)
+    teamGrants.value = res.teams ?? []
+  } catch (err) {
+    teamError.value = localizeError(err, 'errors.saveFailed')
+  } finally {
+    teamBusy.value = false
+  }
+}
+
+async function revokeTeam(slug: string) {
+  const grant = teamGrants.value.find((g) => g.team_slug === slug)
+  if (!confirm(i18n.global.t('repoSettings.teams.confirmRevoke', { team: grant?.team_name || slug }))) {
+    return
+  }
+
+  teamError.value = ''
+  try {
+    await reposApi.revokeTeam(props.repoPath, slug)
+    teamGrants.value = teamGrants.value.filter((g) => g.team_slug !== slug)
+  } catch (err) {
+    teamError.value = localizeError(err, 'errors.deleteFailed')
+  }
+}
+
 watch(
   () => props.repoPath,
   () => {
@@ -302,9 +312,7 @@ watch([() => props.repoPath, repo, canAdmin], load, { immediate: true })
             v-model:show-on-home="showOnHome"
             v-model:protect-branch="protectBranch"
             v-model:issues-enabled="issuesEnabled"
-            v-model:folder-path-key="folderPathKey"
             :branch-options="branchOptions"
-            :folder-options="folderOptions"
             :form-error="formError"
             :message="message"
             :saving="saving"
@@ -329,6 +337,19 @@ watch([() => props.repoPath, repo, canAdmin], load, { immediate: true })
             :collab-error="collabError"
             @submit="addCollaborator"
             @remove="removeCollaborator"
+          />
+
+          <TeamsSection
+            v-else-if="section === 'teams'"
+            v-model:team-slug="teamSlug"
+            v-model:team-role="teamRole"
+            v-model:show-form="showTeamForm"
+            :grants="teamGrants"
+            :own-teams="ownTeams"
+            :busy="teamBusy"
+            :error="teamError"
+            @submit="grantTeam"
+            @revoke="revokeTeam"
           />
 
           <DangerZone

@@ -21,7 +21,6 @@ type ActivityItem struct {
 	Ref       string    `json:"ref,omitzero"`
 	Actor     string    `json:"actor"`
 	Owner     string    `json:"owner"`
-	OwnerKind string    `json:"owner_kind"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -48,26 +47,26 @@ func (uc *ActivityUseCase) ListOwner(ctx context.Context, ownerSlug string, view
 		return nil, err
 	}
 	slug := strings.ToLower(strings.TrimSpace(ownerSlug))
-	kind, id, err := uc.resolveOwner(slug)
+	id, err := uc.resolveOwner(slug)
 	if err != nil {
 		return nil, err
 	}
 
 	_, limit = ClampPagination(0, limit, defaultActivityLimit, MaxPageLimit)
 
-	isOwner := viewerID != 0 && kind == domain.OwnerKindUser && viewerID == id
+	isOwner := viewerID != 0 && viewerID == id
 	var events []domain.ActivityEvent
 	if isOwner {
-		events, err = uc.events.ListByOwner(kind, id, limit)
+		events, err = uc.events.ListByOwner(id, limit)
 	} else {
-		events, err = uc.events.ListPublicByOwner(kind, id, limit)
+		events, err = uc.events.ListPublicByOwner(id, limit)
 	}
 
 	if err != nil {
 		return nil, err
 	}
 
-	events, err = uc.filterVisible(events, kind, id, viewerID)
+	events, err = uc.filterVisible(events, id, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -75,13 +74,13 @@ func (uc *ActivityUseCase) ListOwner(ctx context.Context, ownerSlug string, view
 	return uc.mapEvents(events)
 }
 
-func (uc *ActivityUseCase) filterVisible(events []domain.ActivityEvent, ownerKind string, ownerID, viewerID uint) ([]domain.ActivityEvent, error) {
-	isOwner := viewerID != 0 && ownerKind == domain.OwnerKindUser && viewerID == ownerID
+func (uc *ActivityUseCase) filterVisible(events []domain.ActivityEvent, ownerID, viewerID uint) ([]domain.ActivityEvent, error) {
+	isOwner := viewerID != 0 && viewerID == ownerID
 	if isOwner {
 		return events, nil
 	}
 
-	ids, err := uc.repos.ListPublicIDsByOwner(context.Background(), ownerKind, ownerID)
+	ids, err := uc.repos.ListPublicIDsByOwner(context.Background(), ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -105,12 +104,12 @@ func (uc *ActivityUseCase) filterVisible(events []domain.ActivityEvent, ownerKin
 	return out, nil
 }
 
-func (uc *ActivityUseCase) resolveOwner(slug string) (string, uint, error) {
+func (uc *ActivityUseCase) resolveOwner(slug string) (uint, error) {
 	if u, err := uc.users.FindByUsername(context.Background(), slug); err == nil {
-		return domain.OwnerKindUser, u.ID, nil
+		return u.ID, nil
 	}
 
-	return "", 0, ErrRepoNotFound
+	return 0, ErrRepoNotFound
 }
 
 func (uc *ActivityUseCase) mapEvents(events []domain.ActivityEvent) ([]ActivityItem, error) {
@@ -150,7 +149,6 @@ func (uc *ActivityUseCase) mapEvents(events []domain.ActivityEvent) ([]ActivityI
 			Ref:       ev.Ref,
 			Actor:     actor,
 			Owner:     owner,
-			OwnerKind: ev.OwnerKind,
 			CreatedAt: ev.CreatedAt,
 		})
 	}
@@ -177,17 +175,11 @@ func recordRepoActivity(store domain.ActivityStore, repo *domain.Repository, act
 		return
 	}
 
-	kind := repo.OwnerKind
-	if kind == "" {
-		kind = domain.OwnerKindUser
-	}
-
 	recordActivity(store, &domain.ActivityEvent{
-		ActorID:   actorID,
-		OwnerKind: kind,
-		OwnerID:   repo.OwnerID,
-		RepoID:    &repo.ID,
-		Type:      typ,
-		Summary:   summary,
+		ActorID: actorID,
+		OwnerID: repo.OwnerID,
+		RepoID:  &repo.ID,
+		Type:    typ,
+		Summary: summary,
 	})
 }

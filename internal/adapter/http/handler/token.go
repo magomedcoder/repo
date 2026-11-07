@@ -27,6 +27,7 @@ func (h *TokenHandler) SetAccessLogger(log *audit.Logger) {
 
 type createTokenRequest struct {
 	Name      string  `json:"name"`
+	Scope     string  `json:"scope"`
 	ExpiresIn *int    `json:"expires_in"`
 	ExpiresAt *string `json:"expires_at"`
 }
@@ -42,7 +43,12 @@ func (h *TokenHandler) Create(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	in := usecase.CreateTokenInput{UserID: user.ID, Name: req.Name, ExpiresIn: req.ExpiresIn}
+	in := usecase.CreateTokenInput{
+		UserID:    user.ID,
+		Name:      req.Name,
+		Scope:     req.Scope,
+		ExpiresIn: req.ExpiresIn,
+	}
 	if req.ExpiresAt != nil && strings.TrimSpace(*req.ExpiresAt) != "" {
 		t, perr := time.Parse(time.RFC3339, strings.TrimSpace(*req.ExpiresAt))
 		if perr != nil {

@@ -33,10 +33,6 @@ type reposResponse struct {
 	Repos []usecase.RepositoryItem `json:"repos"`
 }
 
-type foldersResponse struct {
-	Folders []usecase.FolderItem `json:"folders"`
-}
-
 type tokensResponse struct {
 	Tokens []usecase.TokenItem `json:"tokens"`
 }

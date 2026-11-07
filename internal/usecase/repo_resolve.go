@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"strings"
 
 	"magomedcoder.ru/repo/internal/domain"
 )
@@ -13,11 +12,7 @@ func ResolveReadable(repos domain.RepositoryStore, authz *Authz, in ResolveRepos
 		return nil, err
 	}
 
-	folderPath := strings.Trim(strings.TrimSpace(in.FolderPath), "/")
 	logical := name + ".git"
-	if folderPath != "" {
-		logical = folderPath + "/" + name + ".git"
-	}
 
 	if _, err := domain.ParseRepoPath(logical); err != nil {
 		return nil, ErrRepoNotFound

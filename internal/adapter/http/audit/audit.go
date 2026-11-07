@@ -291,6 +291,10 @@ func (l *Logger) TokenCreate(r *http.Request, user *domain.User, tokenName strin
 	l.record(r, domain.AccessTokenCreate, user, "", "", tokenName)
 }
 
+func (l *Logger) GitToken(r *http.Request, user *domain.User, repoPath string) {
+	l.record(r, domain.AccessGitToken, user, repoPath, "", "pat")
+}
+
 func (l *Logger) TokenRevoke(r *http.Request, user *domain.User, tokenID string) {
 	l.record(r, domain.AccessTokenRevoke, user, "", "", tokenID)
 }
@@ -301,10 +305,6 @@ func (l *Logger) RepoCreate(r *http.Request, user *domain.User, repoPath string)
 
 func (l *Logger) RepoDelete(r *http.Request, user *domain.User, repoPath string) {
 	l.record(r, domain.AccessRepoDelete, user, repoPath, "", "")
-}
-
-func (l *Logger) RepoMove(r *http.Request, user *domain.User, fromPath, toPath string) {
-	l.record(r, domain.AccessRepoMove, user, toPath, "", fromPath)
 }
 
 func (l *Logger) AdminUserCreate(r *http.Request, actor *domain.User, targetUsername string) {
@@ -416,18 +416,4 @@ func truncate(s string, n int) string {
 	}
 
 	return s[:n]
-}
-
-func RepoKey(folderPath, name string) string {
-	folderPath = strings.Trim(folderPath, "/")
-	name = strings.TrimSpace(name)
-	if folderPath == "" {
-		return name
-	}
-
-	if name == "" {
-		return folderPath
-	}
-
-	return folderPath + "/" + name
 }

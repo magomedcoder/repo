@@ -3,11 +3,14 @@ package usecase
 import (
 	"context"
 	"errors"
+	"net"
 	"slices"
 	"sync"
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/secretbox"
+	"magomedcoder.ru/repo/pkg/ssrf"
 )
 
 type fakeStore struct {
@@ -97,11 +100,11 @@ func (s *fakeStore) FindByRepoPath(_ context.Context, p string) (*domain.Reposit
 	return nil, errors.New("not found")
 }
 
-func (s *fakeStore) ExistsByOwnerFolderName(string, uint, *uint, string) (bool, error) {
+func (s *fakeStore) ExistsByName(string) (bool, error) {
 	return false, nil
 }
 
-func (s *fakeStore) CountByOwnerID(string, uint) (int64, error) {
+func (s *fakeStore) CountByOwnerID(uint) (int64, error) {
 	return 0, nil
 }
 
@@ -210,6 +213,23 @@ func (s *fakeStore) ListMirrorSchedules(_ context.Context, f domain.MirrorSchedu
 	}
 
 	return out, nil
+}
+
+func (s *fakeStore) ListAdmin(_ context.Context, filter domain.AdminRepoFilter) ([]domain.Repository, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]domain.Repository, 0, len(s.repos))
+	for _, r := range s.repos {
+		out = append(out, *r)
+	}
+
+	return out, len(out), nil
+}
+
+func (s *fakeStore) CountAll(_ context.Context) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return int64(len(s.repos)), nil
 }
 
 func (s *fakeStore) CountMirrorsInError(_ context.Context, since time.Time) (int64, error) {
@@ -443,7 +463,19 @@ func newMirrorEnv() *mirrorEnv {
 		},
 	}, next: 2}
 	acts := &memActivity{}
-	uc := NewRepositoryUseCase(store, nil, users, git, acts, NewAuthz(nil, nil, nil, nil, nil))
+	uc := NewRepositoryUseCase(store, users, git, acts, NewAuthz(nil, nil))
+	key, err := secretbox.DeriveKey("0123456789abcdef0123456789abcdef")
+	if err != nil {
+		panic(err)
+	}
+
+	uc.SetMirrorSecretsKey(key)
+	uc.SetMirrorURLLookup(func(_ context.Context, host string) ([]net.IP, error) {
+		if ssrf.HostBlockedLiteral(host) {
+			return nil, ssrf.ErrBlockedHost
+		}
+		return []net.IP{net.ParseIP("203.0.113.10")}, nil
+	})
 
 	cfg := DefaultMirrorConfig()
 	cfg.SyncOnConfigure = false
@@ -464,17 +496,21 @@ func newMirrorEnv() *mirrorEnv {
 }
 
 func (e *mirrorEnv) addMirror(dir string) *domain.Repository {
+	sealed, err := e.uc.sealSecret("s3cret-pw")
+	if err != nil {
+		panic(err)
+	}
+
 	return e.store.add(domain.Repository{
 		Name:                 "app",
 		RepoPath:             "app.git",
-		OwnerKind:            domain.OwnerKindUser,
 		OwnerID:              1,
 		DefaultBranch:        "main",
 		Path:                 "/tmp/repos/app.git",
 		MirrorDirection:      dir,
 		MirrorURL:            "https://git.example.com/org/app.git",
 		MirrorUsername:       "bot",
-		MirrorPassword:       "s3cret-pw",
+		MirrorPassword:       sealed,
 		MirrorEnabled:        true,
 		MirrorForce:          true,
 		MirrorPrune:          true,

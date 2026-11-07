@@ -112,12 +112,19 @@ func writeRateLimited(w http.ResponseWriter) {
 	_, _ = w.Write([]byte(`{"error":"Too many requests","code":"rate_limited"}`))
 }
 
-func RateLimit(apiLimiter, authLimiter *RateLimiter) func(http.Handler) http.Handler {
+func RateLimitWithContribute(apiLimiter, authLimiter, contributeLimiter *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := ClientIPKey(r)
 			if strings.HasPrefix(r.URL.Path, "/api/auth/") {
 				if authLimiter != nil && !authLimiter.Allow(ip) {
+					writeRateLimited(w)
+					return
+				}
+			}
+
+			if contributeLimiter != nil && r.Method == http.MethodPost && isContributePath(r.URL.Path) {
+				if !contributeLimiter.Allow(ip) {
 					writeRateLimited(w)
 					return
 				}
@@ -130,6 +137,21 @@ func RateLimit(apiLimiter, authLimiter *RateLimiter) func(http.Handler) http.Han
 
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+func isContributePath(path string) bool {
+	if !strings.HasPrefix(path, "/api/repos/") {
+		return false
+	}
+
+	switch {
+	case strings.HasSuffix(path, "/issues"), strings.HasSuffix(path, "/pulls"), strings.HasSuffix(path, "/labels"):
+		return true
+	case strings.Contains(path, "/comments"):
+		return true
+	default:
+		return false
 	}
 }
 

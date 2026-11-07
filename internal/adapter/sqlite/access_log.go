@@ -64,6 +64,14 @@ func (s *AccessLog) List(filter domain.AccessLogFilter) ([]domain.AccessLog, int
 		q = q.Where(`username LIKE ? ESCAPE '\'`, like)
 	}
 
+	if filter.Since != nil {
+		q = q.Where("created_at >= ?", *filter.Since)
+	}
+
+	if filter.Until != nil {
+		q = q.Where("created_at <= ?", *filter.Until)
+	}
+
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err

@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-const OwnerKindUser = "user"
-
 const (
 	MirrorNone = ""
 	MirrorPull = "pull"
@@ -17,9 +15,7 @@ const (
 type Repository struct {
 	ID                   uint
 	Name                 string
-	OwnerKind            string
 	OwnerID              uint
-	FolderID             *uint
 	Description          string
 	IsPrivate            bool
 	ShowOnHome           bool
@@ -68,6 +64,15 @@ const (
 	RepoOrderName    RepoOrder = "name"
 )
 
+type AdminRepoFilter struct {
+	Query   string
+	Private *bool
+	Mirror  bool
+	Order   RepoOrder
+	Limit   int
+	Offset  int
+}
+
 type RepositoryStore interface {
 	Create(repo *Repository) error
 
@@ -77,19 +82,15 @@ type RepositoryStore interface {
 
 	FindByRepoPath(ctx context.Context, repoPath string) (*Repository, error)
 
-	ListByOwnerID(ctx context.Context, ownerKind string, ownerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
+	ListByOwnerID(ctx context.Context, ownerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
 
-	CountByOwnerID(ownerKind string, ownerID uint) (int64, error)
+	CountByOwnerID(ownerID uint) (int64, error)
 
-	ListPublicIDsByOwner(ctx context.Context, ownerKind string, ownerID uint) ([]uint, error)
-
-	ListByFolderID(ctx context.Context, folderID uint) ([]Repository, error)
+	ListPublicIDsByOwner(ctx context.Context, ownerID uint) ([]uint, error)
 
 	ListPublic(ctx context.Context, limit, offset int, order RepoOrder) ([]Repository, error)
 
 	ListHome(ctx context.Context, limit, offset int, order RepoOrder) ([]Repository, error)
-
-	ListByMirrorDirection(ctx context.Context, direction string) ([]Repository, error)
 
 	ListMirrors(ctx context.Context, filter MirrorListFilter) ([]Repository, error)
 
@@ -99,15 +100,17 @@ type RepositoryStore interface {
 
 	CountMirrorsInError(ctx context.Context, since time.Time) (int64, error)
 
+	CountAll(ctx context.Context) (int64, error)
+
+	ListAdmin(ctx context.Context, filter AdminRepoFilter) ([]Repository, int, error)
+
 	UpdateMirrorState(ctx context.Context, repo *Repository) error
 
 	FindByID(ctx context.Context, id uint) (*Repository, error)
 
-	SearchByName(ctx context.Context, query string, ownerKind string, ownerID uint, publicOnly bool, limit, offset int, order RepoOrder) ([]Repository, error)
+	SearchByName(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int, order RepoOrder) ([]Repository, error)
 
-	ExistsByOwnerFolderName(ownerKind string, ownerID uint, folderID *uint, name string) (bool, error)
-
-	CountByFolderID(folderID uint) (int64, error)
+	ExistsByName(name string) (bool, error)
 
 	TouchLastActivity(id uint, at time.Time) error
 
@@ -268,7 +271,7 @@ type GitRepository interface {
 
 	BundleCreate(ctx context.Context, repoPath, bundlePath string) error
 
-	BundleImport(ctx context.Context, repoPath, bundlePath string) error
+	BundleImport(ctx context.Context, repoPath, bundlePath string, protect bool) error
 
 	Remove(path string) error
 
@@ -304,7 +307,7 @@ type GitRepository interface {
 
 	Compare(ctx context.Context, repoPath, base, head string) (*CompareResult, error)
 
-	Merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string) (string, error)
+	Merge(ctx context.Context, repoPath, base, head, strategy, authorName, authorEmail, message string, protect bool) (string, error)
 
 	GetStats(repoPath, ref string) (*RepoStats, error)
 

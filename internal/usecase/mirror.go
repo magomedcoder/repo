@@ -12,16 +12,19 @@ import (
 )
 
 var (
-	ErrInvalidMirrorDirection = NewError(KindValidation, "invalid_mirror_direction")
-	ErrMirrorNotConfigured    = NewError(KindValidation, "mirror_not_configured")
-	ErrMirrorReadOnly         = NewError(KindForbidden, "mirror_read_only")
-	ErrMirrorOwnerOnly        = NewError(KindForbidden, "mirror_owner_only")
-	ErrMirrorAdminOnly        = NewError(KindForbidden, "mirror_admin_only")
+	ErrInvalidMirrorDirection   = NewError(KindValidation, "invalid_mirror_direction")
+	ErrMirrorNotConfigured      = NewError(KindValidation, "mirror_not_configured")
+	ErrMirrorReadOnly           = NewError(KindForbidden, "mirror_read_only")
+	ErrMirrorOwnerOnly          = NewError(KindForbidden, "mirror_owner_only")
+	ErrMirrorAdminOnly          = NewError(KindForbidden, "mirror_admin_only")
+	ErrMirrorLFSUnavailable     = NewError(KindValidation, "lfs_unavailable")
+	ErrMirrorPartialUnavailable = NewError(KindValidation, "partial_mirror_unavailable")
+	ErrMirrorHTTPForbidden      = NewError(KindValidation, "mirror_http_forbidden")
+	ErrMirrorSecretUnsealed     = NewError(KindValidation, "mirror_secret_unsealed")
 )
 
 type ConfigureMirrorInput struct {
 	ViewerID       uint
-	FolderPath     string
 	Name           string
 	Direction      string
 	URL            string
@@ -80,10 +83,9 @@ func (uc *RepositoryUseCase) ConfigureMirror(ctx context.Context, in ConfigureMi
 		return nil, ErrUnauthorized
 	}
 
-	repo, ownerSlug, folderPath, err := uc.resolve(ResolveRepositoryInput{
-		FolderPath: in.FolderPath,
-		Name:       in.Name,
-		ViewerID:   in.ViewerID,
+	repo, ownerSlug, err := uc.resolve(ResolveRepositoryInput{
+		Name:     in.Name,
+		ViewerID: in.ViewerID,
 	})
 	if err != nil {
 		return nil, err
@@ -107,11 +109,11 @@ func (uc *RepositoryUseCase) ConfigureMirror(ctx context.Context, in ConfigureMi
 	defer lock.Unlock()
 
 	if in.Clear {
-		return uc.clearMirror(ctx, repo, ownerSlug, folderPath, in.ViewerID)
+		return uc.clearMirror(ctx, repo, ownerSlug, in.ViewerID)
 	}
 
 	if !in.Enabled && repo.MirrorDirection == domain.MirrorNone && strings.TrimSpace(in.URL) == "" {
-		item := uc.toRepositoryItem(repo, ownerSlug, folderPath, in.ViewerID)
+		item := uc.toRepositoryItem(repo, ownerSlug, in.ViewerID)
 
 		return &item, nil
 	}
@@ -122,6 +124,10 @@ func (uc *RepositoryUseCase) ConfigureMirror(ctx context.Context, in ConfigureMi
 	}
 
 	if err := uc.applyMirrorTuning(repo, in, siteAdmin, isOwner || siteAdmin); err != nil {
+		return nil, err
+	}
+
+	if err := uc.requireSSHKeyIfNeeded(repo); err != nil {
 		return nil, err
 	}
 
@@ -145,12 +151,12 @@ func (uc *RepositoryUseCase) ConfigureMirror(ctx context.Context, in ConfigureMi
 		})
 	}
 
-	item := uc.toRepositoryItem(repo, ownerSlug, folderPath, in.ViewerID)
+	item := uc.toRepositoryItem(repo, ownerSlug, in.ViewerID)
 
 	return &item, nil
 }
 
-func (uc *RepositoryUseCase) clearMirror(ctx context.Context, repo *domain.Repository, ownerSlug, folderPath string, viewerID uint) (*RepositoryItem, error) {
+func (uc *RepositoryUseCase) clearMirror(ctx context.Context, repo *domain.Repository, ownerSlug string, viewerID uint) (*RepositoryItem, error) {
 	prev := *repo
 	resetMirrorConfig(repo)
 
@@ -161,7 +167,7 @@ func (uc *RepositoryUseCase) clearMirror(ctx context.Context, repo *domain.Repos
 	uc.releaseMirrorRuntime(repo.ID)
 	uc.auditConfigure(repo, &prev, viewerID)
 
-	item := uc.toRepositoryItem(repo, ownerSlug, folderPath, viewerID)
+	item := uc.toRepositoryItem(repo, ownerSlug, viewerID)
 
 	return &item, nil
 }
@@ -361,11 +367,19 @@ func (uc *RepositoryUseCase) applyMirrorTuning(repo *domain.Repository, in Confi
 	}
 
 	if in.LFS != nil {
-		repo.MirrorLFS = *in.LFS
+		if *in.LFS {
+			return ErrMirrorLFSUnavailable
+		}
+
+		repo.MirrorLFS = false
 	}
 
 	if in.Partial != nil {
-		repo.MirrorPartial = *in.Partial
+		if *in.Partial {
+			return ErrMirrorPartialUnavailable
+		}
+
+		repo.MirrorPartial = false
 	}
 
 	if in.VerifySigned != nil {
@@ -487,7 +501,7 @@ func (uc *RepositoryUseCase) SyncMirror(ctx context.Context, in ResolveRepositor
 		return nil, ErrUnauthorized
 	}
 
-	repo, ownerSlug, folderPath, err := uc.resolve(in)
+	repo, ownerSlug, err := uc.resolve(in)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +527,7 @@ func (uc *RepositoryUseCase) SyncMirror(ctx context.Context, in ResolveRepositor
 		return nil, err
 	}
 
-	item := uc.toRepositoryItem(fresh, ownerSlug, folderPath, in.ViewerID)
+	item := uc.toRepositoryItem(fresh, ownerSlug, in.ViewerID)
 
 	return &item, nil
 }

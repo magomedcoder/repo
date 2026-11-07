@@ -272,7 +272,7 @@ func (uc *RepositoryUseCase) GetStats(ctx context.Context, in ResolveRepositoryI
 }
 
 func (uc *RepositoryUseCase) resolveReadable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	repo, _, _, err := uc.resolve(in)
+	repo, _, err := uc.resolve(in)
 	if err != nil {
 		return nil, err
 	}

@@ -13,8 +13,9 @@ import (
 
 func TestMirrorFetchOnBareWithoutOrigin(t *testing.T) {
 	root := t.TempDir()
+	r := NewRepository(root)
 	work := filepath.Join(root, "work")
-	dst := filepath.Join(root, "dst.git")
+	dst := filepath.Join(r.Root, "dst.git")
 
 	if err := os.MkdirAll(work, 0o700); err != nil {
 		t.Fatal(err)
@@ -48,7 +49,6 @@ func TestMirrorFetchOnBareWithoutOrigin(t *testing.T) {
 	}
 	_ = workRepo.Close()
 
-	r := NewRepository(root)
 	if err := r.InitBare(dst, domain.BareInitOptions{DefaultBranch: "main"}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,8 +81,9 @@ func TestMirrorFetchOnBareWithoutOrigin(t *testing.T) {
 
 func TestMirrorCloneLocal(t *testing.T) {
 	root := t.TempDir()
+	r := NewRepository(root)
 	work := filepath.Join(root, "work")
-	dst := filepath.Join(root, "dst.git")
+	dst := filepath.Join(r.Root, "dst.git")
 
 	if err := os.MkdirAll(work, 0o700); err != nil {
 		t.Fatal(err)
@@ -116,7 +117,6 @@ func TestMirrorCloneLocal(t *testing.T) {
 	}
 	_ = workRepo.Close()
 
-	r := NewRepository(root)
 	branch, err := r.MirrorClone(t.Context(), dst, work, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -165,7 +165,7 @@ func TestMirrorCloneLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pushDst := filepath.Join(root, "push.git")
+	pushDst := filepath.Join(r.Root, "push.git")
 	if _, err := gogit.PlainInit(pushDst, true); err != nil {
 		t.Fatal(err)
 	}

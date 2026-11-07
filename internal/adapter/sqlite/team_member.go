@@ -55,12 +55,6 @@ func (s *TeamMember) ListByTeam(teamID uint) ([]domain.TeamMember, error) {
 	return out, nil
 }
 
-func (s *TeamMember) ListTeamIDsByFolderUser(folderID, userID uint) ([]uint, error) {
-	var ids []uint
-	err := s.PluckOpts(context.Background(), "team_members.team_id", &ids,
-		gormutil.WithJoins("JOIN teams ON teams.id = team_members.team_id AND teams.deleted_at IS NULL"),
-		gormutil.WithWhere("team_members.user_id = ? AND teams.folder_id = ?", userID, folderID),
-	)
-
-	return ids, err
+func (s *TeamMember) DeleteByTeam(teamID uint) error {
+	return s.DeleteWhere(context.Background(), "team_id = ?", teamID)
 }

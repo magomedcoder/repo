@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,7 +59,6 @@ type IssueDetail struct {
 type IssueUseCase struct {
 	issues   domain.IssueStore
 	repos    domain.RepositoryStore
-	folders  domain.FolderStore
 	users    domain.UserStore
 	activity domain.ActivityStore
 	authz    *Authz
@@ -67,7 +67,6 @@ type IssueUseCase struct {
 func NewIssueUseCase(
 	issues domain.IssueStore,
 	repos domain.RepositoryStore,
-	folders domain.FolderStore,
 	users domain.UserStore,
 	activity domain.ActivityStore,
 	authz *Authz,
@@ -75,7 +74,6 @@ func NewIssueUseCase(
 	return &IssueUseCase{
 		issues:   issues,
 		repos:    repos,
-		folders:  folders,
 		users:    users,
 		activity: activity,
 		authz:    authz,
@@ -150,6 +148,10 @@ func (uc *IssueUseCase) Create(ctx context.Context, in ResolveRepositoryInput, t
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
+	}
+
+	if !uc.authz.CanContribute(repo, in.ViewerID) {
+		return nil, ErrIssueForbidden
 	}
 
 	title = strings.TrimSpace(title)
@@ -295,6 +297,10 @@ func (uc *IssueUseCase) AddComment(ctx context.Context, in ResolveRepositoryInpu
 	repo, err := uc.readable(in)
 	if err != nil {
 		return nil, err
+	}
+
+	if !uc.authz.CanContribute(repo, in.ViewerID) {
+		return nil, ErrIssueForbidden
 	}
 
 	issue, err := uc.findIssue(repo.ID, number)
@@ -713,9 +719,11 @@ func toLabelItem(l domain.Label) LabelItem {
 	}
 }
 
+var labelColorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
 func normalizeColor(raw string) string {
 	color := strings.TrimSpace(raw)
-	if len(color) == 7 && strings.HasPrefix(color, "#") {
+	if labelColorPattern.MatchString(color) {
 		return color
 	}
 

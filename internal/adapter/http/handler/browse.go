@@ -129,33 +129,12 @@ func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveR
 		c.W.WriteHeader(http.StatusOK)
 		_, _ = c.W.Write(data)
 
-		repoPath := in.Name
-		if in.FolderPath != "" {
-			repoPath = in.FolderPath + "/" + in.Name
-		}
-
 		if h.access != nil {
 			user, _ := middleware.UserFromContext(c.Ctx())
-			h.access.Download(c.R, repoPath, ref, filePath, user)
+			h.access.Download(c.R, in.Name, ref, filePath, user)
 		}
 
 		return nil
-
-	case "readme":
-		item, err := h.repos.GetReadme(c.Ctx(), in, ref)
-		if err != nil {
-			return mapError(c, err)
-		}
-
-		return httpx.OK(c, item)
-
-	case "stats":
-		item, err := h.repos.GetStats(c.Ctx(), in, ref)
-		if err != nil {
-			return mapError(c, err)
-		}
-
-		return httpx.OK(c, item)
 
 	case "summary":
 		item, err := h.repos.GetSummary(c.Ctx(), in, ref)
@@ -187,24 +166,19 @@ func splitBrowsePath(parts []string) (action string, repoParts, extra []string, 
 
 	last := parts[len(parts)-1]
 	switch last {
-	case "branches", "tags", "commits", "tree", "blob", "raw", "blame", "readme", "stats", "summary":
+	case "branches", "tags", "commits", "tree", "blob", "raw", "blame", "summary":
 		return last, parts[:len(parts)-1], nil, true
 	default:
 		return "", nil, nil, false
 	}
 }
 
-func folderAndName(parts []string) (folderPath, name string, err error) {
-	if len(parts) == 0 || len(parts) > 2 || parts[len(parts)-1] == "" {
-		return "", "", errors.New("invalid_repository_path")
+func repoNameFromParts(parts []string) (string, error) {
+	if len(parts) != 1 || parts[0] == "" {
+		return "", errors.New("invalid_repository_path")
 	}
 
-	name = parts[len(parts)-1]
-	if len(parts) == 2 {
-		folderPath = parts[0]
-	}
-
-	return folderPath, name, nil
+	return parts[0], nil
 }
 
 func rawContentType(filePath string, isBinary bool) string {
@@ -218,7 +192,7 @@ func rawContentType(filePath string, isBinary bool) string {
 	case ".webp":
 		return "image/webp"
 	case ".svg":
-		return "image/svg+xml"
+		return "text/plain; charset=utf-8"
 	case ".ico":
 		return "image/x-icon"
 	case ".bmp":

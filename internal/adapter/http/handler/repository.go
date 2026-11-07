@@ -29,7 +29,6 @@ func (h *RepositoryHandler) SetAccessLogger(log *audit.Logger) {
 type createRepoRequest struct {
 	Name            string `json:"name"`
 	Description     string `json:"description"`
-	FolderPath      string `json:"folder_path"`
 	Private         bool   `json:"private"`
 	ShowOnHome      bool   `json:"show_on_home"`
 	DefaultBranch   string `json:"default_branch"`
@@ -76,8 +75,9 @@ type updateRepoRequest struct {
 	IssuesEnabled        *bool   `json:"issues_enabled"`
 }
 
-type moveRepoRequest struct {
-	FolderPath string `json:"folder_path"`
+type deleteRepoRequest struct {
+	Confirm         string `json:"confirm"`
+	CurrentPassword string `json:"current_password"`
 }
 
 func (h *RepositoryHandler) Create(c *httpx.Context) error {
@@ -96,7 +96,6 @@ func (h *RepositoryHandler) Create(c *httpx.Context) error {
 		Description:     req.Description,
 		ViewerID:        user.ID,
 		OwnerID:         user.ID,
-		FolderPath:      req.FolderPath,
 		Private:         req.Private,
 		ShowOnHome:      req.ShowOnHome,
 		DefaultBranch:   req.DefaultBranch,
@@ -219,10 +218,6 @@ func paginateRepoItems(items []usecase.RepositoryItem, offset, limit int) []usec
 
 func sortRepoItems(items []usecase.RepositoryItem, key string) {
 	switch key {
-	case "description":
-		slices.SortFunc(items, func(a, b usecase.RepositoryItem) int {
-			return strings.Compare(strings.ToLower(a.Description), strings.ToLower(b.Description))
-		})
 	case "idle":
 		slices.SortFunc(items, func(a, b usecase.RepositoryItem) int {
 			var at, bt int64
@@ -248,7 +243,7 @@ func sortRepoItems(items []usecase.RepositoryItem, key string) {
 }
 
 func (h *RepositoryHandler) Get(c *httpx.Context) error {
-	folderPath, name, err := parseRepoPath(c)
+	name, err := parseRepoName(c)
 	if err != nil {
 		return c.Error(http.StatusBadRequest, err.Error())
 	}
@@ -259,9 +254,8 @@ func (h *RepositoryHandler) Get(c *httpx.Context) error {
 	}
 
 	out, err := h.repos.Get(c.Ctx(), usecase.ResolveRepositoryInput{
-		FolderPath: folderPath,
-		Name:       name,
-		ViewerID:   viewerID,
+		Name:     name,
+		ViewerID: viewerID,
 	})
 	if err != nil {
 		return mapError(c, err)
@@ -276,7 +270,7 @@ func (h *RepositoryHandler) Update(c *httpx.Context) error {
 		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	folderPath, name, err := parseRepoPath(c)
+	name, err := parseRepoName(c)
 	if err != nil {
 		return c.Error(http.StatusBadRequest, err.Error())
 	}
@@ -288,7 +282,6 @@ func (h *RepositoryHandler) Update(c *httpx.Context) error {
 
 	out, err := h.repos.Update(c.Ctx(), usecase.UpdateRepositoryInput{
 		ViewerID:             user.ID,
-		FolderPath:           folderPath,
 		Name:                 name,
 		NewName:              req.Name,
 		Description:          req.Description,
@@ -311,22 +304,32 @@ func (h *RepositoryHandler) Delete(c *httpx.Context) error {
 		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	folderPath, name, err := parseRepoPath(c)
+	name, err := parseRepoName(c)
 	if err != nil {
 		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
-	err = h.repos.Delete(c.Ctx(), usecase.ResolveRepositoryInput{
-		FolderPath: folderPath,
-		Name:       name,
-		ViewerID:   user.ID,
+	confirm := ""
+	currentPassword := strings.TrimSpace(c.R.Header.Get("X-Repo-Password"))
+	if req, bindErr := httpx.BindJSON[deleteRepoRequest](c); bindErr == nil {
+		confirm = req.Confirm
+		if req.CurrentPassword != "" {
+			currentPassword = req.CurrentPassword
+		}
+	}
+
+	err = h.repos.Delete(c.Ctx(), usecase.DeleteRepositoryInput{
+		Name:            name,
+		ViewerID:        user.ID,
+		Confirm:         confirm,
+		CurrentPassword: currentPassword,
 	})
 	if err != nil {
 		return mapError(c, err)
 	}
 
 	if h.access != nil {
-		h.access.RepoDelete(c.R, user, audit.RepoKey(folderPath, name))
+		h.access.RepoDelete(c.R, user, name)
 	}
 
 	return c.NoContent()
@@ -338,7 +341,7 @@ func (h *RepositoryHandler) ConfigureMirror(c *httpx.Context) error {
 		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	folderPath, name, err := parseRepoPath(c)
+	name, err := parseRepoName(c)
 	if err != nil {
 		return c.Error(http.StatusBadRequest, err.Error())
 	}
@@ -355,7 +358,6 @@ func (h *RepositoryHandler) ConfigureMirror(c *httpx.Context) error {
 
 	out, err := h.repos.ConfigureMirror(c.Ctx(), usecase.ConfigureMirrorInput{
 		ViewerID:       user.ID,
-		FolderPath:     folderPath,
 		Name:           name,
 		Direction:      req.Direction,
 		URL:            req.URL,
@@ -395,15 +397,14 @@ func (h *RepositoryHandler) SyncMirror(c *httpx.Context) error {
 		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	folderPath, name, err := parseRepoPath(c)
+	name, err := parseRepoName(c)
 	if err != nil {
 		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
 	out, err := h.repos.SyncMirror(c.Ctx(), usecase.ResolveRepositoryInput{
-		FolderPath: folderPath,
-		Name:       name,
-		ViewerID:   user.ID,
+		Name:     name,
+		ViewerID: user.ID,
 	})
 	if err != nil {
 		return mapError(c, err)
@@ -412,51 +413,16 @@ func (h *RepositoryHandler) SyncMirror(c *httpx.Context) error {
 	return httpx.OK(c, out)
 }
 
-func (h *RepositoryHandler) MoveWithParts(c *httpx.Context, repoParts []string) error {
-	folderPath, name, err := folderAndName(repoParts)
-	if err != nil {
-		return c.Error(http.StatusBadRequest, err.Error())
-	}
-	return h.move(c, folderPath, name)
-}
-
-func (h *RepositoryHandler) move(c *httpx.Context, folderPath, name string) error {
-	user, ok := middleware.UserFromContext(c.Ctx())
-	if !ok {
-		return c.Error(http.StatusUnauthorized, "unauthorized")
-	}
-
-	req, err := httpx.BindJSON[moveRepoRequest](c)
-	if err != nil {
-		return c.Error(http.StatusBadRequest, "invalid_json")
-	}
-
-	out, err := h.repos.Move(c.Ctx(), usecase.MoveRepositoryInput{
-		ViewerID:      user.ID,
-		FolderPath:    folderPath,
-		Name:          name,
-		NewFolderPath: req.FolderPath,
-	})
-	if err != nil {
-		return mapError(c, err)
-	}
-
-	if h.access != nil {
-		h.access.RepoMove(c.R, user, audit.RepoKey(folderPath, name), out.RepoPath)
-	}
-
-	return httpx.OK(c, out)
-}
-
-func parseRepoPath(c *httpx.Context) (folderPath, name string, err error) {
+func parseRepoName(c *httpx.Context) (string, error) {
 	rest := strings.Trim(c.Param("path"), "/")
 	if rest != "" {
-		return folderAndName(strings.Split(rest, "/"))
+		return repoNameFromParts(strings.Split(rest, "/"))
 	}
 
 	parts := namedRepoParts(c)
 	if len(parts) == 0 {
-		return "", "", errors.New("invalid_repository_path")
+		return "", errors.New("invalid_repository_path")
 	}
-	return folderAndName(parts)
+
+	return repoNameFromParts(parts)
 }

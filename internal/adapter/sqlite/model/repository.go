@@ -12,11 +12,8 @@ type Repository struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	DeletedAt            gorm.DeletedAt
-	Name                 string  `gorm:"size:100;not null"`
-	OwnerKind            string  `gorm:"size:8;not null;default:user"`
-	OwnerID              uint    `gorm:"not null"`
-	FolderID             *uint   `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
-	Folder               *Folder `gorm:"foreignKey:FolderID;references:ID"`
+	Name                 string `gorm:"size:100;not null"`
+	OwnerID              uint   `gorm:"not null"`
 	Description          string
 	IsPrivate            bool   `gorm:"not null;default:false"`
 	ShowOnHome           bool   `gorm:"not null;default:false"`
@@ -63,17 +60,10 @@ func (Repository) TableName() string {
 }
 
 func (m Repository) ToDomain() domain.Repository {
-	kind := m.OwnerKind
-	if kind == "" {
-		kind = domain.OwnerKindUser
-	}
-
 	repo := domain.Repository{
 		ID:                   m.ID,
 		Name:                 m.Name,
-		OwnerKind:            kind,
 		OwnerID:              m.OwnerID,
-		FolderID:             m.FolderID,
 		Description:          m.Description,
 		IsPrivate:            m.IsPrivate,
 		ShowOnHome:           m.ShowOnHome && !m.IsPrivate,
@@ -123,17 +113,10 @@ func (m Repository) ToDomain() domain.Repository {
 }
 
 func RepositoryFromDomain(repo *domain.Repository) *Repository {
-	kind := repo.OwnerKind
-	if kind == "" {
-		kind = domain.OwnerKindUser
-	}
-
 	m := &Repository{
 		ID:                   repo.ID,
 		Name:                 repo.Name,
-		OwnerKind:            kind,
 		OwnerID:              repo.OwnerID,
-		FolderID:             repo.FolderID,
 		Description:          repo.Description,
 		IsPrivate:            repo.IsPrivate,
 		ShowOnHome:           repo.ShowOnHome && !repo.IsPrivate,

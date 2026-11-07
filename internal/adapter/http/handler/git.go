@@ -56,6 +56,11 @@ func (h *GitHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(repoPath, "/") {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
 	switch {
 	case r.Method == http.MethodGet && action == "info/refs":
 		h.infoRefs(w, r, repoPath)
@@ -187,7 +192,7 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 			return nil, nil, err
 		}
 
-		http.Error(w, "forbidden", http.StatusForbidden)
+		http.Error(w, "not found", http.StatusNotFound)
 		return nil, nil, err
 	}
 
@@ -215,12 +220,23 @@ func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) 
 		if errors.Is(err, usecase.ErrTooManyAttempts) {
 			return nil, err
 		}
+
+		if err == nil && u != nil && strings.HasPrefix(pass, "repo_") && h.access != nil {
+			h.access.GitToken(r, u, "")
+		}
+
 		return u, err
 	}
 
 	auth := r.Header.Get("Authorization")
 	if len(auth) > 7 && strings.EqualFold(auth[:7], "bearer ") {
-		return h.git.Authenticate(r.Context(), middleware.ClientIPKey(r), "", strings.TrimSpace(auth[7:]))
+		tok := strings.TrimSpace(auth[7:])
+		u, err := h.git.Authenticate(r.Context(), middleware.ClientIPKey(r), "", tok)
+		if err == nil && u != nil && strings.HasPrefix(tok, "repo_") && h.access != nil {
+			h.access.GitToken(r, u, "")
+		}
+
+		return u, err
 	}
 
 	return nil, usecase.ErrUnauthorized

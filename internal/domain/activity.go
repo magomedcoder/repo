@@ -18,7 +18,6 @@ const (
 type ActivityEvent struct {
 	ID        uint
 	ActorID   uint
-	OwnerKind string
 	OwnerID   uint
 	RepoID    *uint
 	Type      string
@@ -30,9 +29,9 @@ type ActivityEvent struct {
 type ActivityStore interface {
 	Create(ev *ActivityEvent) error
 
-	ListByOwner(ownerKind string, ownerID uint, limit int) ([]ActivityEvent, error)
+	ListByOwner(ownerID uint, limit int) ([]ActivityEvent, error)
 
-	ListPublicByOwner(ownerKind string, ownerID uint, limit int) ([]ActivityEvent, error)
+	ListPublicByOwner(ownerID uint, limit int) ([]ActivityEvent, error)
 
 	DeleteOlderThan(ctx context.Context, before time.Time) (int64, error)
 }

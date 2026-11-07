@@ -266,8 +266,10 @@ func WithLimit(limit int) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB { return db.Limit(limit) }
 }
 
-func WithOffset(offset int) func(*gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB { return db.Offset(offset) }
+func LimitOffset(limit, offset int) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Offset(offset).Limit(limit)
+	}
 }
 
 func WithWhere(where string, args ...any) func(*gorm.DB) *gorm.DB {

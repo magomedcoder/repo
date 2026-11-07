@@ -52,41 +52,11 @@ export interface AuthSession {
   expires_at: string
 }
 
-export type FolderCaps = {
-  view?: boolean
-  create_repos?: boolean
-  manage_members?: boolean
-  manage_settings?: boolean
-  delete_folder?: boolean
-  delete_repos?: boolean
-}
-
-export type FolderRole = 'owner' | 'admin' | 'member'
 export type RepoCollabRole = 'admin' | 'write' | 'read'
-
-export interface Folder {
-  name: string
-  slug: string
-  path: string
-  role?: FolderRole | string
-  caps?: FolderCaps
-  created_at: string
-  updated_at: string
-}
-
-export interface FolderMember {
-  user_id: number
-  username: string
-  role: FolderRole
-  caps: FolderCaps
-  created_at: string
-  updated_at: string
-}
 
 export interface Team {
   name: string
   slug: string
-  caps: FolderCaps
   created_at: string
   updated_at: string
 }
@@ -101,7 +71,15 @@ export interface TeamRepoGrant {
   repo_id: number
   repo_name: string
   repo_path: string
+  owner?: string
   role: RepoCollabRole | string
+}
+
+export interface RepoTeamGrant {
+  team_name: string
+  team_slug: string
+  role: RepoCollabRole | string
+  owned: boolean
 }
 
 export interface RepoCollaborator {
@@ -120,7 +98,6 @@ export interface RepoSummary {
   show_on_home?: boolean
   default_branch: string
   repo_path?: string
-  folder_path?: string
   created_at: string
   updated_at: string
 }
@@ -136,7 +113,6 @@ export interface Repository {
   name: string
   description: string
   owner: string
-  folder_path: string
   repo_path?: string
   is_private: boolean
   show_on_home?: boolean
@@ -235,16 +211,6 @@ export interface MirrorCheckResult {
   refs?: RefInfo[]
 }
 
-export interface MirrorTarget {
-  id: number
-  url: string
-  username?: string
-  has_password?: boolean
-  enabled: boolean
-  last_sync_at?: string
-  last_error?: string
-}
-
 export interface AdminMirror {
   id: number
   repo_id?: number
@@ -259,11 +225,15 @@ export interface AdminMirror {
   last_sync_at?: string
   last_error?: string
   next_sync_at?: string
+  group_id?: number
 }
 
-export interface FolderContents {
-  folder?: Folder
-  repos: RepoSummary[]
+export interface MirrorGroup {
+  id: number
+  name: string
+  upstream_url?: string
+  direction?: string
+  interval?: string
 }
 
 export interface RefInfo {
@@ -374,7 +344,6 @@ export interface ActivityEvent {
   ref?: string
   actor: string
   owner: string
-  owner_kind: string
   created_at: string
 }
 

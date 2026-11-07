@@ -2,11 +2,21 @@
 
 Lightweight self-hosted Git hosting.
 
+## How it differs
+
+Unlike GitHub, GitLab, Gitea, and similar hosts, Repo has **no organizations or groups** and **no username in repository URLs**.
+
+- Paths are flat: `https://example.com/my-app.git`, not `https://example.com/utest/my-app.git`
+- Repository names are unique on the whole instance (not per user or org)
+- Access is via per-repo collaborators and personal teams - not org membership or nested group trees
+
+Built for a small self-hosted instance where short clone URLs matter more than multi-tenant org hierarchy.
+
 ## Features
 
 - Repositories over HTTP: clone, fetch, push; browse branches, tags, tree, commits, blame, README
 - Issues and pull requests (diff, comments, merge)
-- Folders as shared org spaces: members, capabilities, teams, per-repo collaborators
+- Flat repositories (`name.git`), per-repo collaborators, and personal teams that grant read/write/admin on your repositories
 - Pull and push mirroring over http(s) and SSH (per-repository interval and sync window, status and history, admin overview)
 - Accounts, sessions, access tokens, admin users; UI in English and Russian
 
@@ -38,7 +48,7 @@ cp config.example.yaml config.yaml
 | `site_name`            | Site title in the UI                                                              |
 | `session_secret`       | Session signing secret (required, min 32 characters; e.g. `openssl rand -hex 32`) |
 | `cookie_secure`        | Set `true` behind HTTPS (Secure cookies + HSTS)                                   |
-| `allow_registration`   | Public self-registration; otherwise create users via CLI/admin                    |
+| `allow_registration`   | Public self-registration (default `true`); otherwise create users via CLI/admin   |
 | `receive_max_bytes`    | Max Git push size in bytes (default 512 MiB)                                      |
 | `mirror_pull_interval` | How often pull mirrors fetch (`5m` by default; `0` disables the scheduler)        |
 | `trusted_proxies`      | Optional CIDRs/IPs trusted for `X-Forwarded-For` / `X-Forwarded-Proto`            |
@@ -47,9 +57,9 @@ Responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and (over HT
 
 ## Mirroring
 
-Any repository can be a **pull mirror** (kept in sync with a remote, read-only here) or a **push mirror** (published to a remote after `git push` / merge). Set it up when creating a repository (*Mirror* or one-time *Import*) or under repository **Settings -> Mirroring**: interval, sync window, force/prune, refspecs, LFS, size limit, credentials or SSH key, *Check connection*, sync history and a next-pull preview. Pull mirrors show a read-only banner with an upstream link and a syncing / ok / error / paused indicator; instance admins get all mirrors with bulk sync and pause under **Mirrors** (`/settings/mirrors`).
-
-Internal hosts are blocked by default (SSRF protection). Interval, workers, and timeouts are set in `config.example.yaml`.
+- **Pull** mirrors stay in sync with a remote (read-only here); **push** mirrors publish after `git push` / merge
+- Configure on create (*Mirror* / *Import*) or in repository settings; admins manage all mirrors at `/cp/mirrors`
+- Internal hosts blocked by default (SSRF); interval and workers in `config.example.yaml`
 
 ## Reverse proxy
 

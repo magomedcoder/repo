@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { foldersApi, reposApi } from '@/api'
-import type { Folder, MirrorDirection } from '@/api/types'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { reposApi } from '@/api'
+import type { MirrorDirection } from '@/api/types'
 import ModalForm from '@/components/ui/ModalForm.vue'
-import { folderKey } from '@/lib/folderNav'
 import { isSSHURL } from '@/lib/mirror'
 import { suggestRepoNameFromURL } from '@/lib/repoCreate'
-import { normalizeRepoPath } from '@/lib/repoPath'
 import { i18n, localizeError } from '@/i18n'
 
 const props = defineProps<{
-  folderPath?: string | null
   initialUrl?: string
 }>()
 
@@ -20,15 +17,12 @@ const emit = defineEmits<{
 }>()
 
 const name = ref('')
-const folderKeyValue = ref('')
-const folders = ref<Folder[]>([])
 const description = ref('')
 const isPrivate = ref(true)
 const showOnHome = ref(false)
 const defaultBranch = ref('main')
 const mirrorDirection = ref<MirrorDirection>('pull')
 const mirrorURL = ref(props.initialUrl ?? '')
-const mirrorLFS = ref(false)
 const mirrorUsername = ref('')
 const mirrorPassword = ref('')
 const nameTouched = ref(false)
@@ -64,22 +58,6 @@ function stopTimer() {
 
 onBeforeUnmount(stopTimer)
 
-onMounted(async () => {
-  try {
-    const res = await foldersApi.list()
-    folders.value = res.folders ?? []
-    const want = props.folderPath ? normalizeRepoPath(props.folderPath) : ''
-    if (want) {
-      const match = folders.value.find((f) => folderKey(f) === want)
-      if (match) {
-        folderKeyValue.value = folderKey(match)
-      }
-    }
-  } catch {
-    folders.value = []
-  }
-})
-
 async function submit() {
   error.value = ''
   busy.value = true
@@ -92,17 +70,12 @@ async function submit() {
     const body: Parameters<typeof reposApi.create>[0] = {
       name: name.value.trim(),
       description: description.value.trim(),
-      folder_path: folderKeyValue.value || undefined,
       private: isPrivate.value,
       show_on_home: !isPrivate.value && showOnHome.value,
       default_branch: defaultBranch.value.trim() || 'main',
       mirror_direction: mirrorDirection.value,
       mirror_url: mirrorURL.value.trim(),
     }
-    if (mirrorLFS.value) {
-      body.mirror_lfs = true
-    }
-
     if (mirrorUsername.value.trim()) {
       body.mirror_username = mirrorUsername.value.trim()
     }
@@ -171,19 +144,6 @@ async function submit() {
       >
     </label>
     <label class="block text-sm">
-      <span class="mb-1 block font-medium">{{ $t('modal.folder') }}</span>
-      <select v-model="folderKeyValue" :disabled="busy" class="field">
-        <option value="">{{ $t('nav.root') }}</option>
-        <option
-          v-for="folder in folders"
-          :key="folder.path"
-          :value="folderKey(folder)"
-        >
-          {{ folder.name }}
-        </option>
-      </select>
-    </label>
-    <label class="block text-sm">
       <span class="mb-1 block font-medium">{{ $t('modal.description') }}</span>
       <textarea
         v-model="description"
@@ -215,10 +175,7 @@ async function submit() {
       >
     </label>
     <p class="text-[85%] text-ink-muted">{{ $t('modal.tokenHint') }}</p>
-    <label class="flex items-center gap-2 text-sm">
-      <input v-model="mirrorLFS" type="checkbox" class="accent-ink" :disabled="busy">
-      {{ $t('modal.mirrorLfs') }}
-    </label>
+    <p class="text-[85%] text-ink-muted">{{ $t('modal.mirrorLfsUnavailable') }}</p>
     <label v-if="mirrorDirection === 'push'" class="block text-sm">
       <span class="mb-1 block font-medium">{{ $t('modal.defaultBranch') }}</span>
       <input
