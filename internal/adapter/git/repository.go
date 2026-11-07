@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	gogit "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
@@ -21,6 +21,7 @@ type Repository struct {
 	Root  string
 	opens *openCache
 	stats *statsCache
+	trust TrustMaterial
 }
 
 func NewRepository(dataDir string) *Repository {
@@ -236,18 +237,26 @@ func (r *Repository) ServePack(ctx context.Context, repoPath, service string, st
 }
 
 func (r *Repository) pruneUnreachable(ctx context.Context, repoPath string) error {
-	if !gitAvailable() {
-		return nil
+	if err := checkCtx(ctx); err != nil {
+		return err
 	}
 
-	safe, err := fsutil.SafePath(r.Root, repoPath)
+	repo, err := r.open(repoPath)
 	if err != nil {
 		return err
 	}
 
-	out, err := exec.CommandContext(ctx, "git", "-C", safe, "prune", "--expire=now").CombinedOutput()
+	err = repo.Prune(gogit.PruneOptions{
+		OnlyObjectsOlderThan: time.Now(),
+		Handler:              repo.DeleteObject,
+	})
+
+	if errors.Is(err, gogit.ErrLooseObjectsNotSupported) {
+		return nil
+	}
+
 	if err != nil {
-		return fmt.Errorf("prune: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("prune: %w", err)
 	}
 
 	return nil

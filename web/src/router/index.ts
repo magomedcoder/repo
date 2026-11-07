@@ -30,6 +30,31 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/home.vue'),
       },
       {
+        path: 'profile',
+        name: 'profile',
+        component: () => import('@/views/profile/index.vue'),
+      },
+      {
+        path: 'profile/email',
+        name: 'profile-email',
+        component: () => import('@/views/profile/email.vue'),
+      },
+      {
+        path: 'profile/password',
+        name: 'profile-password',
+        component: () => import('@/views/profile/password.vue'),
+      },
+      {
+        path: 'profile/sessions',
+        name: 'sessions',
+        component: () => import('@/views/profile/sessions.vue'),
+      },
+      {
+        path: 'profile/tokens',
+        name: 'tokens',
+        component: () => import('@/views/profile/tokens.vue'),
+      },
+      {
         path: 'settings/teams',
         name: 'teams',
         component: () => import('@/views/profile/teams.vue'),
@@ -39,31 +64,6 @@ const routes: RouteRecordRaw[] = [
         name: 'team',
         component: () => import('@/views/profile/team.vue'),
         props: true,
-      },
-      {
-        path: 'settings/tokens',
-        name: 'tokens',
-        component: () => import('@/views/profile/tokens.vue'),
-      },
-      {
-        path: 'settings/sessions',
-        name: 'sessions',
-        component: () => import('@/views/profile/sessions.vue'),
-      },
-      {
-        path: 'settings/profile',
-        name: 'profile',
-        component: () => import('@/views/profile/index.vue'),
-      },
-      {
-        path: 'settings/profile/email',
-        name: 'profile-email',
-        component: () => import('@/views/profile/email.vue'),
-      },
-      {
-        path: 'settings/profile/password',
-        name: 'profile-password',
-        component: () => import('@/views/profile/password.vue'),
       },
       {
         path: 'cp',

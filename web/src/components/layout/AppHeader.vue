@@ -125,8 +125,8 @@ async function onLogout() {
 </script>
 
 <template>
-  <header class="glass sticky top-0 z-40 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-2.5 py-2 sm:gap-x-3 sm:px-4 sm:py-2.5">
-    <div class="flex min-w-0 items-center gap-2 sm:gap-2.5">
+  <header class="glass sticky top-0 z-40 flex items-center gap-2 px-2.5 py-2 sm:gap-3 sm:px-4 sm:py-2.5">
+    <div class="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
       <RouterLink
         to="/"
         class="inline-flex min-w-0 items-center gap-2 text-[1.2rem] font-medium leading-none tracking-tight text-ink no-underline hover:no-underline sm:gap-2.5 sm:text-[1.35rem]"
@@ -141,7 +141,22 @@ async function onLogout() {
         <span class="min-w-0 truncate">{{ siteName }}</span>
       </RouterLink>
     </div>
-    <nav class="flex max-w-full flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-[90%] sm:gap-x-2.5">
+
+    <nav class="ml-auto flex shrink-0 items-center justify-end gap-1.5 text-[90%] sm:gap-2">
+      <form class="min-w-0" @submit.prevent="onSearch">
+        <label class="sr-only" for="global-search">{{ $t('search.title') }}</label>
+        <div class="search-field h-8 w-28 sm:w-40">
+          <Icon name="search" size="sm" class="shrink-0" />
+          <input
+            id="global-search"
+            v-model="searchQ"
+            type="search"
+            class="w-full min-w-0 text-[90%]"
+            :placeholder="$t('search.title')"
+            :aria-label="$t('search.title')"
+          >
+        </div>
+      </form>
       <div v-if="username" ref="createRoot" class="relative z-50">
         <button
           type="button"
@@ -174,24 +189,10 @@ async function onLogout() {
           </div>
         </Transition>
       </div>
-      <form class="contents" @submit.prevent="onSearch">
-        <label class="sr-only" for="global-search">{{ $t('search.title') }}</label>
-        <div class="search-field w-24 min-[400px]:w-32 sm:w-44">
-          <Icon name="search" size="sm" />
-          <input
-            id="global-search"
-            v-model="searchQ"
-            type="search"
-            class="w-full text-[90%]"
-            :placeholder="$t('search.placeholder')"
-            :aria-label="$t('search.title')"
-          >
-        </div>
-      </form>
       <div v-if="username" ref="menuRoot" class="relative z-50">
         <button
           type="button"
-          class="flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-line bg-white/55 p-0 text-[11px] font-semibold text-ink transition hover:-translate-y-px hover:bg-white/75 sm:h-7 sm:w-7"
+          class="flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-line bg-white/55 p-0 text-[11px] font-semibold text-ink transition hover:-translate-y-px hover:bg-white/75"
           :aria-expanded="menuOpen"
           aria-haspopup="menu"
           :aria-label="username"

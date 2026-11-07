@@ -141,6 +141,14 @@ func (h *RepositoryHandler) List(c *httpx.Context) error {
 			return h.repos.Search(c.Ctx(), q, ownerID, searchPublic, lim, off, order)
 		}
 
+		if scope == "shared" {
+			if !loggedIn {
+				return nil, usecase.ErrUnauthorized
+			}
+
+			return h.repos.ListShared(c.Ctx(), user.ID, lim, off, order)
+		}
+
 		if scope == "home" || (!loggedIn && scope != "public") {
 			return h.repos.ListHome(c.Ctx(), lim, off, order)
 		}

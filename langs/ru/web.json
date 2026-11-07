@@ -3,6 +3,9 @@
     "loading": "Загрузка...",
     "cancel": "Отмена",
     "loadMore": "Загрузить ещё",
+    "prev": "Назад",
+    "next": "Вперёд",
+    "pageRange": "{from}-{to} из {total}",
     "close": "Закрыть",
     "copy": "Копировать",
     "ok": "Готово",
@@ -22,7 +25,6 @@
     "poweredBy": "Работает на"
   },
   "cp": {
-    "subtitle": "Администрирование сайта",
     "nav": {
       "overview": "Обзор",
       "users": "Пользователи",
@@ -134,7 +136,8 @@
     "pinned": "Закреплённые на главной",
     "emptyPinned": "Пока ничего не закреплено.",
     "private": "Закрытый",
-    "updated": "Обновлён {age}"
+    "updated": "Обновлён {age}",
+    "sort": "Сортировка"
   },
   "collaborators": {
     "title": "Участники репозитория",
@@ -338,7 +341,7 @@
     "partialHint": "Где поддерживается, использует git filter=blob:none для экономии места. Удобно для больших историй, когда нужны только недавние деревья.",
     "partialUnavailable": "Частичные зеркала временно недоступны (сетевой system-git отключён из‑за SSRF).",
     "verifySigned": "Требовать подписанный tip upstream",
-    "verifySignedHint": "После каждого pull sync отклоняется, если git verify-commit не проходит для remote HEAD.",
+    "verifySignedHint": "После каждого pull sync отклоняется, если у remote HEAD нет подписи или она не проходит проверку по OpenPGP keyring / SSH allowed_signers сервера.",
     "maxMiB": "Лимит размера (МиБ)",
     "maxMiBPlaceholder": "Без лимита",
     "maxMiBHint": "Синхронизация отклоняется, если remote больше лимита. 0 или пусто - без лимита.",
@@ -558,7 +561,6 @@
       "invalid_id": "Некорректный идентификатор",
       "invalid_mirror_option": "Некорректный параметр зеркала",
       "mirror_admin_only": "Это действие с зеркалом доступно только администратору",
-      "mirror_bundle_failed": "Не удалось создать bundle зеркала",
       "mirror_busy": "Зеркало занято",
       "mirror_group_not_found": "Группа зеркал не найдена",
       "mirror_import_limit": "Слишком много репозиториев в этом импорте",
@@ -614,12 +616,12 @@
   "search": {
     "title": "Поиск",
     "query": "Запрос",
-    "placeholder": "Поиск",
-    "scope": "Область",
-    "scopeOwn": "Мои репозитории",
-    "scopePublic": "Открытые",
-    "hint": "Введите имя репозитория.",
-    "empty": "Ничего не найдено."
+    "placeholder": "Поиск репозиториев и кода",
+    "empty": "Ничего не найдено.",
+    "tabRepos": "Репозитории",
+    "tabCode": "Код",
+    "codeIn": "в {repo}",
+    "queryTooShort": "Введите не меньше 2 символов."
   },
   "profile": {
     "title": "Профиль",
@@ -635,7 +637,11 @@
     "updateEmail": "Сменить email",
     "changePasswordTitle": "Сменить пароль",
     "teams": "Команды",
-    "noTeams": "Команд пока нет."
+    "noTeams": "Команд пока нет.",
+    "repositories": "Репозитории",
+    "noRepositories": "Репозиториев пока нет.",
+    "manageTeams": "Управление",
+    "settings": "Настройки"
   },
   "teams": {
     "title": "Команды",

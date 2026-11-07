@@ -26,6 +26,7 @@ export function useAdminUsers() {
   const formEmail = ref('')
   const formPassword = ref('')
   const formRole = ref<UserRole>(RoleUser)
+  const page = ref(1)
   const pageSize = 50
 
   function resetForm() {
@@ -55,25 +56,35 @@ export function useAdminUsers() {
     resetForm()
   }
 
-  async function load(reset = true) {
+  async function load() {
     loading.value = true
     error.value = ''
     try {
-      const offset = reset ? 0 : users.value.length
       const res = await adminUsersApi.list({
         q: q.value.trim() || undefined,
         role: roleFilter.value || undefined,
         sort: sort.value || undefined,
         limit: pageSize,
-        offset,
+        offset: (page.value - 1) * pageSize,
       })
       total.value = res.total
-      users.value = reset ? (res.users ?? []) : [...users.value, ...(res.users ?? [])]
+      users.value = res.users ?? []
+      const maxPage = Math.max(1, Math.ceil((res.total || 0) / pageSize) || 1)
+      if (page.value > maxPage) {
+        page.value = maxPage
+        await load()
+        return
+      }
     } catch (err) {
       error.value = localizeError(err, 'errors.loadUsers')
     } finally {
       loading.value = false
     }
+  }
+
+  async function setPage(next: number) {
+    page.value = next
+    await load()
   }
 
   async function submit() {
@@ -122,7 +133,7 @@ export function useAdminUsers() {
         return
       }
       closeForm()
-      await load(true)
+      await load()
     } catch (err) {
       error.value = localizeError(err, editing.value ? 'errors.saveUser' : 'errors.createUser')
     } finally {
@@ -160,7 +171,7 @@ export function useAdminUsers() {
       }
       pendingStepUp.value = null
       closeForm()
-      await load(true)
+      await load()
     } catch (err) {
       error.value = localizeError(err, pendingStepUp.value?.mode === 'create' ? 'errors.createUser' : 'errors.saveUser')
     } finally {
@@ -176,12 +187,12 @@ export function useAdminUsers() {
     if (!pendingDelete.value) {
       return
     }
-    
+
     error.value = ''
     try {
       await adminUsersApi.remove(pendingDelete.value.id, password)
       pendingDelete.value = null
-      await load(true)
+      await load()
     } catch (err) {
       error.value = localizeError(err, 'errors.deleteFailed')
     }
@@ -191,17 +202,22 @@ export function useAdminUsers() {
   watch([q, roleFilter, sort], () => {
     clearTimeout(searchTimer)
     searchTimer = setTimeout(() => {
-      void load(true)
+      page.value = 1
+      void load()
     }, 250)
   })
 
-  onMounted(() => load(true))
+  onMounted(() => {
+    void load()
+  })
 
   return {
     RoleAdmin,
     RoleUser,
     users,
     total,
+    page,
+    pageSize,
     q,
     roleFilter,
     sort,
@@ -220,6 +236,7 @@ export function useAdminUsers() {
     openEdit,
     closeForm,
     load,
+    setPage,
     submit,
     confirmStepUp,
     askDelete,

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/internal/mirror/metrics"
+	"magomedcoder.ru/repo/pkg/metrics"
 )
 
 type AdminMirrorUseCase struct {

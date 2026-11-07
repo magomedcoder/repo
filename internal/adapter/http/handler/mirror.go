@@ -1,9 +1,7 @@
 package handler
 
 import (
-	"io"
 	"strconv"
-	"strings"
 
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/usecase"
@@ -123,43 +121,4 @@ func (h *RepositoryHandler) DryRunMirror(c *httpx.Context) error {
 		"ok":             out.OK,
 		"error":          out.Error,
 	})
-}
-
-func (h *RepositoryHandler) ExportMirrorBundle(c *httpx.Context) error {
-	in, err := h.mirrorInput(c)
-	if err != nil {
-		return mapError(c, err)
-	}
-
-	c.W.Header().Set("Content-Type", "application/octet-stream")
-	c.W.Header().Set("Content-Disposition", `attachment; filename="mirror.bundle"`)
-
-	if err := h.repos.ExportMirrorBundle(c.Ctx(), usecase.BundleInput{
-		ResolveRepositoryInput: in,
-		CurrentPassword:        bundleStepUpPassword(c),
-	}, c.W); err != nil {
-		return mapError(c, err)
-	}
-
-	return nil
-}
-
-func (h *RepositoryHandler) ImportMirrorBundle(c *httpx.Context) error {
-	in, err := h.mirrorInput(c)
-	if err != nil {
-		return mapError(c, err)
-	}
-
-	if err := h.repos.ImportMirrorBundle(c.Ctx(), usecase.BundleInput{
-		ResolveRepositoryInput: in,
-		CurrentPassword:        bundleStepUpPassword(c),
-	}, io.LimitReader(c.R.Body, 2<<30)); err != nil {
-		return mapError(c, err)
-	}
-
-	return c.NoContent()
-}
-
-func bundleStepUpPassword(c *httpx.Context) string {
-	return strings.TrimSpace(c.R.Header.Get("X-Repo-Password"))
 }

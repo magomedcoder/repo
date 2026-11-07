@@ -4,7 +4,6 @@ import { RouterLink } from 'vue-router'
 import type { Repository, RepoSummary } from '@/api/types'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Icon from '@/components/ui/Icon.vue'
-import type { IconName } from '@/components/ui/Icon.vue'
 import { useAuth } from '@/composables/useAuth'
 import { idleAge } from '@/lib/idle'
 import { toContentRow } from '@/lib/contentRow'
@@ -49,14 +48,9 @@ function idleOf(row: ReturnType<typeof toContentRow>) {
   return idleAge(row.last_activity_at || row.updated_at)
 }
 
-function sortClass(key: string) {
-  return props.sort === key
-    ? 'inline-flex items-center gap-1 rounded-md bg-white/55 px-1.5 py-0.5 font-semibold text-ink'
-    : 'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-ink-muted hover:bg-white/40 hover:text-ink'
-}
-
-function sortIcon(key: string): IconName {
-  return props.sort === key ? 'chevron-down' : 'sort'
+function onSortChange(ev: Event) {
+  const value = (ev.target as HTMLSelectElement).value
+  emit('sort', value)
 }
 
 function isPrivate(id: number) {
@@ -71,32 +65,30 @@ function isPrivate(id: number) {
       class="flex flex-wrap items-end justify-between gap-x-3 gap-y-1.5 border-b border-line-strong/40 px-3 py-2 sm:px-4"
     >
       <div v-if="title" class="min-w-0">
-        <h1 class="text-[15px] font-semibold leading-snug text-ink">
-          {{ title }}<template v-if="hint"><span class="font-normal text-ink-muted"> - {{ hint }}</span></template>
-        </h1>
+        <h2 class="text-[15px] font-semibold leading-snug text-ink">
+          {{ title }}<template v-if="hint"><span class="font-normal text-ink-muted"> {{ hint }}</span></template>
+        </h2>
       </div>
-      <div
+      <label
         v-if="sort !== undefined"
-        class="flex flex-wrap items-center gap-0.5"
-        role="group"
+        class="inline-flex min-w-0 items-center gap-1.5 text-[12px] text-ink-muted"
       >
-        <button
-          v-for="item in sortKeys"
-          :key="item.key"
-          type="button"
-          class="cursor-pointer border-0 bg-transparent text-[12px]"
-          :class="sortClass(item.key)"
-          :aria-pressed="sort === item.key"
-          @click="emit('sort', item.key)"
+        <Icon name="sort" size="sm" class="shrink-0 opacity-70" />
+        <span class="shrink-0 font-medium">{{ $t('home.sort') }}</span>
+        <select
+          class="field w-auto min-w-[7.5rem] py-1 text-[12px] text-ink"
+          :value="sort"
+          @change="onSortChange"
         >
-          {{ $t(item.labelKey) }}
-          <Icon
-            :name="sortIcon(item.key)"
-            size="xs"
-            :class="sort === item.key ? 'text-ink' : 'opacity-50'"
-          />
-        </button>
-      </div>
+          <option
+            v-for="item in sortKeys"
+            :key="item.key"
+            :value="item.key"
+          >
+            {{ $t(item.labelKey) }}
+          </option>
+        </select>
+      </label>
     </div>
 
     <EmptyState

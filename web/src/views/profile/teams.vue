@@ -71,7 +71,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl">
+  <div>
     <PageHeader :title="$t('teams.title')" icon="users" :hint="$t('teams.hint')">
       <template #actions>
         <button type="button" class="btn-primary" @click="showForm = !showForm">

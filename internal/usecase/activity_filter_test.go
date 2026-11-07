@@ -120,6 +120,10 @@ func (s *memRepos) ListHome(context.Context, int, int, domain.RepoOrder) ([]doma
 	return nil, nil
 }
 
+func (s *memRepos) ListSharedForUser(context.Context, uint, int, int, domain.RepoOrder) ([]domain.Repository, error) {
+	return nil, nil
+}
+
 func (s *memRepos) ListMirrors(context.Context, domain.MirrorListFilter) ([]domain.Repository, error) {
 	return nil, nil
 }
@@ -158,6 +162,14 @@ func (s *memRepos) FindByID(_ context.Context, id uint) (*domain.Repository, err
 }
 
 func (s *memRepos) SearchByName(context.Context, string, uint, bool, int, int, domain.RepoOrder) ([]domain.Repository, error) {
+	return nil, nil
+}
+
+func (s *memRepos) SearchAccessible(context.Context, string, uint, int, int, domain.RepoOrder) ([]domain.Repository, error) {
+	return nil, nil
+}
+
+func (s *memRepos) ListAccessible(context.Context, uint, int, int, domain.RepoOrder) ([]domain.Repository, error) {
 	return nil, nil
 }
 

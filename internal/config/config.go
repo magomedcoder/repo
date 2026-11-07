@@ -45,6 +45,9 @@ type Config struct {
 
 	SoftDeletedRetention string `yaml:"soft_deleted_retention"`
 
+	MirrorVerifyOpenPGPKeyring string `yaml:"mirror_verify_openpgp_keyring"`
+	MirrorVerifyAllowedSigners string `yaml:"mirror_verify_allowed_signers"`
+
 	MirrorCloneTimeoutDur   time.Duration `yaml:"-"`
 	MirrorFetchTimeoutDur   time.Duration `yaml:"-"`
 	MirrorPushTimeoutDur    time.Duration `yaml:"-"`

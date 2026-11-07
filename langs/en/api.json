@@ -92,7 +92,6 @@
   "invalid_id": "Invalid id",
   "invalid_mirror_option": "Invalid mirror option",
   "mirror_admin_only": "Only an administrator can perform this mirror action",
-  "mirror_bundle_failed": "Could not create the mirror bundle",
   "mirror_busy": "Mirror is busy",
   "mirror_group_not_found": "Mirror group not found",
   "mirror_import_limit": "Too many repositories in this import",

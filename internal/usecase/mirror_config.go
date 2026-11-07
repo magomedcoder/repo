@@ -15,7 +15,7 @@ import (
 
 	appconfig "magomedcoder.ru/repo/internal/config"
 	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/internal/mirror/metrics"
+	"magomedcoder.ru/repo/pkg/metrics"
 	"magomedcoder.ru/repo/pkg/secretbox"
 	"magomedcoder.ru/repo/pkg/ssrf"
 )

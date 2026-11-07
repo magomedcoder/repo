@@ -4,21 +4,20 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"testing"
+
+	"magomedcoder.ru/repo/pkg/httpware"
 )
 
 func TestRateLimiterHardCap(t *testing.T) {
 	t.Parallel()
 	l := NewRateLimiter(60, 10)
 
-	for i := range maxRateBuckets * 2 {
+	for i := range httpware.MaxBuckets * 2 {
 		l.Allow(fmt.Sprintf("k%d", i))
 	}
 
-	l.mu.Lock()
-	n := len(l.buckets)
-	l.mu.Unlock()
-	if n > maxRateBuckets {
-		t.Fatalf("buckets=%d exceeds cap %d", n, maxRateBuckets)
+	if n := l.BucketCount(); n > httpware.MaxBuckets {
+		t.Fatalf("buckets=%d exceeds cap %d", n, httpware.MaxBuckets)
 	}
 }
 

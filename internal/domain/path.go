@@ -3,59 +3,22 @@ package domain
 import (
 	"errors"
 	"strings"
+
+	"magomedcoder.ru/repo/pkg/gitpath"
 )
 
 const MaxPathDepth = 1
 
 var (
-	ErrInvalidPath     = errors.New("invalid_path")
+	ErrInvalidPath     = gitpath.ErrInvalidPath
 	ErrBranchProtected = errors.New("branch_protected")
 )
 
 func ParseRepoPath(raw string) (segments []string, err error) {
-	raw = strings.TrimSpace(raw)
-	if strings.HasPrefix(raw, "/") || strings.Contains(raw, "\\") {
-		return nil, ErrInvalidPath
-	}
-
-	raw = strings.Trim(raw, "/")
-	if raw == "" {
-		return nil, ErrInvalidPath
-	}
-
-	parts := strings.Split(raw, "/")
-	if len(parts) > MaxPathDepth {
-		return nil, ErrInvalidPath
-	}
-
-	for _, part := range parts {
-		if !validSegment(part) {
-			return nil, ErrInvalidPath
-		}
-
-		if !strings.HasSuffix(part, ".git") {
-			return nil, ErrInvalidPath
-		}
-	}
-
-	return parts, nil
-}
-
-func validSegment(part string) bool {
-	if part == "" || part == "." || part == ".." {
-		return false
-	}
-
-	for _, r := range part {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '.' || r == '_' || r == '-':
-		default:
-			return false
-		}
-	}
-
-	return true
+	return gitpath.Parse(raw, gitpath.Options{
+		MaxDepth:         MaxPathDepth,
+		RequireGitSuffix: true,
+	})
 }
 
 func isZeroHash(hash string) bool {

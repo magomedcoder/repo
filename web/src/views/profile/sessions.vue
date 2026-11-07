@@ -102,7 +102,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl">
+  <div>
     <PageHeader :title="$t('sessions.title')" icon="device" :hint="$t('sessions.hint')">
       <template #actions>
         <button

@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	gitadapter "magomedcoder.ru/repo/internal/adapter/git"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/pagination"
 )
 
 var (
@@ -323,42 +324,18 @@ func ParseOffsetLimit(offsetStr, limitStr string) (offset, limit int) {
 }
 
 const (
-	DefaultPageLimit = 50
-	MaxPageLimit     = 100
+	DefaultPageLimit = pagination.DefaultLimit
+	MaxPageLimit     = pagination.MaxLimit
 	MaxAccessLimit   = 200
-	MaxOffset        = 10000
+	MaxOffset        = pagination.MaxOffset
 )
 
 func NormalizePagination(offset, limit int) (int, int) {
-	return ClampPagination(offset, limit, DefaultPageLimit, MaxPageLimit)
+	return pagination.Normalize(offset, limit)
 }
 
 func ClampPagination(offset, limit, defLimit, maxLimit int) (int, int) {
-	if defLimit <= 0 {
-		defLimit = DefaultPageLimit
-	}
-
-	if maxLimit <= 0 {
-		maxLimit = MaxPageLimit
-	}
-
-	if limit <= 0 {
-		limit = defLimit
-	}
-
-	if limit > maxLimit {
-		limit = maxLimit
-	}
-
-	if offset < 0 {
-		offset = 0
-	}
-
-	if offset > MaxOffset {
-		offset = MaxOffset
-	}
-
-	return offset, limit
+	return pagination.Clamp(offset, limit, defLimit, maxLimit)
 }
 
 type RepositorySummary struct {

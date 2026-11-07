@@ -3,8 +3,8 @@ import { onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { adminReposApi } from '@/api'
 import type { AdminRepo } from '@/api/types/admin'
-import CpLoadMore from '@/components/admin/CpLoadMore.vue'
 import CpPage from '@/components/admin/CpPage.vue'
+import CpPagination from '@/components/admin/CpPagination.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import PageState from '@/components/ui/PageState.vue'
 import Surface from '@/components/ui/Surface.vue'
@@ -18,22 +18,28 @@ const privacy = ref<'' | '1' | '0'>('')
 const mirrorOnly = ref(false)
 const loading = ref(true)
 const error = ref('')
+const page = ref(1)
 const pageSize = 50
 
-async function load(reset = true) {
+async function load() {
   loading.value = true
   error.value = ''
   try {
-    const offset = reset ? 0 : repos.value.length
     const res = await adminReposApi.list({
       q: q.value.trim() || undefined,
       private: privacy.value === '' ? undefined : privacy.value === '1',
       mirror: mirrorOnly.value || undefined,
       limit: pageSize,
-      offset,
+      offset: (page.value - 1) * pageSize,
     })
     total.value = res.total
-    repos.value = reset ? (res.repos ?? []) : [...repos.value, ...(res.repos ?? [])]
+    repos.value = res.repos ?? []
+    const maxPage = Math.max(1, Math.ceil((res.total || 0) / pageSize) || 1)
+    if (page.value > maxPage) {
+      page.value = maxPage
+      await load()
+      return
+    }
   } catch (err) {
     error.value = localizeError(err, 'errors.loadFailed')
   } finally {
@@ -41,16 +47,22 @@ async function load(reset = true) {
   }
 }
 
+async function setPage(next: number) {
+  page.value = next
+  await load()
+}
+
 let timer: ReturnType<typeof setTimeout> | undefined
 watch([q, privacy, mirrorOnly], () => {
   clearTimeout(timer)
   timer = setTimeout(() => {
-    void load(true)
+    page.value = 1
+    void load()
   }, 250)
 })
 
 onMounted(() => {
-  void load(true)
+  void load()
 })
 </script>
 
@@ -117,7 +129,13 @@ onMounted(() => {
         </table>
         <EmptyState v-if="!repos.length" :message="$t('cp.repos.empty')" />
       </Surface>
-      <CpLoadMore :loading="loading" :has-more="repos.length < total" @load="load(false)" />
+      <CpPagination
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        :loading="loading"
+        @update:page="setPage"
+      />
     </PageState>
   </CpPage>
 </template>

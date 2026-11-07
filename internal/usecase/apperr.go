@@ -1,31 +1,19 @@
 package usecase
 
-type Kind int
+import "magomedcoder.ru/repo/pkg/apperr"
+
+type Kind = apperr.Kind
+type Error = apperr.Error
 
 const (
-	KindValidation Kind = iota
-	KindUnauthorized
-	KindForbidden
-	KindNotFound
-	KindConflict
-	KindRateLimited
+	KindValidation   = apperr.KindValidation
+	KindUnauthorized = apperr.KindUnauthorized
+	KindForbidden    = apperr.KindForbidden
+	KindNotFound     = apperr.KindNotFound
+	KindConflict     = apperr.KindConflict
+	KindRateLimited  = apperr.KindRateLimited
 )
 
-type Error struct {
-	Kind Kind
-	Code string
-}
-
-func (e *Error) Error() string {
-	if e == nil {
-		return ""
-	}
-	return e.Code
-}
-
 func NewError(kind Kind, code string) *Error {
-	return &Error{
-		Kind: kind,
-		Code: code,
-	}
+	return apperr.New(kind, code)
 }

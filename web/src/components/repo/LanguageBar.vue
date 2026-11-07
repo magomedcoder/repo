@@ -1,31 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { languageColor } from '@/lib/languageColor'
 
 const props = defineProps<{
   languages: Record<string, number>
 }>()
 
-const palette = [
-  '#3178c6',
-  '#f1e05a',
-  '#3572a5',
-  '#00add8',
-  '#dea584',
-  '#b07219',
-  '#e34c26',
-  '#563d7c',
-  '#89e051',
-  '#c6538c',
-]
-
 const rows = computed(() => {
   const entries = Object.entries(props.languages)
   const total = entries.reduce((sum, [, bytes]) => sum + bytes, 0) || 1
   return entries
-    .map(([name, bytes], i) => ({
+    .map(([name, bytes]) => ({
       name,
       pct: (bytes / total) * 100,
-      color: palette[i % palette.length]!,
+      color: languageColor(name),
     }))
     .sort((a, b) => b.pct - a.pct)
 })

@@ -157,7 +157,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl space-y-4">
+  <div class="space-y-4">
     <PageState :loading="loading" :error="team ? '' : error">
       <template v-if="team">
         <PageHeader :title="$t('teams.detail', { name: team.name })" icon="users">

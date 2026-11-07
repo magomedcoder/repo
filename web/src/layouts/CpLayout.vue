@@ -15,7 +15,6 @@ import Icon from '@/components/ui/Icon.vue'
           <h1 class="text-[1.05rem] font-semibold leading-snug text-ink">
             {{ $t('nav.controlPanel') }}
           </h1>
-          <p class="text-[12px] text-ink-muted">{{ $t('cp.subtitle') }}</p>
         </div>
       </div>
     </div>

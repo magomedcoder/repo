@@ -45,8 +45,6 @@ func mountRepoCollectionRoutes(pub, authed *httpx.Router, d *RepoDispatcher, bas
 	authed.POST(base+"/mirror/check", d.Repos.CheckMirror)
 	authed.POST(base+"/mirror/verify", d.Repos.VerifyMirror)
 	authed.GET(base+"/mirror/dry-run", d.Repos.DryRunMirror)
-	authed.GET(base+"/mirror/bundle", d.Repos.ExportMirrorBundle)
-	authed.POST(base+"/mirror/bundle", d.Repos.ImportMirrorBundle)
 
 	authed.GET(base+"/collaborators", d.explicitGet("collaborators"))
 	authed.POST(base+"/collaborators", d.explicitPost("collaborators"))

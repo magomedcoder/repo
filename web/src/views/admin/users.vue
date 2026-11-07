@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import CpConfirmPassword from '@/components/admin/CpConfirmPassword.vue'
-import CpLoadMore from '@/components/admin/CpLoadMore.vue'
 import CpPage from '@/components/admin/CpPage.vue'
+import CpPagination from '@/components/admin/CpPagination.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Icon from '@/components/ui/Icon.vue'
 import ModalForm from '@/components/ui/ModalForm.vue'
@@ -15,6 +15,8 @@ const {
   RoleUser,
   users,
   total,
+  page,
+  pageSize,
   q,
   roleFilter,
   sort,
@@ -32,7 +34,7 @@ const {
   openCreate,
   openEdit,
   closeForm,
-  load,
+  setPage,
   submit,
   confirmStepUp,
   askDelete,
@@ -108,7 +110,13 @@ const {
         </table>
         <EmptyState v-if="!users.length" :message="$t('users.empty')" />
       </Surface>
-      <CpLoadMore :loading="loading" :has-more="users.length < total" @load="load(false)" />
+      <CpPagination
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        :loading="loading"
+        @update:page="setPage"
+      />
     </PageState>
 
     <ModalForm

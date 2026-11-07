@@ -32,7 +32,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-xl">
+  <div>
     <div class="page-card mb-4">
       <p class="mb-1 text-[85%] text-ink-muted">
         <RouterLink :to="{ name: 'profile' }" class="text-link hover:underline">{{ $t('profile.title') }}</RouterLink>

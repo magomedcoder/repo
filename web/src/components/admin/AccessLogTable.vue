@@ -25,6 +25,10 @@ function actionClass(action: string) {
 }
 
 function detailLabel(row: AccessLog) {
+  if (row.action.startsWith('admin_user_') && row.path) {
+    return row.path
+  }
+
   const parts: string[] = []
   if (row.repo) {
     parts.push(row.repo)
@@ -38,68 +42,58 @@ function detailLabel(row: AccessLog) {
     parts.push(row.path)
   }
 
-  if (row.action.startsWith('admin_user_') && row.path) {
-    return row.path
-  }
-  
-  return parts.join(' ') || '-'
+  return parts.join(' ')
 }
 </script>
 
 <template>
-  <Surface class="overflow-x-auto">
-    <table class="w-full min-w-[760px] border-collapse text-left text-[10pt]">
-      <thead class="sticky top-0 bg-white/55 text-ink backdrop-blur-sm">
-        <tr>
-          <th class="border-b border-line px-2 py-1.5 font-semibold">{{ $t('accessLogs.time') }}</th>
-          <th class="border-b border-line px-2 py-1.5 font-semibold">{{ $t('accessLogs.action') }}</th>
-          <th class="border-b border-line px-2 py-1.5 font-semibold">{{ $t('accessLogs.user') }}</th>
-          <th class="border-b border-line px-2 py-1.5 font-semibold">{{ $t('accessLogs.ip') }}</th>
-          <th class="border-b border-line px-2 py-1.5 font-semibold">{{ $t('accessLogs.userAgent') }}</th>
-          <th class="border-b border-line px-2 py-1.5 font-semibold">{{ $t('accessLogs.details') }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="row in items"
-          :key="row.id"
-          class="align-top odd:bg-transparent even:bg-row-alt"
-        >
-          <td class="border-b border-line px-2 py-1.5 whitespace-nowrap text-ink-muted">
-            {{ formatDate(row.created_at) }}
-          </td>
-          <td class="border-b border-line px-2 py-1.5">
+  <Surface class="overflow-hidden">
+    <EmptyState
+      v-if="!items.length"
+      :message="$t('accessLogs.empty')"
+    />
+    <ul v-else class="divide-y divide-line-strong/30">
+      <li
+        v-for="row in items"
+        :key="row.id"
+        class="px-3 py-2.5 odd:bg-transparent even:bg-row-alt sm:px-4"
+      >
+        <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <span
-              class="inline-flex rounded-full border px-1.5 py-px font-mono text-[90%] font-medium"
+              class="inline-flex shrink-0 rounded-full border px-1.5 py-px font-mono text-[10px] font-medium"
               :class="actionClass(row.action)"
             >
               {{ row.action }}
             </span>
-          </td>
-          <td class="border-b border-line px-2 py-1.5">
-            {{ row.username || '-' }}
-          </td>
-          <td class="border-b border-line px-2 py-1.5 font-mono text-[90%]">
-            {{ row.ip || '-' }}
-          </td>
-          <td
-            class="border-b border-line px-2 py-1.5 max-w-[18rem] break-all font-mono text-[85%] text-ink-muted"
-            :title="row.user_agent || undefined"
-          >
-            {{ row.user_agent || '-' }}
-          </td>
-          <td class="border-b border-line px-2 py-1.5 text-ink-muted">
-            {{ detailLabel(row) }}
-          </td>
-        </tr>
-        <tr v-if="!items.length">
-          <EmptyState
-            as="td"
-            :colspan="6"
-            :message="$t('accessLogs.empty')"
-          />
-        </tr>
-      </tbody>
-    </table>
+            <span class="truncate font-semibold text-ink">
+              {{ row.username || '' }}
+            </span>
+            <span
+              v-if="detailLabel(row)"
+              class="min-w-0 truncate text-[12px] text-ink-muted"
+              :title="detailLabel(row)"
+            >
+              {{ detailLabel(row) }}
+            </span>
+          </div>
+          <time class="shrink-0 text-[12px] text-ink-muted">
+            {{ formatDate(row.created_at) }}
+          </time>
+        </div>
+        <div class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] text-ink-muted">
+          <span
+            v-if="row.ip"
+            class="font-mono"
+            :title="row.ip"
+          >{{ row.ip }}</span>
+          <span
+            v-if="row.user_agent"
+            class="min-w-0 truncate font-mono"
+            :title="row.user_agent"
+          >{{ row.user_agent }}</span>
+        </div>
+      </li>
+    </ul>
   </Surface>
 </template>

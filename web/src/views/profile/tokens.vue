@@ -88,7 +88,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl">
+  <div>
     <PageHeader :title="$t('tokens.title')" icon="key">
       <template #actions>
         <button type="button" class="btn-primary" @click="showForm = !showForm">

@@ -92,6 +92,8 @@ type RepositoryStore interface {
 
 	ListHome(ctx context.Context, limit, offset int, order RepoOrder) ([]Repository, error)
 
+	ListSharedForUser(ctx context.Context, userID uint, limit, offset int, order RepoOrder) ([]Repository, error)
+
 	ListMirrors(ctx context.Context, filter MirrorListFilter) ([]Repository, error)
 
 	ListMirrorSchedules(ctx context.Context, f MirrorScheduleFilter) ([]MirrorSchedule, error)
@@ -109,6 +111,10 @@ type RepositoryStore interface {
 	FindByID(ctx context.Context, id uint) (*Repository, error)
 
 	SearchByName(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int, order RepoOrder) ([]Repository, error)
+
+	SearchAccessible(ctx context.Context, query string, viewerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
+
+	ListAccessible(ctx context.Context, viewerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
 
 	ExistsByName(name string) (bool, error)
 
@@ -247,6 +253,12 @@ type RepoStats struct {
 	Languages   map[string]int64 `json:"languages"`
 }
 
+type CodeSearchHit struct {
+	Path    string `json:"path"`
+	Line    int    `json:"line"`
+	Content string `json:"content"`
+}
+
 type ReceivePackOptions struct {
 	ProtectDefaultBranch bool
 	DefaultBranch        string
@@ -268,10 +280,6 @@ type GitRepository interface {
 	MirrorDryRunFetch(ctx context.Context, path, url string, opts *MirrorOptions) (*MirrorRemoteInfo, []RefInfo, error)
 
 	MirrorVerify(ctx context.Context, path, url, direction string, opts *MirrorOptions) (*MirrorVerifyResult, error)
-
-	BundleCreate(ctx context.Context, repoPath, bundlePath string) error
-
-	BundleImport(ctx context.Context, repoPath, bundlePath string, protect bool) error
 
 	Remove(path string) error
 
@@ -312,4 +320,6 @@ type GitRepository interface {
 	GetStats(repoPath, ref string) (*RepoStats, error)
 
 	FindReadme(repoPath, ref string) (*BlobContent, error)
+
+	Grep(ctx context.Context, repoPath, query string, limit int) ([]CodeSearchHit, error)
 }

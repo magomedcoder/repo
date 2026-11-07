@@ -41,17 +41,19 @@
 cp config.example.yaml config.yaml
 ```
 
-| Ключ                   | Описание                                                                              |
-|------------------------|---------------------------------------------------------------------------------------|
-| `http_addr`            | Адрес HTTP-сервера (по умолчанию `:8080`)                                             |
-| `data_dir`             | Каталог для SQLite, Git-репозиториев и аватаров                                       |
-| `site_name`            | Название сайта в UI                                                                   |
-| `session_secret`       | Секрет подписи сессий (обязателен, мин. 32 символа; например `openssl rand -hex 32`)  |
-| `cookie_secure`        | `true` за HTTPS (Secure-cookie + HSTS)                                                |
-| `allow_registration`   | Публичная саморегистрация (по умолчанию `true`); иначе пользователи через CLI/админку |
-| `receive_max_bytes`    | Максимальный размер Git push в байтах (по умолчанию 512 MiB)                          |
-| `mirror_pull_interval` | Как часто pull-зеркала делают fetch (`5m` по умолчанию; `0` - без планировщика)       |
-| `trusted_proxies`      | Опциональные CIDR/IP для `X-Forwarded-For` / `X-Forwarded-Proto`                      |
+| Ключ                            | Описание                                                                                                     |
+|---------------------------------|--------------------------------------------------------------------------------------------------------------|
+| `http_addr`                     | Адрес HTTP-сервера (по умолчанию `:8080`)                                                                    |
+| `data_dir`                      | Каталог для SQLite, Git-репозиториев и аватаров                                                              |
+| `site_name`                     | Название сайта в UI                                                                                          |
+| `session_secret`                | Секрет подписи сессий (обязателен, мин. 32 символа; например `openssl rand -hex 32`)                         |
+| `cookie_secure`                 | `true` за HTTPS (Secure-cookie + HSTS)                                                                       |
+| `allow_registration`            | Публичная саморегистрация (по умолчанию `true`); иначе пользователи через CLI/админку                        |
+| `receive_max_bytes`             | Максимальный размер Git push в байтах (по умолчанию 512 MiB)                                                 |
+| `mirror_pull_interval`          | Как часто pull-зеркала делают fetch (`5m` по умолчанию; `0` - без планировщика)                              |
+| `mirror_verify_openpgp_keyring` | Armored OpenPGP public keyring для `mirror_verify_signed` (путь относительно `data_dir`, если не абсолютный) |
+| `mirror_verify_allowed_signers` | Файл SSH `allowed_signers` (namespace `git`) для `mirror_verify_signed`                                      |
+| `trusted_proxies`               | Опциональные CIDR/IP для `X-Forwarded-For` / `X-Forwarded-Proto`                                             |
 
 В ответах выставляются CSP, `X-Frame-Options`, `X-Content-Type-Options` и (по HTTPS / при `cookie_secure`) HSTS с `includeSubDomains; preload`. После запуска сайта на HTTPS домен можно подать на [hstspreload.org](https://hstspreload.org).
 
@@ -59,6 +61,7 @@ cp config.example.yaml config.yaml
 
 - **Pull**-зеркало синхронизируется с remote (здесь только чтение); **push**-зеркало публикуется после `git push` / merge
 - Настройка при создании (*Зеркало* / *Импорт*) или в настройках репо; админ видит все зеркала в `/cp/mirrors`
+- Опция `mirror_verify_signed`: после каждого pull tip должен проверяться по OpenPGP keyring и/или SSH `allowed_signers` сервера (не host GPG trustdb; рантайму не нужен системный бинарник `git`)
 - Внутренние хосты по умолчанию заблокированы (SSRF); интервал и воркеры - в `config.example.yaml`
 
 ## Обратный прокси

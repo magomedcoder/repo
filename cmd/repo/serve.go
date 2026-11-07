@@ -70,6 +70,16 @@ func runServe() {
 	accessLog := audit.New(accessStore)
 
 	gitRepo := git.NewRepository(cfg.DataDir)
+	trust, err := git.LoadTrustFiles(
+		git.ResolveTrustPath(cfg.DataDir, cfg.MirrorVerifyOpenPGPKeyring),
+		git.ResolveTrustPath(cfg.DataDir, cfg.MirrorVerifyAllowedSigners),
+	)
+
+	if err != nil {
+		slog.Error("mirror verify trust", "err", err)
+		os.Exit(1)
+	}
+	gitRepo.SetTrust(trust)
 
 	hasher := argon2id.NewHasher()
 	tokens := token.NewGenerator()

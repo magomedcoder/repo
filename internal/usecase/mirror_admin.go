@@ -2,13 +2,9 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"net/url"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,13 +13,11 @@ import (
 
 var (
 	ErrMirrorGroupNotFound = NewError(KindNotFound, "mirror_group_not_found")
-	ErrMirrorBundle        = NewError(KindValidation, "mirror_bundle_failed")
 	ErrMirrorImportLimit   = NewError(KindValidation, "mirror_import_limit")
 )
 
 const (
 	maxImportMirrors     = 50
-	maxBundleBytes       = 2 << 30
 	maxAdminMirrorList   = 500
 	maxAdminMirrorVerify = 100
 	maxBulkSyncMirrors   = 200
@@ -401,155 +395,4 @@ func (uc *RepositoryUseCase) importGroupDefaults(ctx context.Context, in ImportM
 	}
 
 	return interval, g.ID, nil
-}
-
-type BundleInput struct {
-	ResolveRepositoryInput
-	CurrentPassword string
-}
-
-func (uc *RepositoryUseCase) ExportMirrorBundle(ctx context.Context, in BundleInput, w io.Writer) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
-	if err != nil {
-		return err
-	}
-
-	if err := uc.authz.CanReadRepo(repo, in.ViewerID); err != nil {
-		return err
-	}
-
-	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
-		return ErrRepoNotFound
-	}
-
-	if err := uc.requireViewerPassword(ctx, in.ViewerID, in.CurrentPassword); err != nil {
-		return err
-	}
-
-	dir, err := os.MkdirTemp("", "repo-bundle-")
-	if err != nil {
-		return fmt.Errorf("bundle temp: %w", err)
-	}
-	defer os.RemoveAll(dir)
-
-	file := filepath.Join(dir, "repo.bundle")
-	if err := uc.git.BundleCreate(ctx, repo.Path, file); err != nil {
-		return fmt.Errorf("%w: %v", ErrMirrorBundle, err)
-	}
-
-	f, err := os.Open(file)
-	if err != nil {
-		return fmt.Errorf("bundle open: %w", err)
-	}
-	defer f.Close()
-
-	_, err = io.Copy(w, f)
-
-	return err
-}
-
-func (uc *RepositoryUseCase) ImportMirrorBundle(ctx context.Context, in BundleInput, r io.Reader) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	if in.ViewerID == 0 {
-		return ErrUnauthorized
-	}
-
-	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
-	if err != nil {
-		return err
-	}
-
-	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
-		return ErrRepoNotFound
-	}
-
-	if err := uc.requireViewerPassword(ctx, in.ViewerID, in.CurrentPassword); err != nil {
-		return err
-	}
-
-	lock := uc.mirrorLock(repo.ID)
-	if !lock.TryLock() {
-		return ErrMirrorBusy
-	}
-	defer lock.Unlock()
-
-	file, cleanup, err := spoolBundle(r)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	if err := uc.git.BundleImport(ctx, repo.Path, file, repo.ProtectDefaultBranch); err != nil {
-		return fmt.Errorf("%w: %v", ErrMirrorBundle, err)
-	}
-
-	uc.afterBundleImport(ctx, repo, in.ViewerID)
-
-	return nil
-}
-
-func spoolBundle(r io.Reader) (string, func(), error) {
-	dir, err := os.MkdirTemp("", "repo-bundle-")
-	if err != nil {
-		return "", nil, fmt.Errorf("bundle temp: %w", err)
-	}
-
-	cleanup := func() { _ = os.RemoveAll(dir) }
-	file := filepath.Join(dir, "upload.bundle")
-
-	f, err := os.Create(file)
-	if err != nil {
-		cleanup()
-
-		return "", nil, fmt.Errorf("bundle temp: %w", err)
-	}
-
-	n, err := io.Copy(f, io.LimitReader(r, maxBundleBytes+1))
-	_ = f.Close()
-
-	if err != nil || n > maxBundleBytes {
-		cleanup()
-
-		if err == nil {
-			err = errors.New("bundle too large")
-		}
-
-		return "", nil, fmt.Errorf("%w: %v", ErrMirrorBundle, err)
-	}
-
-	return file, cleanup, nil
-}
-
-func (uc *RepositoryUseCase) afterBundleImport(ctx context.Context, repo *domain.Repository, actorID uint) {
-	_ = uc.git.EnsureDefaultBranch(repo.Path, repo.DefaultBranch)
-
-	snap := uc.snapshotRefs(repo.Path)
-	if detected, err := uc.git.DetectHEADBranch(repo.Path); err == nil && detected != "" && validateBranchName(detected) == nil {
-		if _, ok := snap.branches[detected]; ok {
-			repo.DefaultBranch = detected
-		}
-	}
-
-	if repo.MirrorDirection != domain.MirrorNone {
-		now := time.Now().UTC()
-		repo.MirrorLastSyncAt = &now
-		repo.MirrorLastError = ""
-		repo.MirrorFailCount = 0
-		repo.MirrorStatus = domain.MirrorStatusOK
-		repo.MirrorRemoteHEAD = snap.branches[repo.DefaultBranch]
-		repo.MirrorLastProgress = fmt.Sprintf("imported bundle: %d branches, %d tags", len(snap.branches), len(snap.tags))
-	}
-
-	if err := uc.store.UpdateMirrorState(ctx, repo); err != nil {
-		return
-	}
-
-	recordRepoActivity(uc.activity, repo, actorID, domain.ActivityMirrorSync, activitySummary("imported git bundle"))
 }

@@ -33,7 +33,23 @@ export const reposApi = {
     if (sort) {
       params.set('sort', sort)
     }
-    
+
+    if (paging?.offset != null) {
+      params.set('offset', String(paging.offset))
+    }
+
+    if (paging?.limit != null) {
+      params.set('limit', String(paging.limit))
+    }
+
+    return api<{ repos: Repository[] }>(`/api/repos?${params}`)
+  },
+  listShared(sort?: string, paging?: Pick<ListParams, 'offset' | 'limit'>) {
+    const params = new URLSearchParams({ scope: 'shared' })
+    if (sort) {
+      params.set('sort', sort)
+    }
+
     if (paging?.offset != null) {
       params.set('offset', String(paging.offset))
     }

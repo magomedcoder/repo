@@ -183,9 +183,43 @@ func (s *Repository) ListHome(ctx context.Context, limit, offset int, order doma
 	return repoModelsToDomain(models), nil
 }
 
+func (s *Repository) ListSharedForUser(ctx context.Context, userID uint, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
+	if userID == 0 {
+		return nil, nil
+	}
+
+	limit, offset = clampListBounds(limit, offset)
+	var models []model.Repository
+	err := s.Model(ctx).
+		Where("owner_id != ?", userID).
+		Where(`(
+			id IN (
+				SELECT repo_id FROM repo_collaborators
+				WHERE user_id = ? AND deleted_at IS NULL
+			)
+			OR id IN (
+				SELECT team_repo_grants.repo_id
+				FROM team_repo_grants
+				JOIN team_members ON team_members.team_id = team_repo_grants.team_id
+					AND team_members.deleted_at IS NULL
+				WHERE team_members.user_id = ?
+					AND team_repo_grants.deleted_at IS NULL
+			)
+		)`, userID, userID).
+		Order(repoOrderClause(order)).
+		Limit(limit).
+		Offset(offset).
+		Find(&models).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return repoModelsToDomain(models), nil
+}
+
 func (s *Repository) SearchByName(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
 	q := "%" + escapeLike(query) + "%"
-	db := s.Model(ctx).Where(`name LIKE ? ESCAPE '\'`, q)
+	db := s.Model(ctx).Where(`(name LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\')`, q, q)
 	if publicOnly {
 		db = db.Where("is_private = ?", false)
 	} else if ownerID > 0 {
@@ -195,6 +229,55 @@ func (s *Repository) SearchByName(ctx context.Context, query string, ownerID uin
 	}
 
 	limit, offset = clampListBounds(limit, offset)
+	var models []model.Repository
+	if err := db.Order(repoOrderClause(order)).Limit(limit).Offset(offset).Find(&models).Error; err != nil {
+		return nil, err
+	}
+
+	return repoModelsToDomain(models), nil
+}
+
+func accessibleRepoScope(db *gorm.DB, viewerID uint) *gorm.DB {
+	if viewerID == 0 {
+		return db.Where("is_private = ?", false)
+	}
+
+	return db.Where(`(
+		is_private = ?
+		OR owner_id = ?
+		OR id IN (
+			SELECT repo_id FROM repo_collaborators
+			WHERE user_id = ? AND deleted_at IS NULL
+		)
+		OR id IN (
+			SELECT team_repo_grants.repo_id
+			FROM team_repo_grants
+			JOIN team_members ON team_members.team_id = team_repo_grants.team_id
+				AND team_members.deleted_at IS NULL
+			WHERE team_members.user_id = ?
+				AND team_repo_grants.deleted_at IS NULL
+		)
+	)`, false, viewerID, viewerID, viewerID)
+}
+
+func (s *Repository) SearchAccessible(ctx context.Context, query string, viewerID uint, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
+	q := "%" + escapeLike(query) + "%"
+	limit, offset = clampListBounds(limit, offset)
+	db := accessibleRepoScope(s.Model(ctx), viewerID).
+		Where(`(name LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\')`, q, q)
+
+	var models []model.Repository
+	if err := db.Order(repoOrderClause(order)).Limit(limit).Offset(offset).Find(&models).Error; err != nil {
+		return nil, err
+	}
+
+	return repoModelsToDomain(models), nil
+}
+
+func (s *Repository) ListAccessible(ctx context.Context, viewerID uint, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
+	limit, offset = clampListBounds(limit, offset)
+	db := accessibleRepoScope(s.Model(ctx), viewerID)
+
 	var models []model.Repository
 	if err := db.Order(repoOrderClause(order)).Limit(limit).Offset(offset).Find(&models).Error; err != nil {
 		return nil, err

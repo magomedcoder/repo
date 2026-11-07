@@ -27,13 +27,10 @@ func TestOpenCacheLRUOnHit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, ok := c.entries["a"]; !ok {
+	if !c.c.Has("a") {
 		t.Fatal("a evicted despite recent hit")
 	}
-
-	if _, ok := c.entries["b"]; ok {
+	if c.c.Has("b") {
 		t.Fatal("b should have been evicted")
 	}
 }

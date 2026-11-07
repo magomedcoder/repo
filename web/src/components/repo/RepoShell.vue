@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink } from 'vue-router'
 import type { Repository } from '@/api/types'
 import { useCanWrite } from '@/composables/useCanWrite'
-import { repoLocation } from '@/lib/repoNav'
 import { normalizeRepoPath } from '@/lib/repoPath'
 import Icon from '@/components/ui/Icon.vue'
 import PageState from '@/components/ui/PageState.vue'
@@ -38,10 +36,9 @@ const issuesEnabled = computed(() => props.repo?.issues_enabled !== false)
   <div v-else class="relative z-10 space-y-4">
     <div class="surface overflow-visible">
       <div class="relative z-20 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 px-3 py-2 text-[90%] text-ink sm:px-4">
-        <RouterLink to="/" class="text-ink-muted no-underline hover:underline" :aria-label="$t('nav.root')">/</RouterLink>
-        <RouterLink class="text-[1.1rem] font-semibold leading-snug no-underline hover:underline sm:text-[1.15rem]" :to="repoLocation('repo', repoPath)">
+        <h1 class="min-w-0 truncate text-[1.1rem] font-semibold leading-snug sm:text-[1.15rem]">
           {{ repoName }}
-        </RouterLink>
+        </h1>
         <span
           v-if="repo?.is_private"
           class="ml-1.5 inline-flex align-middle text-ink-muted"

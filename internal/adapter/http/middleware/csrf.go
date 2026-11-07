@@ -1,117 +1,34 @@
 package middleware
 
 import (
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
 	"net/http"
+
+	"magomedcoder.ru/repo/pkg/httpware"
 )
 
 const CSRFCookie = "repo_csrf"
 
-func CSRF(secure bool, secret string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := ensureCSRFCookie(w, r, secure, secret)
-			if needsCSRF(r) && !validCSRF(r, token, secret) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				_, _ = w.Write([]byte(`{"error":"CSRF token invalid","code":"csrf"}`))
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
+func csrfConfig(secure bool, secret string) httpware.CSRFConfig {
+	return httpware.CSRFConfig{
+		CookieName:   CSRFCookie,
+		Secure:       secure,
+		Secret:       secret,
+		SessionToken: SessionToken,
 	}
 }
 
-func boundCSRFToken(secret, sessionToken string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(sessionToken))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-func setCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, value string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     CSRFCookie,
-		Value:    value,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   secure || IsHTTPS(r),
-	})
+func CSRF(secure bool, secret string) func(http.Handler) http.Handler {
+	return httpware.CSRF(csrfConfig(secure, secret))
 }
 
 func RotateAnonymousCSRF(w http.ResponseWriter, r *http.Request, secure bool) string {
-	token := randomCSRFToken()
-	setCSRFCookie(w, r, secure, token)
-	return token
+	return httpware.RotateAnonymousCSRF(w, r, csrfConfig(secure, ""))
 }
 
 func RotateSessionCSRF(w http.ResponseWriter, r *http.Request, secure bool, secret, sessionToken string) string {
-	token := boundCSRFToken(secret, sessionToken)
-	setCSRFCookie(w, r, secure, token)
-	return token
+	return httpware.RotateSessionCSRF(w, r, csrfConfig(secure, secret), sessionToken)
 }
 
 func EnsureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, secret string) string {
-	return ensureCSRFCookie(w, r, secure, secret)
-}
-
-func ensureCSRFCookie(w http.ResponseWriter, r *http.Request, secure bool, secret string) string {
-	if session := SessionToken(r); session != "" && secret != "" {
-		want := boundCSRFToken(secret, session)
-		if c, err := r.Cookie(CSRFCookie); err != nil || c.Value != want {
-			setCSRFCookie(w, r, secure, want)
-		}
-		return want
-	}
-
-	if c, err := r.Cookie(CSRFCookie); err == nil && c.Value != "" {
-		return c.Value
-	}
-
-	token := randomCSRFToken()
-	setCSRFCookie(w, r, secure, token)
-	return token
-}
-
-func randomCSRFToken() string {
-	buf := make([]byte, 32)
-	_, _ = rand.Read(buf)
-	return hex.EncodeToString(buf)
-}
-
-func needsCSRF(r *http.Request) bool {
-	switch r.Method {
-	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-		return true
-	default:
-		return false
-	}
-}
-
-func validCSRF(r *http.Request, cookieToken string, secret string) bool {
-	header := r.Header.Get("X-CSRF-Token")
-	if header == "" || cookieToken == "" {
-		return false
-	}
-
-	if subtle.ConstantTimeCompare([]byte(header), []byte(cookieToken)) != 1 {
-		return false
-	}
-
-	session := SessionToken(r)
-	if session == "" {
-		return true
-	}
-
-	if secret == "" {
-		return false
-	}
-
-	want := boundCSRFToken(secret, session)
-	return subtle.ConstantTimeCompare([]byte(cookieToken), []byte(want)) == 1
+	return httpware.EnsureCSRFCookie(w, r, csrfConfig(secure, secret))
 }

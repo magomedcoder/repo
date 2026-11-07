@@ -3,6 +3,9 @@
     "loading": "Loading...",
     "cancel": "Cancel",
     "loadMore": "Load more",
+    "prev": "Previous",
+    "next": "Next",
+    "pageRange": "{from}-{to} of {total}",
     "close": "Close",
     "copy": "Copy",
     "ok": "Done",
@@ -22,7 +25,6 @@
     "poweredBy": "Powered by"
   },
   "cp": {
-    "subtitle": "Site administration",
     "nav": {
       "overview": "Overview",
       "users": "Users",
@@ -134,7 +136,8 @@
     "pinned": "Pinned on home",
     "emptyPinned": "Nothing pinned yet.",
     "private": "Private",
-    "updated": "Updated {age}"
+    "updated": "Updated {age}",
+    "sort": "Sort"
   },
   "collaborators": {
     "title": "Collaborators",
@@ -338,7 +341,7 @@
     "partialHint": "Uses git filter=blob:none where supported to save disk. Best for large histories when you only need recent trees.",
     "partialUnavailable": "Partial mirrors are temporarily unavailable (system-git network path disabled for SSRF safety).",
     "verifySigned": "Require signed upstream tip",
-    "verifySignedHint": "After each pull, refuse the sync if git verify-commit fails on the remote HEAD.",
+    "verifySignedHint": "After each pull, refuse the sync if the remote HEAD signature is missing or does not verify against the server OpenPGP keyring / SSH allowed_signers.",
     "maxMiB": "Size limit (MiB)",
     "maxMiBPlaceholder": "No limit",
     "maxMiBHint": "Sync is refused when the remote is larger than this. 0 or empty = no limit.",
@@ -558,7 +561,6 @@
       "invalid_id": "Invalid id",
       "invalid_mirror_option": "Invalid mirror option",
       "mirror_admin_only": "Only an administrator can perform this mirror action",
-      "mirror_bundle_failed": "Could not create the mirror bundle",
       "mirror_busy": "Mirror is busy",
       "mirror_group_not_found": "Mirror group not found",
       "mirror_import_limit": "Too many repositories in this import",
@@ -614,12 +616,12 @@
   "search": {
     "title": "Search",
     "query": "Query",
-    "placeholder": "Search",
-    "scope": "Scope",
-    "scopeOwn": "My repositories",
-    "scopePublic": "Public",
-    "hint": "Enter a repository name.",
-    "empty": "Nothing found."
+    "placeholder": "Search repositories and code",
+    "empty": "Nothing found.",
+    "tabRepos": "Repositories",
+    "tabCode": "Code",
+    "codeIn": "in {repo}",
+    "queryTooShort": "Enter at least 2 characters."
   },
   "profile": {
     "title": "Profile",
@@ -635,7 +637,11 @@
     "updateEmail": "Update email",
     "changePasswordTitle": "Change password",
     "teams": "Teams",
-    "noTeams": "No teams yet."
+    "noTeams": "No teams yet.",
+    "repositories": "Repositories",
+    "noRepositories": "No repositories yet.",
+    "manageTeams": "Manage",
+    "settings": "Settings"
   },
   "teams": {
     "title": "Teams",

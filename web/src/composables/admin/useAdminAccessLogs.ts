@@ -6,6 +6,7 @@ import { localizeError } from '@/i18n'
 export function useAdminAccessLogs() {
   const items = ref<AccessLog[]>([])
   const total = ref(0)
+  const page = ref(1)
   const action = ref('')
   const ip = ref('')
   const username = ref('')
@@ -24,15 +25,14 @@ export function useAdminAccessLogs() {
     if (Number.isNaN(d.getTime())) {
       return undefined
     }
-    
+
     return d.toISOString()
   }
 
-  async function load(reset = true) {
+  async function load() {
     loading.value = true
     error.value = ''
     try {
-      const offset = reset ? 0 : items.value.length
       const res = await adminAccessLogsApi.list({
         action: action.value || undefined,
         ip: ip.value.trim() || undefined,
@@ -40,10 +40,16 @@ export function useAdminAccessLogs() {
         from: toRFC3339(from.value),
         to: toRFC3339(to.value, true),
         limit: pageSize,
-        offset,
+        offset: (page.value - 1) * pageSize,
       })
       total.value = res.total
-      items.value = reset ? (res.items ?? []) : [...items.value, ...(res.items ?? [])]
+      items.value = res.items ?? []
+      const maxPage = Math.max(1, Math.ceil((res.total || 0) / pageSize) || 1)
+      if (page.value > maxPage) {
+        page.value = maxPage
+        await load()
+        return
+      }
     } catch (err) {
       error.value = localizeError(err, 'errors.loadAccessLogs')
     } finally {
@@ -51,17 +57,37 @@ export function useAdminAccessLogs() {
     }
   }
 
+  async function setPage(next: number) {
+    page.value = next
+    await load()
+  }
+
   let timer: ReturnType<typeof setTimeout> | undefined
   watch([action, ip, username, from, to], () => {
     clearTimeout(timer)
     timer = setTimeout(() => {
-      void load(true)
+      page.value = 1
+      void load()
     }, 250)
   })
 
   onMounted(() => {
-    void load(true)
+    void load()
   })
 
-  return { items, total, action, ip, username, from, to, error, loading, load }
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    action,
+    ip,
+    username,
+    from,
+    to,
+    error,
+    loading,
+    load,
+    setPage,
+  }
 }

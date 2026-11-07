@@ -322,6 +322,24 @@ func (uc *RepositoryUseCase) ListHome(ctx context.Context, limit, offset int, or
 	return uc.mapReposWithOwners(repos)
 }
 
+func (uc *RepositoryUseCase) ListShared(ctx context.Context, userID uint, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if userID == 0 {
+		return nil, ErrUnauthorized
+	}
+
+	offset, limit = NormalizePagination(offset, limit)
+	repos, err := uc.store.ListSharedForUser(ctx, userID, limit, offset, order)
+	if err != nil {
+		return nil, fmt.Errorf("list shared repositories: %w", err)
+	}
+
+	return uc.mapReposWithOwners(repos)
+}
+
 func (uc *RepositoryUseCase) Search(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

@@ -60,6 +60,7 @@ func NewRouter(
 
 	authed.POST("/repos", repoHandler.Create)
 	pub.GET("/repos", repoHandler.List)
+	pub.GET("/search", repoHandler.Search)
 
 	repoAPI := &handler.RepoDispatcher{
 		Repos:      repoHandler,
