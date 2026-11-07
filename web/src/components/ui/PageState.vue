@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PageError } from '@/i18n'
-import LoginPanel from '@/components/LoginPanel.vue'
-import NotFoundView from '@/views/NotFoundView.vue'
+import LoginPanel from '@/components/auth/LoginPanel.vue'
+import NotFoundView from '@/views/not-found.vue'
 
 defineProps<{
   loading?: boolean

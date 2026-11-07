@@ -5,7 +5,10 @@ import type { PageError } from '@/i18n'
 import { pageError } from '@/i18n'
 import { normalizeRepoPath, repositoryPath } from '@/lib/repoPath'
 
-type CacheEntry = { repo: Repository; at: number }
+type CacheEntry = {
+  repo: Repository
+  at: number
+}
 const cache = new Map<string, CacheEntry>()
 const CACHE_TTL_MS = 5_000
 

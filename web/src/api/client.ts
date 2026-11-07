@@ -11,6 +11,37 @@ export class ApiError extends Error {
   }
 }
 
+let csrfToken = ''
+let csrfPromise: Promise<string> | null = null
+
+async function fetchCSRFToken(): Promise<string> {
+  if (csrfToken) {
+    return csrfToken
+  }
+
+  if (!csrfPromise) {
+    csrfPromise = fetch('/api/auth/csrf', { credentials: 'include' })
+      .then(async (res) => {
+        if (!res.ok) {
+          return ''
+        }
+
+        const data = (await res.json()) as { csrf_token?: string }
+        csrfToken = data.csrf_token || ''
+        return csrfToken
+      })
+      .finally(() => {
+        csrfPromise = null
+      })
+  }
+
+  return csrfPromise
+}
+
+export function clearCSRFToken() {
+  csrfToken = ''
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -18,10 +49,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const method = (init.method || 'GET').toUpperCase()
   if (method !== 'GET' && method !== 'HEAD' && !headers.has('X-CSRF-Token')) {
-    const match = document.cookie.match(/(?:^|; )repo_csrf=([^;]*)/)
-    const token = match?.[1]
+    const token = await fetchCSRFToken()
     if (token) {
-      headers.set('X-CSRF-Token', decodeURIComponent(token))
+      headers.set('X-CSRF-Token', token)
     }
   }
   if (!headers.has('Accept-Language')) {
@@ -60,6 +90,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         code = body.code
       }
     }
+
+    if (code === 'csrf') {
+      clearCSRFToken()
+    }
+
     throw new ApiError(res.status, message, code)
   }
 

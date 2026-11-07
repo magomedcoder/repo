@@ -235,6 +235,16 @@ export interface MirrorCheckResult {
   refs?: RefInfo[]
 }
 
+export interface MirrorTarget {
+  id: number
+  url: string
+  username?: string
+  has_password?: boolean
+  enabled: boolean
+  last_sync_at?: string
+  last_error?: string
+}
+
 export interface AdminMirror {
   id: number
   repo_id?: number
@@ -347,6 +357,7 @@ export interface AccessToken {
   id: number
   name: string
   prefix: string
+  scope: string
   created_at: string
   last_used_at?: string
   expires_at?: string

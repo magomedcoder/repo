@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import type { CommitInfo } from '@/api/types'
+import Icon from '@/components/ui/Icon.vue'
+import GlassTable from '@/components/ui/GlassTable.vue'
 import { idleAge } from '@/lib/idle'
 import { repoLocation } from '@/lib/repoNav'
 
@@ -19,8 +21,8 @@ function firstLine(message: string) {
 </script>
 
 <template>
-  <div class="overflow-x-auto">
-    <table class="w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_th]:text-ink-muted [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover">
+  <div>
+    <GlassTable>
       <thead>
         <tr>
           <th>{{ $t('index.age') }}</th>
@@ -31,9 +33,15 @@ function firstLine(message: string) {
       </thead>
       <tbody>
         <tr v-for="commit in commits" :key="commit.sha">
-          <td class="whitespace-nowrap">{{ idleAge(commit.authored_at) }}</td>
+          <td class="whitespace-nowrap">
+            <span class="inline-flex items-center gap-1 text-ink-muted">
+              <Icon name="clock" size="sm" />
+              <span class="text-ink">{{ idleAge(commit.authored_at) }}</span>
+            </span>
+          </td>
           <td>
-            <RouterLink :to="repoLocation('repo-commit', repoPath, { sha: commit.sha })">
+            <RouterLink :to="repoLocation('repo-commit', repoPath, { sha: commit.sha })" class="inline-flex items-center gap-1.5">
+              <Icon name="commit" size="sm" class="text-ink-muted" />
               {{ firstLine(commit.message) }}
             </RouterLink>
           </td>
@@ -48,6 +56,6 @@ function firstLine(message: string) {
           <td colspan="4">{{ $t('commits.empty') }}</td>
         </tr>
       </tbody>
-    </table>
+    </GlassTable>
   </div>
 </template>

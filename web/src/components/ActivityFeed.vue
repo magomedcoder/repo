@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { ActivityEvent } from '@/api/types'
 import { formatDate } from '@/i18n'
+import Icon from '@/components/ui/Icon.vue'
+import GlassTable from '@/components/ui/GlassTable.vue'
 
 defineProps<{
   events: ActivityEvent[]
@@ -11,10 +13,10 @@ defineProps<{
 
 <template>
   <div>
-    <h2 class="mb-2 font-bold text-ink">{{ $t('activity.title') }}</h2>
+    <h2 class="mb-2 inline-flex items-center gap-1.5 font-bold text-ink"><Icon name="clock" size="sm" class="text-ink-muted" />{{ $t('activity.title') }}</h2>
     <p v-if="loading" class="text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-warn">{{ error }}</p>
-    <table v-else-if="events.length" class="w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_th]:text-ink-muted [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover">
+    <GlassTable v-else-if="events.length">
       <thead>
         <tr>
           <th>{{ $t('index.age') }}</th>
@@ -31,7 +33,7 @@ defineProps<{
           </td>
         </tr>
       </tbody>
-    </table>
+    </GlassTable>
     <p v-else class="text-ink-muted">{{ $t('activity.empty') }}</p>
   </div>
 </template>

@@ -31,9 +31,9 @@ function lineClass(line: string) {
   <div
     v-for="file in files"
     :key="file.path + file.status"
-    class="mb-3 border-b border-line pb-3"
+    class="surface mb-3"
   >
-    <div class="mb-1 bg-path px-2 py-1 font-mono text-[90%]">
+    <div class="surface-header font-mono text-[90%]">
       <span class="mr-2 font-sans text-ink-muted">{{ diffStatus(file.status) }}</span>
       {{ file.path }}
       <span v-if="file.old_path" class="text-ink-muted"> {{ $t('commit.from', { path: file.old_path }) }}</span>

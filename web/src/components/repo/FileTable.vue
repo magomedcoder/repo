@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 import type { TreeEntry } from '@/api/types'
 import PathCrumbs from '@/components/repo/PathCrumbs.vue'
+import Icon from '@/components/ui/Icon.vue'
 import { formatBytes } from '@/lib/bytes'
 import { idleAge } from '@/lib/idle'
 import { formatDate } from '@/i18n'
@@ -33,18 +34,20 @@ function modifiedLabel(entry: TreeEntry) {
 </script>
 
 <template>
-  <div class="overflow-hidden border border-line bg-paper">
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-path px-3 py-2">
+  <div class="surface overflow-hidden">
+    <div class="surface-header flex-wrap items-center gap-x-3 gap-y-1.5 py-2">
       <PathCrumbs
         class="min-w-0 flex-1"
         :repo-path="repoPath"
         :ref-name="refName"
         :path="path"
       />
-      <div v-if="$slots.actions" class="flex shrink-0 gap-1">
+      <div v-if="$slots.actions" class="flex h-8 shrink-0 items-center gap-1.5">
         <slot name="actions" />
       </div>
     </div>
+
+    <slot name="banner" />
 
     <div class="overflow-x-auto">
       <table class="w-full min-w-[20rem] table-fixed border-collapse text-[12px] leading-snug">
@@ -68,8 +71,13 @@ function modifiedLabel(entry: TreeEntry) {
             <td class="min-w-0 truncate px-3 py-1.5">
               <RouterLink
                 :to="entryRoute(repoPath, refName, entry)"
-                class="inline-flex max-w-full items-baseline gap-2 text-ink no-underline hover:text-link hover:underline"
+                class="inline-flex max-w-full items-center gap-2 text-ink no-underline hover:text-link hover:underline"
               >
+                <Icon
+                  :name="entry.type === 'tree' ? 'folder' : 'file'"
+                  size="sm"
+                  class="text-ink-muted"
+                />
                 <span
                   class="min-w-0 truncate"
                   :class="entry.type === 'tree' ? 'font-semibold' : 'font-normal'"

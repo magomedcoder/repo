@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
+import Icon from '@/components/ui/Icon.vue'
 import { repoLocation } from '@/lib/repoNav'
 
 const props = defineProps<{
@@ -24,7 +25,11 @@ const crumbs = computed((): Crumb[] => {
     label: props.refName,
     branch: true,
     to: parts.length
-      ? repoLocation('repo', props.repoPath, { query: { ref: props.refName } })
+      ? repoLocation('repo', props.repoPath, { 
+          query: { 
+            ref: props.refName 
+          } 
+        })
       : null,
   })
 
@@ -38,7 +43,10 @@ const crumbs = computed((): Crumb[] => {
       to: isLast
         ? null
         : repoLocation('repo', props.repoPath, {
-            query: { ref: props.refName, path: acc },
+            query: { 
+              ref: props.refName, 
+              path: acc 
+            },
           }),
     })
   }
@@ -57,14 +65,16 @@ const crumbs = computed((): Crumb[] => {
       <RouterLink
         v-if="crumb.to && crumb.branch"
         :to="crumb.to"
-        class="inline-flex items-center border border-line bg-paper px-1.5 py-0.5 font-semibold text-ink no-underline hover:bg-row-hover hover:no-underline"
+        class="btn !h-8 !min-h-8 !gap-1.5 !px-2.5 !py-0 !text-[10pt] !leading-none font-semibold no-underline hover:no-underline"
       >
+        <Icon name="branch" size="sm" class="text-ink-muted" />
         {{ crumb.label }}
       </RouterLink>
       <span
         v-else-if="crumb.branch"
-        class="inline-flex items-center border border-line bg-paper px-1.5 py-0.5 font-semibold text-ink"
+        class="btn !h-8 !min-h-8 !gap-1.5 !px-2.5 !py-0 !text-[10pt] !leading-none font-semibold"
       >
+        <Icon name="branch" size="sm" class="text-ink-muted" />
         {{ crumb.label }}
       </span>
       <RouterLink

@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { Repository, RepoSummary } from '@/api/types'
 import Icon from '@/components/ui/Icon.vue'
+import type { IconName } from '@/components/ui/Icon.vue'
+import GlassTable from '@/components/ui/GlassTable.vue'
 import { useAuth } from '@/composables/useAuth'
 import { idleAge } from '@/lib/idle'
 import { toContentRow } from '@/lib/contentRow'
@@ -14,6 +16,8 @@ const props = defineProps<{
   showFolder?: boolean
   sort?: string
   emptyText?: string
+  title?: string
+  hint?: string
 }>()
 
 const auth = useAuth()
@@ -47,7 +51,13 @@ function canOpenFolder(row: ReturnType<typeof toContentRow>) {
 }
 
 function sortClass(key: string) {
-  return props.sort === key ? 'font-bold text-ink underline' : 'font-medium text-ink-muted hover:underline'
+  return props.sort === key
+    ? 'inline-flex items-center gap-1 font-bold text-ink'
+    : 'inline-flex items-center gap-1 font-medium text-ink-muted hover:text-ink'
+}
+
+function sortIcon(key: string): IconName {
+  return props.sort === key ? 'chevron-down' : 'sort'
 }
 
 function isPrivate(id: number) {
@@ -56,8 +66,13 @@ function isPrivate(id: number) {
 </script>
 
 <template>
-  <div>
-    <table class="w-full border-collapse [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:align-baseline [&_th]:font-medium [&_td]:border-0 [&_td]:px-2 [&_td]:py-1 [&_td]:align-baseline [&_tbody_tr:nth-child(odd)]:bg-paper [&_tbody_tr:nth-child(even)]:bg-row-alt [&_tbody_tr:hover]:bg-row-hover">
+  <div class="glass overflow-hidden">
+    <div v-if="title" class="border-b border-line-strong/40 px-3 py-2 sm:px-4">
+      <h1 class="font-bold text-ink">{{ title }}</h1>
+      <p v-if="hint" class="text-[85%] text-ink-muted">{{ hint }}</p>
+    </div>
+    <div class="min-w-0 overflow-x-auto">
+    <GlassTable :glass="false" min-width-class="min-w-[28rem]">
       <thead>
         <tr>
           <th class="w-[30%]">
@@ -65,24 +80,36 @@ function isPrivate(id: number) {
               type="button"
               class="cursor-pointer border-0 bg-transparent p-0 text-[10pt]"
               :class="sortClass('name')"
+              :aria-pressed="sort === 'name'"
               @click="emit('sort', 'name')"
-            >{{ $t('index.name') }}</button>
+            >
+              {{ $t('index.name') }}
+              <Icon :name="sortIcon('name')" size="xs" :class="sort === 'name' ? 'text-ink' : 'opacity-50'" />
+            </button>
           </th>
           <th>
             <button
               type="button"
               class="cursor-pointer border-0 bg-transparent p-0 text-[10pt]"
               :class="sortClass('description')"
+              :aria-pressed="sort === 'description'"
               @click="emit('sort', 'description')"
-            >{{ $t('index.description') }}</button>
+            >
+              {{ $t('index.description') }}
+              <Icon :name="sortIcon('description')" size="xs" :class="sort === 'description' ? 'text-ink' : 'opacity-50'" />
+            </button>
           </th>
           <th class="w-[14%]">
             <button
               type="button"
               class="cursor-pointer border-0 bg-transparent p-0 text-[10pt]"
               :class="sortClass('idle')"
+              :aria-pressed="sort === 'idle'"
               @click="emit('sort', 'idle')"
-            >{{ $t('index.idle') }}</button>
+            >
+              {{ $t('index.idle') }}
+              <Icon :name="sortIcon('idle')" size="xs" :class="sort === 'idle' ? 'text-ink' : 'opacity-50'" />
+            </button>
           </th>
           <th class="w-[20%]">{{ $t('index.links') }}</th>
         </tr>
@@ -115,6 +142,7 @@ function isPrivate(id: number) {
           <td colspan="4">{{ emptyText || $t('list.noRepos') }}</td>
         </tr>
       </tbody>
-    </table>
+    </GlassTable>
+    </div>
   </div>
 </template>

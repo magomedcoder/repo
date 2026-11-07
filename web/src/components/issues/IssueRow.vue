@@ -15,7 +15,7 @@ defineProps<{
 <template>
   <RouterLink
     :to="repoLocation('repo-issue', repoPath, { number: issue.number })"
-    class="flex items-start gap-3 px-4 py-3 hover:bg-paper"
+    class="flex items-start gap-3 px-4 py-3 hover:bg-row-hover"
   >
     <Icon
       :name="issue.state === 'open' ? 'issue' : 'issue-closed'"

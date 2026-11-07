@@ -13,7 +13,7 @@ function pick(next: AppLocale) {
   <span role="group" class="inline-flex items-center gap-1" :aria-label="t('nav.language')">
     <button
       type="button"
-      class="cursor-pointer border-0 bg-transparent p-0 text-[90%] uppercase"
+      class="cursor-pointer border-0 bg-transparent p-0 text-[90%]"
       :class="locale === 'ru' ? 'font-medium text-ink' : 'text-ink-muted hover:text-ink'"
       :aria-pressed="locale === 'ru'"
       @click="pick('ru')"
@@ -23,7 +23,7 @@ function pick(next: AppLocale) {
 
     <button
       type="button"
-      class="cursor-pointer border-0 bg-transparent p-0 text-[90%] uppercase"
+      class="cursor-pointer border-0 bg-transparent p-0 text-[90%]"
       :class="locale === 'en' ? 'font-medium text-ink' : 'text-ink-muted hover:text-ink'"
       :aria-pressed="locale === 'en'"
       @click="pick('en')"

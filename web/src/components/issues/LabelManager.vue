@@ -28,8 +28,8 @@ function submit() {
 </script>
 
 <template>
-  <section class="overflow-hidden border border-line bg-paper">
-    <h2 class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink">{{ $t('issues.labels') }}</h2>
+  <section class="surface">
+    <h2 class="surface-header">{{ $t('issues.labels') }}</h2>
     <div class="p-3 sm:p-4">
       <ul class="mb-3 space-y-2">
         <li
@@ -48,18 +48,18 @@ function submit() {
       <form class="flex flex-wrap gap-2" @submit.prevent="submit">
         <input
           v-model="name"
-          :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'max-w-48']"
+          :class="['field', 'max-w-48']"
           required
           :placeholder="$t('issues.labelName')"
         />
         <input
           v-model="color"
           type="color"
-          class="h-8 w-10 border border-line bg-paper"
+          class="h-8 w-10 rounded-md border border-line bg-paper"
         />
         <button
           type="submit"
-          class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
+          class="btn"
         >{{ $t('issues.addLabel') }}</button>
       </form>
     </div>

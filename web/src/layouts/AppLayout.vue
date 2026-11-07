@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, provide, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import AppFooter from '@/components/AppFooter.vue'
-import AppHeader from '@/components/AppHeader.vue'
-import CreateFolderModal from '@/components/CreateFolderModal.vue'
-import CreateRepoModal from '@/components/CreateRepoModal.vue'
-import ImportRepoModal from '@/components/ImportRepoModal.vue'
-import MirrorRepoModal from '@/components/MirrorRepoModal.vue'
+import AppFooter from '@/components/layout/AppFooter.vue'
+import AppHeader from '@/components/layout/AppHeader.vue'
+import CreateFolderModal from '@/components/modals/CreateFolderModal.vue'
+import CreateRepoModal from '@/components/modals/CreateRepoModal.vue'
+import ImportRepoModal from '@/components/modals/ImportRepoModal.vue'
+import MirrorRepoModal from '@/components/modals/MirrorRepoModal.vue'
 import { useAuth } from '@/composables/useAuth'
 
 type RepoModalKind = 'create' | 'import' | 'mirror' | null
@@ -115,10 +115,12 @@ function closeRepoModal() {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col">
+  <div class="app-shell">
     <AppHeader />
     <main class="min-w-0 flex-1">
-      <RouterView :key="contentKey" />
+      <div class="content-block">
+        <RouterView :key="contentKey" />
+      </div>
     </main>
     <AppFooter />
 

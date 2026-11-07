@@ -30,8 +30,8 @@ function save() {
 </script>
 
 <template>
-  <article class="overflow-hidden border border-line bg-paper">
-    <header class="flex items-center gap-2 border-b border-line bg-path px-3 py-1.5 text-[10pt] text-ink justify-between">
+  <article class="surface">
+    <header class="surface-header justify-between">
       <p>
         <span class="font-semibold text-ink">{{ author }}</span>
         <span class="font-normal text-ink-muted"> {{ formatDate(createdAt) }}</span>
@@ -56,12 +56,12 @@ function save() {
     >
       <textarea
         v-model="draft"
-        :class="['w-full border border-line bg-paper px-2 py-1 text-[10pt] text-ink outline-none', 'min-h-20']"
+        :class="['field', 'min-h-20']"
         required
       />
       <button
         type="submit"
-        class="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1 text-[10pt] text-ink hover:bg-row-hover disabled:cursor-not-allowed disabled:opacity-50"
+        class="btn"
         :disabled="busy"
       >{{ $t('issues.saveComment') }}</button>
     </form>

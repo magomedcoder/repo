@@ -1,5 +1,6 @@
 import { computed, reactive } from 'vue'
 import { authApi } from '@/api'
+import { clearCSRFToken } from '@/api/client'
 import { RoleAdmin, type User } from '@/api/types'
 
 const state = reactive<{
@@ -27,11 +28,13 @@ export function useAuth() {
   }
 
   async function login(login: string, password: string) {
+    clearCSRFToken()
     state.user = await authApi.login({ login, password })
     state.ready = true
   }
 
   async function register(body: { username: string; email: string; password: string }) {
+    clearCSRFToken()
     state.user = await authApi.register(body)
     state.ready = true
     return state.user
@@ -41,6 +44,7 @@ export function useAuth() {
     try {
       await authApi.logout()
     } finally {
+      clearCSRFToken()
       state.user = null
     }
   }
