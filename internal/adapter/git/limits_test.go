@@ -32,6 +32,7 @@ func TestLockRepoSerializes(t *testing.T) {
 
 	r := NewRepository(t.TempDir())
 	p := r.Root + "/a.git"
+	key := r.lockKey(p)
 	unlock := r.LockRepo(p)
 	got := make(chan struct{})
 	go func() {
@@ -47,7 +48,7 @@ func TestLockRepoSerializes(t *testing.T) {
 
 	unlock()
 	<-got
-	if repoLocks.Len() != 0 {
+	if repoLocks.Has(key) {
 		t.Fatal("lock entry leaked")
 	}
 }

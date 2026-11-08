@@ -50,6 +50,14 @@ func (k *KeyedMutex) Len() int {
 	return len(k.m)
 }
 
+func (k *KeyedMutex) Has(key string) bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	_, ok := k.m[key]
+	return ok
+}
+
 func (k *KeyedMutex) LockAll(keys ...string) func() {
 	uniq := make([]string, 0, len(keys))
 	seen := map[string]bool{}
