@@ -277,10 +277,6 @@ func (uc *RepositoryUseCase) openSecret(stored string) (string, error) {
 		return "", nil
 	}
 
-	if !secretbox.IsSealed(stored) {
-		return "", ErrMirrorSecretUnsealed
-	}
-
 	if len(uc.mirrorSecretsKey) == 0 {
 		return "", fmt.Errorf("mirror secrets key not configured")
 	}
@@ -352,6 +348,11 @@ func parseMirrorHost(raw string) (scheme, host string, ok bool) {
 			return "", "", false
 		}
 	case "ssh":
+		if u.User != nil {
+			if _, hasPass := u.User.Password(); hasPass {
+				return "", "", false
+			}
+		}
 	default:
 		return "", "", false
 	}
@@ -513,7 +514,7 @@ func inSyncWindow(window string, now time.Time) bool {
 
 	start, end, ok := parseSyncWindow(window)
 	if !ok {
-		return true
+		return false
 	}
 
 	now = now.UTC()

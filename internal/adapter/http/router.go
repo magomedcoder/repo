@@ -31,6 +31,7 @@ func NewRouter(
 	api := r.Group("/api")
 
 	api.GET("/site", siteHandler.Get)
+	api.POST("/csp-report", handler.CSPReport)
 	api.GET("/auth/registration", authHandler.Registration)
 	api.GET("/auth/csrf", authHandler.CSRF)
 	api.POST("/auth/register", authHandler.Register)
@@ -39,8 +40,8 @@ func NewRouter(
 	api.GET("/auth/me", authHandler.Me)
 	api.GET("/users/{username}/avatar", profileHandler.ServeAvatar)
 
-	require := httpx.HTTPMiddleware(middleware.RequireAuth(auth))
-	optional := httpx.HTTPMiddleware(middleware.OptionalAuth(auth))
+	require := httpx.HTTPMiddleware(middleware.RequireAuthSecure(auth, cookieSecure))
+	optional := httpx.HTTPMiddleware(middleware.OptionalAuthSecure(auth, cookieSecure))
 	authed := api.Group("", require)
 	pub := api.Group("", optional)
 
@@ -111,7 +112,8 @@ func NewRouter(
 	authLimiter := middleware.NewRateLimiter(30, 10)
 	contributeLimiter := middleware.NewRateLimiter(40, 15)
 	gitLimiter := middleware.NewRateLimiter(40, 15)
-	apiHandler := middleware.SecurityHeaders(cookieSecure)(middleware.CSRF(cookieSecure, sessionSecret)(middleware.MaxBody(1 << 20)(middleware.RateLimitWithContribute(apiLimiter, authLimiter, contributeLimiter)(middleware.Logger(i18n.Middleware(r.Handler()))))))
+	codeSearchLimiter := middleware.NewRateLimiter(20, 5)
+	apiHandler := middleware.SecurityHeaders(cookieSecure)(middleware.CSRF(cookieSecure, sessionSecret)(middleware.MaxBody(1 << 20)(middleware.RateLimitWithContribute(apiLimiter, authLimiter, contributeLimiter)(middleware.RateLimitCodeSearch(codeSearchLimiter)(middleware.Logger(i18n.Middleware(r.Handler())))))))
 	gitHTTP := middleware.SecurityHeaders(cookieSecure)(middleware.RateLimitIP(gitLimiter)(middleware.Logger(gitHandler)))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

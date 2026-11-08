@@ -113,8 +113,10 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 		repoUC.SetMirrorSecretsKey(key)
 	}
 	repoUC.SetMirrorURLLookup(testMirrorLookup)
+	repoUC.SetPasswordHasher(hasher)
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	tokenUC.SetPepper("0123456789abcdef0123456789abcdef")
+	tokenUC.SetStepUp(userStore, hasher)
 	profileUC := usecase.NewProfileUseCase(userStore, hasher, dataDir)
 	profileUC.SetSessionStores(sessionStore, tokenStore)
 	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)

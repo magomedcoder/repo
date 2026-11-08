@@ -13,8 +13,9 @@ import (
 type contextKey string
 
 const (
-	userContextKey contextKey = "user"
-	SessionCookie             = "session"
+	userContextKey    contextKey = "user"
+	SessionCookie                = "session"
+	HostSessionCookie            = "__Host-session"
 )
 
 type Authenticator interface {
@@ -26,19 +27,29 @@ func UserFromContext(ctx context.Context) (*domain.User, bool) {
 	return user, ok && user != nil
 }
 
-func SessionToken(r *http.Request) string {
-	c, err := r.Cookie(SessionCookie)
-	if err != nil || c.Value == "" {
+func SessionCookieName(r *http.Request, forceSecure bool) string {
+	if forceSecure || IsHTTPS(r) {
+		return HostSessionCookie
+	}
+	return SessionCookie
+}
+
+func SessionTokenFor(r *http.Request, forceSecure bool) string {
+	c, err := r.Cookie(SessionCookieName(r, forceSecure))
+	if err != nil {
 		return ""
 	}
-
 	return c.Value
 }
 
 func RequireAuth(auth Authenticator) func(http.Handler) http.Handler {
+	return RequireAuthSecure(auth, false)
+}
+
+func RequireAuthSecure(auth Authenticator, forceSecure bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, _, err := auth.Authenticate(r.Context(), SessionToken(r))
+			user, _, err := auth.Authenticate(r.Context(), SessionTokenFor(r, forceSecure))
 			if err != nil {
 				msg := "unauthorized"
 				if errors.Is(err, usecase.ErrSessionExpired) {
@@ -56,9 +67,13 @@ func RequireAuth(auth Authenticator) func(http.Handler) http.Handler {
 }
 
 func OptionalAuth(auth Authenticator) func(http.Handler) http.Handler {
+	return OptionalAuthSecure(auth, false)
+}
+
+func OptionalAuthSecure(auth Authenticator, forceSecure bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if token := SessionToken(r); token != "" {
+			if token := SessionTokenFor(r, forceSecure); token != "" {
 				if user, _, err := auth.Authenticate(r.Context(), token); err == nil {
 					ctx := context.WithValue(r.Context(), userContextKey, user)
 					r = r.WithContext(ctx)

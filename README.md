@@ -41,19 +41,28 @@ Copy the example and edit values:
 cp config.example.yaml config.yaml
 ```
 
-| Key                             | Description                                                                                       |
-|---------------------------------|---------------------------------------------------------------------------------------------------|
-| `http_addr`                     | HTTP listen address (default `:8080`)                                                             |
-| `data_dir`                      | SQLite DB, Git repos, and avatars                                                                 |
-| `site_name`                     | Site title in the UI                                                                              |
-| `session_secret`                | Session signing secret (required, min 32 characters; e.g. `openssl rand -hex 32`)                 |
-| `cookie_secure`                 | Set `true` behind HTTPS (Secure cookies + HSTS)                                                   |
-| `allow_registration`            | Public self-registration (default `true`); otherwise create users via CLI/admin                   |
-| `receive_max_bytes`             | Max Git push size in bytes (default 512 MiB)                                                      |
-| `mirror_pull_interval`          | How often pull mirrors fetch (`5m` by default; `0` disables the scheduler)                        |
-| `mirror_verify_openpgp_keyring` | Armored OpenPGP public keyring for `mirror_verify_signed` (path under `data_dir` unless absolute) |
-| `mirror_verify_allowed_signers` | SSH `allowed_signers` file (namespace `git`) for `mirror_verify_signed`                           |
-| `trusted_proxies`               | Optional CIDRs/IPs trusted for `X-Forwarded-For` / `X-Forwarded-Proto`                            |
+Generate each secret with `openssl rand -hex 32`. All four secrets are required (min 32 characters each) and must not fall back onto each other.
+
+| Key                                                                     | Description                                                                                                                                                                       |
+|-------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `http_addr`                                                             | HTTP listen address (default `:8080`)                                                                                                                                             |
+| `data_dir`                                                              | SQLite DB, Git repos, and avatars                                                                                                                                                 |
+| `site_name`                                                             | Site title in the UI                                                                                                                                                              |
+| `session_secret`                                                        | Signs session cookies                                                                                                                                                             |
+| `token_pepper`                                                          | Hashes personal access tokens                                                                                                                                                     |
+| `csrf_secret`                                                           | Binds CSRF tokens to the session                                                                                                                                                  |
+| `mirror_secrets_key`                                                    | Encrypts stored mirror credentials                                                                                                                                                |
+| `cookie_secure`                                                         | Set `true` when served over HTTPS (including behind a reverse proxy). The server warns at startup if this is `false` and `http_addr` is not loopback-only                         |
+| `allow_registration`                                                    | Public self-registration. Keep `false` on public instances and create users via CLI/admin; the server warns when `true`                                                           |
+| `allow_public_contribute`                                               | When `true`, any logged-in user may open issues/PRs/comments on public repos. When `false` (default), only owners, collaborators, and team members may contribute                 |
+| `require_auth_for_git_read`                                             | When `true`, refuse anonymous `git clone`/fetch of public repos (password or access token required)                                                                               |
+| `receive_max_bytes`                                                     | Max Git push size in bytes (default 512 MiB)                                                                                                                                      |
+| `trusted_proxies`                                                       | Real reverse-proxy CIDRs/IPs trusted for `X-Forwarded-For` / `X-Forwarded-Proto`. Never use `0.0.0.0/0` or `::/0` (rejected at startup). Leave empty if there is no reverse proxy |
+| `mirror_pull_interval`                                                  | How often pull mirrors fetch (`5m` by default; `0` disables the scheduler)                                                                                                        |
+| `mirror_workers`                                                        | Concurrent mirror worker count                                                                                                                                                    |
+| `mirror_clone_timeout` / `mirror_fetch_timeout` / `mirror_push_timeout` | Per-operation timeouts                                                                                                                                                            |
+| `mirror_verify_openpgp_keyring`                                         | Armored OpenPGP public keyring for `mirror_verify_signed` (path under `data_dir` unless absolute)                                                                                 |
+| `mirror_verify_allowed_signers`                                         | SSH `allowed_signers` file (namespace `git`) for `mirror_verify_signed`                                                                                                           |
 
 Responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and (over HTTPS / with `cookie_secure`) HSTS with `includeSubDomains; preload`. After the site is live on HTTPS, you can submit the domain at [hstspreload.org](https://hstspreload.org).
 
@@ -63,6 +72,8 @@ Responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and (over HT
 - Configure on create (*Mirror* / *Import*) or in repository settings; admins manage all mirrors at `/cp/mirrors`
 - Optional `mirror_verify_signed`: after each pull, the tip must verify against the server OpenPGP keyring and/or SSH `allowed_signers` (not the host GPG trustdb; runtime does not need a system `git` binary)
 - Internal hosts blocked by default (SSRF); interval and workers in `config.example.yaml`
+- `mirror_verify_signed` can only be enabled when a non-empty keyring or `allowed_signers` file is loaded; the server warns at startup if both are missing/empty
+- Changing the mirror URL or stored secrets (password / SSH key) requires the current account password (`current_password`)
 
 ## Reverse proxy
 

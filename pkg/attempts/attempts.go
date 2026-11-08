@@ -2,6 +2,7 @@ package attempts
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 )
@@ -12,7 +13,22 @@ const (
 	sweepEvery          = 64
 	idleTTL             = 30 * time.Minute
 	defaultMaxKeys      = 8192
+	maxKeysPerScope     = 64
 )
+
+func scopeOf(key string) string {
+	parts := strings.SplitN(key, "\n", 3)
+	if len(parts) < 3 {
+		return ""
+	}
+
+	switch parts[0] {
+	case "login-user", "git":
+		return parts[0] + "\n" + parts[1]
+	}
+
+	return ""
+}
 
 type Counter interface {
 	Fail(key string) bool
@@ -62,6 +78,7 @@ type state struct {
 type memory struct {
 	mu        sync.Mutex
 	fails     map[string]*state
+	scopes    map[string]int
 	now       func() time.Time
 	maxFail   int
 	maxKeys   int
@@ -95,6 +112,7 @@ func New(cfg ...Config) Counter {
 	now := c.Now()
 	return &memory{
 		fails:     map[string]*state{},
+		scopes:    map[string]int{},
 		now:       c.Now,
 		maxFail:   c.MaxFails,
 		maxKeys:   c.MaxKeys,
@@ -114,6 +132,13 @@ func (m *memory) Fail(key string) bool {
 			m.sweep(now)
 			m.lastSweep = now
 			m.evictOldest(now)
+		}
+		if scope := scopeOf(key); scope != "" {
+			if m.scopes[scope] >= maxKeysPerScope && !m.evictOldestInScope(scope, now) {
+				return true
+			}
+
+			m.scopes[scope]++
 		}
 		st = &state{}
 		m.fails[key] = st
@@ -170,7 +195,49 @@ func (m *memory) Locked(key string) bool {
 func (m *memory) Reset(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.deleteKey(key)
+}
+
+func (m *memory) deleteKey(key string) {
+	if _, ok := m.fails[key]; !ok {
+		return
+	}
+
 	delete(m.fails, key)
+	if scope := scopeOf(key); scope != "" {
+		if m.scopes[scope] <= 1 {
+			delete(m.scopes, scope)
+		} else {
+			m.scopes[scope]--
+		}
+	}
+}
+
+func (m *memory) evictOldestInScope(scope string, now time.Time) bool {
+	var (
+		oldestKey string
+		oldest    time.Time
+		found     bool
+	)
+	for k, st := range m.fails {
+		if scopeOf(k) != scope {
+			continue
+		}
+
+		if !st.lockedUntil.IsZero() && now.Before(st.lockedUntil) {
+			continue
+		}
+
+		if !found || st.lastUsed.Before(oldest) {
+			oldestKey, oldest, found = k, st.lastUsed, true
+		}
+	}
+
+	if found {
+		m.deleteKey(oldestKey)
+	}
+
+	return found
 }
 
 func (m *memory) Sweep() {
@@ -199,7 +266,7 @@ func (m *memory) sweep(now time.Time) {
 		lockExpired := !st.lockedUntil.IsZero() && !now.Before(st.lockedUntil) && st.fails == 0
 		idle := !st.lastUsed.IsZero() && now.Sub(st.lastUsed) > idleTTL
 		if lockExpired || idle {
-			delete(m.fails, k)
+			m.deleteKey(k)
 		}
 	}
 }
@@ -225,6 +292,6 @@ func (m *memory) evictOldest(now time.Time) {
 	}
 
 	if found {
-		delete(m.fails, oldestKey)
+		m.deleteKey(oldestKey)
 	}
 }

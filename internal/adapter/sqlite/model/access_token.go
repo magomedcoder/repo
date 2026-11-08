@@ -11,9 +11,9 @@ type AccessToken struct {
 	CreatedAt  time.Time
 	UserID     uint   `gorm:"index;not null"`
 	Name       string `gorm:"size:100;not null"`
-	TokenHash  string `gorm:"uniqueIndex;size:64;not null"`
+	TokenHash  string `gorm:"uniqueIndex;size:67;not null"`
 	Prefix     string `gorm:"size:16;not null"`
-	Scope      string `gorm:"size:32;not null;default:git:write"`
+	Scope      string `gorm:"size:32;not null;default:git:read"`
 	LastUsedAt *time.Time
 	ExpiresAt  *time.Time
 }
@@ -23,18 +23,13 @@ func (AccessToken) TableName() string {
 }
 
 func (m AccessToken) ToDomain() domain.AccessToken {
-	scope := m.Scope
-	if scope == "" {
-		scope = domain.TokenScopeGitWrite
-	}
-
 	return domain.AccessToken{
 		ID:         m.ID,
 		UserID:     m.UserID,
 		Name:       m.Name,
 		TokenHash:  m.TokenHash,
 		Prefix:     m.Prefix,
-		Scope:      scope,
+		Scope:      m.Scope,
 		CreatedAt:  m.CreatedAt,
 		LastUsedAt: m.LastUsedAt,
 		ExpiresAt:  m.ExpiresAt,

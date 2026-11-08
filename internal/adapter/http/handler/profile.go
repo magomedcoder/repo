@@ -11,6 +11,11 @@ import (
 
 type ProfileHandler struct {
 	profiles *usecase.ProfileUseCase
+	secure   bool
+}
+
+func (h *ProfileHandler) SetCookieSecure(secure bool) {
+	h.secure = secure
 }
 
 func NewProfileHandler(profiles *usecase.ProfileUseCase) *ProfileHandler {
@@ -50,7 +55,7 @@ func (h *ProfileHandler) UpdateMe(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	out, err := h.profiles.UpdateEmail(c.Ctx(), user.ID, req.Email, req.CurrentPassword, middleware.SessionToken(c.R))
+	out, err := h.profiles.UpdateEmail(c.Ctx(), user.ID, req.Email, req.CurrentPassword, middleware.SessionTokenFor(c.R, h.secure))
 	if err != nil {
 		return mapError(c, err)
 	}

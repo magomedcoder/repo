@@ -18,8 +18,16 @@ type TrustMaterial struct {
 	AllowedSigners []sshsig.Signer
 }
 
+func (t TrustMaterial) Empty() bool {
+	return strings.TrimSpace(t.OpenPGPKeyring) == "" && len(t.AllowedSigners) == 0
+}
+
 func (r *Repository) SetTrust(t TrustMaterial) {
 	r.trust = t
+}
+
+func (r *Repository) VerifyTrustConfigured() bool {
+	return !r.trust.Empty()
 }
 
 func LoadTrustFiles(openpgpPath, allowedSignersPath string) (TrustMaterial, error) {

@@ -77,7 +77,7 @@ func mountRepoDetailRoutes(pub, authed *httpx.Router, d *RepoDispatcher, base st
 	pub.GET(base+"/commits/{sha}/diff", d.explicitGet("commit-diff"))
 
 	authed.DELETE(base+"/collaborators/{username}", d.explicitDelete("collaborator"))
-	authed.DELETE(base+"/teams/{slug}", d.explicitDelete("team"))
+	authed.DELETE(base+"/teams/{id}", d.explicitDelete("team"))
 }
 
 func (d *RepoDispatcher) explicitGet(action string) httpx.Handler {
@@ -168,7 +168,7 @@ func (d *RepoDispatcher) explicitDelete(action string) httpx.Handler {
 				return c.Error(http.StatusNotFound, "not_found")
 			}
 
-			return d.Teams.RevokeRepoTeam(c, in, c.Param("slug"))
+			return d.Teams.RevokeRepoTeam(c, in, c.Param("id"))
 		case isPullAction(action):
 			return d.Pulls.delete(c, in, action, extra)
 		case isIssueAction(action):

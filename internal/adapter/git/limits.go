@@ -7,8 +7,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
+	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/fsutil"
 )
 
@@ -18,6 +20,7 @@ const (
 	maxComparePatchBytes = 8 << 20
 	maxBlameFileBytes    = 2 << 20
 	maxConcurrentBlames  = 4
+	maxConcurrentDiffs   = 8
 	maxRefNameLen        = 255
 )
 
@@ -26,7 +29,43 @@ var (
 	ErrHistoryTooLarge = errors.New("history too large")
 )
 
+const semAcquireTimeout = 5 * time.Second
+
 var blameSem = make(chan struct{}, maxConcurrentBlames)
+
+var diffSem = make(chan struct{}, maxConcurrentDiffs)
+
+func acquireSem(ctx context.Context, sem chan struct{}) (func(), error) {
+	return acquireSemWithTimeout(ctx, sem, semAcquireTimeout)
+}
+
+func acquireSemWithTimeout(ctx context.Context, sem chan struct{}, wait time.Duration) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	select {
+	case sem <- struct{}{}:
+		return func() { <-sem }, nil
+	default:
+	}
+
+	t := time.NewTimer(wait)
+	defer t.Stop()
+
+	select {
+	case sem <- struct{}{}:
+		return func() { <-sem }, nil
+	case <-t.C:
+		return nil, domain.ErrBusy
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
 
 func validateRefName(ref string) error {
 	if ref == "" {

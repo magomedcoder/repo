@@ -6,12 +6,15 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"golang.org/x/crypto/hkdf"
 )
+
+var ErrNotSealed = errors.New("secret is not sealed")
 
 const (
 	prefix   = "v1:"
@@ -67,7 +70,7 @@ func Open(key []byte, stored string) (string, error) {
 	}
 
 	if !strings.HasPrefix(stored, prefix) {
-		return stored, nil
+		return "", ErrNotSealed
 	}
 
 	if len(key) != keyLen {

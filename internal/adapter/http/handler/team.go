@@ -246,8 +246,13 @@ func (h *TeamHandler) GrantRepoTeam(c *httpx.Context, in usecase.ResolveReposito
 	return httpx.OK(c, out)
 }
 
-func (h *TeamHandler) RevokeRepoTeam(c *httpx.Context, in usecase.ResolveRepositoryInput, slug string) error {
-	if err := h.teams.RevokeRepoTeam(c.Ctx(), in, slug); err != nil {
+func (h *TeamHandler) RevokeRepoTeam(c *httpx.Context, in usecase.ResolveRepositoryInput, teamIDRaw string) error {
+	id, err := parseID(teamIDRaw)
+	if err != nil {
+		return c.Error(http.StatusBadRequest, "invalid_team_id")
+	}
+
+	if err := h.teams.RevokeRepoTeam(c.Ctx(), in, id); err != nil {
 		return mapError(c, err)
 	}
 

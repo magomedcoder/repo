@@ -27,7 +27,7 @@ func (uc *RepositoryUseCase) ListBranches(ctx context.Context, in ResolveReposit
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (uc *RepositoryUseCase) ListTags(ctx context.Context, in ResolveRepositoryI
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (uc *RepositoryUseCase) ListCommits(ctx context.Context, in ResolveReposito
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (uc *RepositoryUseCase) GetCommit(ctx context.Context, in ResolveRepository
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (uc *RepositoryUseCase) ListTree(ctx context.Context, in ResolveRepositoryI
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func (uc *RepositoryUseCase) GetBlob(ctx context.Context, in ResolveRepositoryIn
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (uc *RepositoryUseCase) GetBlame(ctx context.Context, in ResolveRepositoryI
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func (uc *RepositoryUseCase) GetReadme(ctx context.Context, in ResolveRepository
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func (uc *RepositoryUseCase) GetCommitDiff(ctx context.Context, in ResolveReposi
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (uc *RepositoryUseCase) GetStats(ctx context.Context, in ResolveRepositoryI
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -272,8 +272,8 @@ func (uc *RepositoryUseCase) GetStats(ctx context.Context, in ResolveRepositoryI
 	return stats, nil
 }
 
-func (uc *RepositoryUseCase) resolveReadable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	repo, _, err := uc.resolve(in)
+func (uc *RepositoryUseCase) resolveReadable(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, error) {
+	repo, _, err := uc.resolve(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -294,6 +294,8 @@ func mapGitBrowseErr(err error) error {
 		return ErrEmptyRepo
 	case errors.Is(err, gitadapter.ErrRefNotFound):
 		return ErrRefNotFound
+	case errors.Is(err, domain.ErrBusy):
+		return ErrBusy
 	case errors.Is(err, gitadapter.ErrBlameTooLarge):
 		return ErrBlameTooLarge
 	case errors.Is(err, gitadapter.ErrHistoryTooLarge):
@@ -349,7 +351,7 @@ func (uc *RepositoryUseCase) GetSummary(ctx context.Context, in ResolveRepositor
 		return nil, err
 	}
 
-	repo, err := uc.resolveReadable(in)
+	repo, err := uc.resolveReadable(ctx, in)
 	if err != nil {
 		return nil, err
 	}

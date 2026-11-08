@@ -31,7 +31,7 @@ var (
 
 const maxReposPerOwner = 100
 
-var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+var repoNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 func isUniqueViolation(err error) bool {
 	if err == nil {
@@ -75,6 +75,7 @@ type UpdateRepositoryInput struct {
 	DefaultBranch        *string
 	ProtectDefaultBranch *bool
 	IssuesEnabled        *bool
+	CurrentPassword      string
 }
 
 type ResolveRepositoryInput struct {
@@ -139,6 +140,8 @@ type RepositoryUseCase struct {
 	mirror           *mirrorRuntime
 	mirrorSecretsKey []byte
 	mirrorLookup     ssrf.LookupIPFunc
+	codeIndex        domain.CodeIndexStore
+	codeIdxRT        *codeIndexRuntime
 }
 
 func NewRepositoryUseCase(
@@ -268,6 +271,7 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		Type:    domain.ActivityRepoCreate,
 		Summary: activitySummary("created repository %s", name),
 	})
+	uc.ScheduleCodeIndex(repo.ID)
 
 	return &item, nil
 }
@@ -305,7 +309,7 @@ func (uc *RepositoryUseCase) ListPublic(ctx context.Context, limit, offset int, 
 		return nil, fmt.Errorf("list public repositories: %w", err)
 	}
 
-	return uc.mapReposWithOwners(repos)
+	return uc.mapReposWithOwners(ctx, repos)
 }
 
 func (uc *RepositoryUseCase) ListHome(ctx context.Context, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
@@ -319,7 +323,7 @@ func (uc *RepositoryUseCase) ListHome(ctx context.Context, limit, offset int, or
 		return nil, fmt.Errorf("list home repositories: %w", err)
 	}
 
-	return uc.mapReposWithOwners(repos)
+	return uc.mapReposWithOwners(ctx, repos)
 }
 
 func (uc *RepositoryUseCase) ListShared(ctx context.Context, userID uint, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
@@ -337,7 +341,7 @@ func (uc *RepositoryUseCase) ListShared(ctx context.Context, userID uint, limit,
 		return nil, fmt.Errorf("list shared repositories: %w", err)
 	}
 
-	return uc.mapReposWithOwners(repos)
+	return uc.mapReposWithOwners(ctx, repos)
 }
 
 func (uc *RepositoryUseCase) Search(ctx context.Context, query string, ownerID uint, publicOnly bool, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
@@ -357,7 +361,7 @@ func (uc *RepositoryUseCase) Search(ctx context.Context, query string, ownerID u
 	}
 
 	if publicOnly || ownerID == 0 {
-		return uc.mapReposWithOwners(repos)
+		return uc.mapReposWithOwners(ctx, repos)
 	}
 
 	owner, err := uc.users.FindByID(ctx, ownerID)
@@ -373,7 +377,7 @@ func (uc *RepositoryUseCase) Get(ctx context.Context, in ResolveRepositoryInput)
 		return nil, err
 	}
 
-	repo, ownerSlug, err := uc.resolve(in)
+	repo, ownerSlug, err := uc.resolve(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +399,7 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 		return nil, ErrUnauthorized
 	}
 
-	repo, ownerSlug, err := uc.resolve(ResolveRepositoryInput{
+	repo, ownerSlug, err := uc.resolve(ctx, ResolveRepositoryInput{
 		Name:     in.Name,
 		ViewerID: in.ViewerID,
 	})
@@ -406,6 +410,12 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
 		return nil, ErrRepoNotFound
 	}
+
+	if err := uc.requireUpdateStepUp(ctx, repo, in); err != nil {
+		return nil, err
+	}
+
+	wasPrivate := repo.IsPrivate
 
 	if in.Description != nil {
 		repo.Description = strings.TrimSpace(*in.Description)
@@ -496,8 +506,33 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 		return nil, fmt.Errorf("update repository: %w", err)
 	}
 
+	if wasPrivate && !repo.IsPrivate && uc.activity != nil {
+		if err := uc.activity.DeleteByRepo(ctx, repo.ID); err != nil {
+			slog.Warn("clear activity after making repo public", "repo_id", repo.ID, "err", err)
+		}
+	}
+
 	item := uc.toRepositoryItem(repo, ownerSlug, in.ViewerID)
 	return &item, nil
+}
+
+func (uc *RepositoryUseCase) requireUpdateStepUp(ctx context.Context, repo *domain.Repository, in UpdateRepositoryInput) error {
+	sensitive := in.Private != nil && *in.Private != repo.IsPrivate
+
+	if !sensitive && in.NewName != nil {
+		newName, err := normalizeRepoName(*in.NewName)
+		if err != nil {
+			return err
+		}
+
+		sensitive = newName != repo.Name
+	}
+
+	if !sensitive {
+		return nil
+	}
+
+	return uc.requireViewerPassword(ctx, in.ViewerID, in.CurrentPassword)
 }
 
 type DeleteRepositoryInput struct {
@@ -515,7 +550,7 @@ func (uc *RepositoryUseCase) Delete(ctx context.Context, in DeleteRepositoryInpu
 		return ErrUnauthorized
 	}
 
-	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
+	repo, _, err := uc.resolve(ctx, in.ResolveRepositoryInput)
 	if err != nil {
 		return err
 	}
@@ -542,6 +577,7 @@ func (uc *RepositoryUseCase) Delete(ctx context.Context, in DeleteRepositoryInpu
 	}
 
 	uc.releaseMirrorRuntime(repo.ID)
+	uc.DropCodeIndex(ctx, repo.ID)
 	if uc.mirror.events != nil {
 		if err := uc.mirror.events.DeleteByRepo(ctx, repo.ID); err != nil {
 			slog.Warn("delete mirror events", "repo_id", repo.ID, "err", err)
@@ -563,7 +599,7 @@ func (uc *RepositoryUseCase) SetPasswordHasher(h domain.PasswordHasher) {
 
 func (uc *RepositoryUseCase) requireViewerPassword(ctx context.Context, viewerID uint, password string) error {
 	if uc == nil || uc.hasher == nil || uc.users == nil {
-		return nil
+		return ErrPasswordRequired
 	}
 
 	password = strings.TrimSpace(password)
@@ -592,6 +628,7 @@ func (uc *RepositoryUseCase) PurgeSoftDeletedRepos(ctx context.Context, olderTha
 	var errs []error
 	for _, id := range ids {
 		uc.releaseMirrorRuntime(id)
+		uc.DropCodeIndex(ctx, id)
 		if uc.mirror.events != nil {
 			if err := uc.mirror.events.DeleteByRepo(ctx, id); err != nil {
 				errs = append(errs, fmt.Errorf("delete mirror events for repository %d: %w", id, err))
@@ -602,7 +639,7 @@ func (uc *RepositoryUseCase) PurgeSoftDeletedRepos(ctx context.Context, olderTha
 	return len(ids), errors.Join(errs...)
 }
 
-func (uc *RepositoryUseCase) resolve(in ResolveRepositoryInput) (*domain.Repository, string, error) {
+func (uc *RepositoryUseCase) resolve(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, string, error) {
 	name, err := normalizeRepoName(in.Name)
 	if err != nil {
 		return nil, "", err
@@ -613,13 +650,13 @@ func (uc *RepositoryUseCase) resolve(in ResolveRepositoryInput) (*domain.Reposit
 		return nil, "", ErrRepoNotFound
 	}
 
-	repo, err := uc.store.FindByRepoPath(context.Background(), logical)
+	repo, err := uc.store.FindByRepoPath(ctx, logical)
 	if err != nil {
 		return nil, "", ErrRepoNotFound
 	}
 
 	ownerSlug := ""
-	if user, uerr := uc.users.FindByID(context.Background(), repo.OwnerID); uerr == nil {
+	if user, uerr := uc.users.FindByID(ctx, repo.OwnerID); uerr == nil {
 		ownerSlug = user.Username
 	}
 
@@ -635,13 +672,13 @@ func (uc *RepositoryUseCase) mapRepos(repos []domain.Repository, ownerUsername s
 	return items, nil
 }
 
-func (uc *RepositoryUseCase) mapReposWithOwners(repos []domain.Repository) ([]RepositoryItem, error) {
+func (uc *RepositoryUseCase) mapReposWithOwners(ctx context.Context, repos []domain.Repository) ([]RepositoryItem, error) {
 	items := make([]RepositoryItem, 0, len(repos))
 	userCache := map[uint]string{}
 	for _, repo := range repos {
 		username, ok := userCache[repo.OwnerID]
 		if !ok {
-			user, err := uc.users.FindByID(context.Background(), repo.OwnerID)
+			user, err := uc.users.FindByID(ctx, repo.OwnerID)
 			if err != nil {
 				continue
 			}
@@ -661,12 +698,12 @@ func buildRepoDiskPath(basePath, name string) string {
 }
 
 func normalizeRepoName(raw string) (string, error) {
-	name := strings.TrimSpace(raw)
+	name := strings.ToLower(strings.TrimSpace(raw))
 	if name == "" {
 		return "", ErrNameRequired
 	}
 
-	if strings.HasSuffix(strings.ToLower(name), ".git") {
+	if strings.HasSuffix(name, ".git") {
 		name = name[:len(name)-4]
 	}
 
@@ -706,15 +743,8 @@ func (uc *RepositoryUseCase) nameCollisionForViewer(ctx context.Context, name, l
 		return nil
 	}
 
-	if visible && uc.authz != nil && uc.authz.CanReadRepo(other, viewerID) == nil {
-		return ErrAlreadyExists
-	}
-
-	if visible && uc.authz == nil {
-		return ErrAlreadyExists
-	}
-
-	return ErrInvalidName
+	_ = visible
+	return ErrAlreadyExists
 }
 
 func (uc *RepositoryUseCase) toRepositoryItem(repo *domain.Repository, ownerUsername string, viewerID uint) RepositoryItem {

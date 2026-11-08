@@ -39,30 +39,31 @@ type createRepoRequest struct {
 }
 
 type configureMirrorRequest struct {
-	Enabled        *bool   `json:"enabled"`
-	Direction      string  `json:"direction"`
-	URL            string  `json:"url"`
-	Username       *string `json:"username"`
-	Password       *string `json:"password"`
-	Clear          bool    `json:"clear"`
-	ClearPassword  bool    `json:"clear_password"`
-	Interval       *string `json:"interval"`
-	SyncWindow     *string `json:"sync_window"`
-	Force          *bool   `json:"force"`
-	Prune          *bool   `json:"prune"`
-	Refspecs       *string `json:"refspecs"`
-	SSHPrivateKey  *string `json:"ssh_private_key"`
-	SSHPassphrase  *string `json:"ssh_passphrase"`
-	ClearSSHKey    bool    `json:"clear_ssh_key"`
-	InsecureTLS    *bool   `json:"insecure_tls"`
-	PinnedHosts    *string `json:"pinned_hosts"`
-	LFS            *bool   `json:"lfs"`
-	MaxBytes       *int64  `json:"max_bytes"`
-	ConflictPolicy *string `json:"conflict_policy"`
-	OwnerOnly      *bool   `json:"owner_only"`
-	GroupID        *uint   `json:"group_id"`
-	Partial        *bool   `json:"partial"`
-	VerifySigned   *bool   `json:"verify_signed"`
+	Enabled         *bool   `json:"enabled"`
+	Direction       string  `json:"direction"`
+	URL             string  `json:"url"`
+	Username        *string `json:"username"`
+	Password        *string `json:"password"`
+	Clear           bool    `json:"clear"`
+	ClearPassword   bool    `json:"clear_password"`
+	Interval        *string `json:"interval"`
+	SyncWindow      *string `json:"sync_window"`
+	Force           *bool   `json:"force"`
+	Prune           *bool   `json:"prune"`
+	Refspecs        *string `json:"refspecs"`
+	SSHPrivateKey   *string `json:"ssh_private_key"`
+	SSHPassphrase   *string `json:"ssh_passphrase"`
+	ClearSSHKey     bool    `json:"clear_ssh_key"`
+	InsecureTLS     *bool   `json:"insecure_tls"`
+	PinnedHosts     *string `json:"pinned_hosts"`
+	LFS             *bool   `json:"lfs"`
+	MaxBytes        *int64  `json:"max_bytes"`
+	ConflictPolicy  *string `json:"conflict_policy"`
+	OwnerOnly       *bool   `json:"owner_only"`
+	GroupID         *uint   `json:"group_id"`
+	Partial         *bool   `json:"partial"`
+	VerifySigned    *bool   `json:"verify_signed"`
+	CurrentPassword string  `json:"current_password"`
 }
 
 type updateRepoRequest struct {
@@ -73,6 +74,7 @@ type updateRepoRequest struct {
 	DefaultBranch        *string `json:"default_branch"`
 	ProtectDefaultBranch *bool   `json:"protect_default_branch"`
 	IssuesEnabled        *bool   `json:"issues_enabled"`
+	CurrentPassword      string  `json:"current_password"`
 }
 
 type deleteRepoRequest struct {
@@ -298,6 +300,7 @@ func (h *RepositoryHandler) Update(c *httpx.Context) error {
 		DefaultBranch:        req.DefaultBranch,
 		ProtectDefaultBranch: req.ProtectDefaultBranch,
 		IssuesEnabled:        req.IssuesEnabled,
+		CurrentPassword:      req.CurrentPassword,
 	})
 	if err != nil {
 		return mapError(c, err)
@@ -318,12 +321,10 @@ func (h *RepositoryHandler) Delete(c *httpx.Context) error {
 	}
 
 	confirm := ""
-	currentPassword := strings.TrimSpace(c.R.Header.Get("X-Repo-Password"))
+	currentPassword := ""
 	if req, bindErr := httpx.BindJSON[deleteRepoRequest](c); bindErr == nil {
 		confirm = req.Confirm
-		if req.CurrentPassword != "" {
-			currentPassword = req.CurrentPassword
-		}
+		currentPassword = req.CurrentPassword
 	}
 
 	err = h.repos.Delete(c.Ctx(), usecase.DeleteRepositoryInput{
@@ -365,32 +366,33 @@ func (h *RepositoryHandler) ConfigureMirror(c *httpx.Context) error {
 	}
 
 	out, err := h.repos.ConfigureMirror(c.Ctx(), usecase.ConfigureMirrorInput{
-		ViewerID:       user.ID,
-		Name:           name,
-		Direction:      req.Direction,
-		URL:            req.URL,
-		Username:       req.Username,
-		Password:       req.Password,
-		ClearPassword:  req.ClearPassword,
-		Enabled:        enabled,
-		Clear:          req.Clear,
-		Interval:       req.Interval,
-		SyncWindow:     req.SyncWindow,
-		Force:          req.Force,
-		Prune:          req.Prune,
-		Refspecs:       req.Refspecs,
-		SSHPrivateKey:  req.SSHPrivateKey,
-		SSHPassphrase:  req.SSHPassphrase,
-		ClearSSHKey:    req.ClearSSHKey,
-		InsecureTLS:    req.InsecureTLS,
-		PinnedHosts:    req.PinnedHosts,
-		LFS:            req.LFS,
-		MaxBytes:       req.MaxBytes,
-		ConflictPolicy: req.ConflictPolicy,
-		OwnerOnly:      req.OwnerOnly,
-		GroupID:        req.GroupID,
-		Partial:        req.Partial,
-		VerifySigned:   req.VerifySigned,
+		ViewerID:        user.ID,
+		Name:            name,
+		Direction:       req.Direction,
+		URL:             req.URL,
+		Username:        req.Username,
+		Password:        req.Password,
+		ClearPassword:   req.ClearPassword,
+		Enabled:         enabled,
+		Clear:           req.Clear,
+		Interval:        req.Interval,
+		SyncWindow:      req.SyncWindow,
+		Force:           req.Force,
+		Prune:           req.Prune,
+		Refspecs:        req.Refspecs,
+		SSHPrivateKey:   req.SSHPrivateKey,
+		SSHPassphrase:   req.SSHPassphrase,
+		ClearSSHKey:     req.ClearSSHKey,
+		InsecureTLS:     req.InsecureTLS,
+		PinnedHosts:     req.PinnedHosts,
+		LFS:             req.LFS,
+		MaxBytes:        req.MaxBytes,
+		ConflictPolicy:  req.ConflictPolicy,
+		OwnerOnly:       req.OwnerOnly,
+		GroupID:         req.GroupID,
+		Partial:         req.Partial,
+		VerifySigned:    req.VerifySigned,
+		CurrentPassword: req.CurrentPassword,
 	})
 	if err != nil {
 		return mapError(c, err)

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -135,7 +136,7 @@ func (h *AuthHandler) Password(c *httpx.Context) error {
 		UserID:    user.ID,
 		Current:   req.Current,
 		Next:      req.Next,
-		KeepToken: middleware.SessionToken(c.R),
+		KeepToken: middleware.SessionTokenFor(c.R, h.secure),
 	}); err != nil {
 		return mapError(c, err)
 	}
@@ -144,9 +145,10 @@ func (h *AuthHandler) Password(c *httpx.Context) error {
 }
 
 func (h *AuthHandler) Logout(c *httpx.Context) error {
-	token := middleware.SessionToken(c.R)
+	token := middleware.SessionTokenFor(c.R, h.secure)
 	user, _ := h.auth.Me(c.Ctx(), token)
 	_ = h.auth.Logout(c.Ctx(), token)
+
 	h.clearSessionCookie(c.W, c.R)
 	h.rotateAnonymousCSRF(c.W, c.R)
 	if h.access != nil {
@@ -157,14 +159,21 @@ func (h *AuthHandler) Logout(c *httpx.Context) error {
 }
 
 func (h *AuthHandler) Me(c *httpx.Context) error {
-	token := middleware.SessionToken(c.R)
+	token := middleware.SessionTokenFor(c.R, h.secure)
 	if token == "" {
 		return c.JSON(http.StatusOK, nil)
 	}
 
 	user, err := h.auth.Me(c.Ctx(), token)
 	if err != nil {
-		return c.JSON(http.StatusOK, nil)
+		if appErr, ok := errors.AsType[*usecase.Error](err); ok && appErr.Kind == usecase.KindUnauthorized {
+			h.clearSessionCookie(c.W, c.R)
+			h.rotateAnonymousCSRF(c.W, c.R)
+
+			return c.Error(http.StatusUnauthorized, appErr.Code)
+		}
+
+		return mapError(c, err)
 	}
 
 	return httpx.OK(c, userResponse(user))
@@ -180,7 +189,7 @@ func (h *AuthHandler) ListSessions(c *httpx.Context) error {
 		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	items, err := h.auth.ListSessions(c.Ctx(), user.ID, middleware.SessionToken(c.R))
+	items, err := h.auth.ListSessions(c.Ctx(), user.ID, middleware.SessionTokenFor(c.R, h.secure))
 	if err != nil {
 		return mapError(c, err)
 	}
@@ -199,7 +208,7 @@ func (h *AuthHandler) RevokeSession(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
-	revokedCurrent, err := h.auth.RevokeSession(c.Ctx(), user.ID, id, middleware.SessionToken(c.R))
+	revokedCurrent, err := h.auth.RevokeSession(c.Ctx(), user.ID, id, middleware.SessionTokenFor(c.R, h.secure))
 	if err != nil {
 		return mapError(c, err)
 	}
@@ -218,7 +227,7 @@ func (h *AuthHandler) RevokeOtherSessions(c *httpx.Context) error {
 		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	token := middleware.SessionToken(c.R)
+	token := middleware.SessionTokenFor(c.R, h.secure)
 	if err := h.auth.RevokeOtherSessions(c.Ctx(), user.ID, token); err != nil {
 		return mapError(c, err)
 	}
@@ -231,7 +240,12 @@ func (h *AuthHandler) RevokeAllSessions(c *httpx.Context) error {
 		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if err := h.auth.RevokeAllSessions(c.Ctx(), user.ID); err != nil {
+	currentPassword := ""
+	if req, bindErr := httpx.BindJSON[stepUpRequest](c); bindErr == nil {
+		currentPassword = req.CurrentPassword
+	}
+
+	if err := h.auth.RevokeAllSessions(c.Ctx(), user.ID, currentPassword); err != nil {
 		return mapError(c, err)
 	}
 	h.clearSessionCookie(c.W, c.R)
@@ -253,7 +267,7 @@ func (h *AuthHandler) rotateAnonymousCSRF(w http.ResponseWriter, r *http.Request
 
 func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     middleware.SessionCookie,
+		Name:     middleware.SessionCookieName(r, h.secure),
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
@@ -265,12 +279,13 @@ func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, r *http.Request, t
 }
 
 func (h *AuthHandler) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	name := middleware.SessionCookieName(r, h.secure)
 	http.SetCookie(w, &http.Cookie{
-		Name:     middleware.SessionCookie,
+		Name:     name,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.secure || middleware.IsHTTPS(r),
+		Secure:   h.secure || middleware.IsHTTPS(r) || name == middleware.HostSessionCookie,
 		SameSite: h.sameSite,
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),

@@ -23,4 +23,5 @@ export interface MirrorConfigureBody {
   owner_only?: boolean
   partial?: boolean
   verify_signed?: boolean
+  current_password?: string
 }

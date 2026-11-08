@@ -111,6 +111,7 @@ export const reposApi = {
       body: JSON.stringify(body),
     })
   },
+
   syncMirror(path: string) {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}/mirror/sync`, {
       method: 'POST',
@@ -139,6 +140,7 @@ export const reposApi = {
       default_branch?: string
       protect_default_branch?: boolean
       issues_enabled?: boolean
+      current_password?: string
     },
   ) {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}`, {
@@ -175,8 +177,8 @@ export const reposApi = {
       body: JSON.stringify(body),
     })
   },
-  revokeTeam(path: string, slug: string) {
-    return api<void>(`/api/repos/${encodeRepoPath(path)}/teams/${encodeURIComponent(slug)}`, {
+  revokeTeam(path: string, teamID: number) {
+    return api<void>(`/api/repos/${encodeRepoPath(path)}/teams/${teamID}`, {
       method: 'DELETE',
     })
   },

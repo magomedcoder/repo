@@ -19,6 +19,7 @@ const (
 	securityQueueSize   = 4096
 	visitQueueSize      = 512
 	securityEnqueueWait = 500 * time.Millisecond
+	metricsReportEvery  = time.Minute
 	accessLogRetention  = 90 * 24 * time.Hour
 	accessVisitThrottle = time.Minute
 	accessPurgeEveryN   = 128
@@ -42,6 +43,9 @@ type Logger struct {
 	closeOnce sync.Once
 
 	writes atomic.Uint64
+
+	securityDrops atomic.Uint64
+	syncWrites    atomic.Uint64
 }
 
 type visitWindow struct {
@@ -81,6 +85,10 @@ func (l *Logger) Close() {
 func (l *Logger) worker() {
 	defer close(l.done)
 
+	metrics := time.NewTicker(metricsReportEvery)
+	defer metrics.Stop()
+	var lastDrops, lastSync uint64
+
 	for {
 		select {
 		case ev := <-l.security:
@@ -94,8 +102,11 @@ func (l *Logger) worker() {
 			l.write(ev)
 		case ev := <-l.visits:
 			l.write(ev)
+		case <-metrics.C:
+			l.reportMetrics(&lastDrops, &lastSync)
 		case <-l.stop:
 			l.drain()
+			l.reportMetrics(&lastDrops, &lastSync)
 			return
 		}
 	}
@@ -359,8 +370,41 @@ func (l *Logger) record(r *http.Request, action string, user *domain.User, repo,
 	case l.security <- ev:
 	case <-l.stop:
 	case <-t.C:
-		slog.Error("access_log_security_dropped", "action", action)
+		if action == domain.AccessFailedAuth {
+			l.syncWrites.Add(1)
+			l.write(ev)
+			return
+		}
+
+		l.securityDrops.Add(1)
+		slog.Error("access_log_security_dropped", "action", action, "total_dropped", l.securityDrops.Load())
 	}
+}
+
+func (l *Logger) SecurityDrops() uint64 {
+	if l == nil {
+		return 0
+	}
+
+	return l.securityDrops.Load()
+}
+
+func (l *Logger) SyncFallbacks() uint64 {
+	if l == nil {
+		return 0
+	}
+
+	return l.syncWrites.Load()
+}
+
+func (l *Logger) reportMetrics(lastDrops, lastSync *uint64) {
+	drops, syncs := l.securityDrops.Load(), l.syncWrites.Load()
+	if drops == *lastDrops && syncs == *lastSync {
+		return
+	}
+
+	*lastDrops, *lastSync = drops, syncs
+	slog.Warn("access_log_metrics", "security_dropped_total", drops, "security_sync_fallback_total", syncs, "security_queue_len", len(l.security), "visit_queue_len", len(l.visits))
 }
 
 func loginFingerprint(login string) string {

@@ -321,6 +321,8 @@ func TestSyncWindow(t *testing.T) {
 		{"22:00-04:00", 23, true},
 		{"22:00-04:00", 2, true},
 		{"22:00-04:00", 12, false},
+		{"garbage", 3, false},
+		{"25:00-26:00", 3, false},
 	}
 
 	for _, c := range cases {
@@ -406,13 +408,14 @@ func TestConfigureStoresCredsAndNeverReturnsSecrets(t *testing.T) {
 
 	pw := "hunter2-secret"
 	item, err := e.uc.ConfigureMirror(context.Background(), ConfigureMirrorInput{
-		ViewerID:  1,
-		Name:      "app",
-		Direction: domain.MirrorPush,
-		Enabled:   true,
-		URL:       "https://git.example.com/org/app.git",
-		Username:  new("bot"),
-		Password:  &pw,
+		ViewerID:        1,
+		Name:            "app",
+		Direction:       domain.MirrorPush,
+		Enabled:         true,
+		URL:             "https://git.example.com/org/app.git",
+		Username:        new("bot"),
+		Password:        &pw,
+		CurrentPassword: "secret",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -433,11 +436,12 @@ func TestConfigureStoresCredsAndNeverReturnsSecrets(t *testing.T) {
 	}
 
 	if _, err := e.uc.ConfigureMirror(context.Background(), ConfigureMirrorInput{
-		ViewerID:  1,
-		Name:      "app",
-		Direction: domain.MirrorPush,
-		Enabled:   true,
-		URL:       "file:///etc",
+		ViewerID:        1,
+		Name:            "app",
+		Direction:       domain.MirrorPush,
+		Enabled:         true,
+		URL:             "file:///etc",
+		CurrentPassword: "secret",
 	}); !errors.Is(err, ErrInvalidMirrorURL) {
 		t.Fatalf("bad url: %v", err)
 	}
@@ -447,8 +451,8 @@ func TestOpenSecretRejectsUnsealed(t *testing.T) {
 	t.Parallel()
 
 	e := newMirrorEnv()
-	if _, err := e.uc.openSecret("legacy-plaintext"); !errors.Is(err, ErrMirrorSecretUnsealed) {
-		t.Fatalf("want ErrMirrorSecretUnsealed, got %v", err)
+	if _, err := e.uc.openSecret("plaintext"); !errors.Is(err, secretbox.ErrNotSealed) {
+		t.Fatalf("want secretbox.ErrNotSealed, got %v", err)
 	}
 
 	if plain, err := e.uc.openSecret(""); err != nil || plain != "" {

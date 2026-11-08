@@ -50,6 +50,20 @@ func (s *memActivity) DeleteOlderThan(_ context.Context, before time.Time) (int6
 	return n, nil
 }
 
+func (s *memActivity) DeleteByRepo(_ context.Context, repoID uint) error {
+	kept := s.events[:0]
+	for _, ev := range s.events {
+		if ev.RepoID != nil && *ev.RepoID == repoID {
+			continue
+		}
+
+		kept = append(kept, ev)
+	}
+	s.events = kept
+
+	return nil
+}
+
 type memRepos struct {
 	items []domain.Repository
 }

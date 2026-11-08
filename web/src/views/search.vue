@@ -20,6 +20,7 @@ const PAGE_SIZE = 50
 
 const repos = ref<Repository[]>([])
 const codeHits = ref<CodeSearchHit[]>([])
+const codeCursor = ref('')
 const loading = ref(false)
 const loadingMore = ref(false)
 const hasMore = ref(false)
@@ -40,6 +41,7 @@ async function runSearch(append = false) {
   if (query.length < 2) {
     repos.value = []
     codeHits.value = []
+    codeCursor.value = ''
     hasMore.value = false
     error.value = ''
     return
@@ -48,6 +50,7 @@ async function runSearch(append = false) {
   if (!append) {
     abort?.abort()
     abort = new AbortController()
+    codeCursor.value = ''
   }
   const signal = abort?.signal
 
@@ -60,13 +63,21 @@ async function runSearch(append = false) {
   error.value = ''
   try {
     if (tab.value === 'code') {
-      const res = await searchApi.code(query, signal ? { signal } : undefined)
+      const res = await searchApi.code(
+        query,
+        append && codeCursor.value ? { cursor: codeCursor.value } : undefined,
+        signal ? { signal } : undefined,
+      )
+      
       if (signal?.aborted) {
         return
       }
-      codeHits.value = res.items ?? []
+
+      const batch = res.items ?? []
+      codeHits.value = append ? [...codeHits.value, ...batch] : batch
+      codeCursor.value = res.next_cursor || ''
       repos.value = []
-      hasMore.value = false
+      hasMore.value = !!res.next_cursor
     } else {
       const offset = append ? repos.value.length : 0
       const res = await searchApi.repositories(
@@ -96,7 +107,7 @@ async function runSearch(append = false) {
 }
 
 function loadMore() {
-  if (!loadingMore.value && hasMore.value && tab.value === 'repositories' && canSearch.value) {
+  if (!loadingMore.value && hasMore.value && canSearch.value) {
     void runSearch(true)
   }
 }

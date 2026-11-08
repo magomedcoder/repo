@@ -31,13 +31,13 @@ func (uc *RepositoryUseCase) VerifyMirror(ctx context.Context, in VerifyMirrorIn
 		return nil, ErrUnauthorized
 	}
 
-	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
+	repo, _, err := uc.resolve(ctx, in.ResolveRepositoryInput)
 	if err != nil {
 		return nil, err
 	}
 
-	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
-		return nil, ErrRepoNotFound
+	if err := uc.requireMirrorMutate(ctx, repo, in.ViewerID); err != nil {
+		return nil, err
 	}
 
 	if !uc.mirrorLimiter().allow(repo.ID|checkLimiterBit, time.Now()) {

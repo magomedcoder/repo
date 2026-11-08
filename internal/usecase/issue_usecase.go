@@ -85,7 +85,7 @@ func (uc *IssueUseCase) List(ctx context.Context, in ResolveRepositoryInput, sta
 		return nil, err
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (uc *IssueUseCase) Get(ctx context.Context, in ResolveRepositoryInput, numb
 		return nil, err
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func (uc *IssueUseCase) Create(ctx context.Context, in ResolveRepositoryInput, t
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func (uc *IssueUseCase) Update(ctx context.Context, in ResolveRepositoryInput, n
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func (uc *IssueUseCase) Delete(ctx context.Context, in ResolveRepositoryInput, n
 		return ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return err
 	}
@@ -294,7 +294,7 @@ func (uc *IssueUseCase) AddComment(ctx context.Context, in ResolveRepositoryInpu
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +330,7 @@ func (uc *IssueUseCase) UpdateComment(ctx context.Context, in ResolveRepositoryI
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +371,7 @@ func (uc *IssueUseCase) DeleteComment(ctx context.Context, in ResolveRepositoryI
 		return ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return err
 	}
@@ -402,7 +402,7 @@ func (uc *IssueUseCase) ListLabels(ctx context.Context, in ResolveRepositoryInpu
 		return nil, err
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +420,7 @@ func (uc *IssueUseCase) CreateLabel(ctx context.Context, in ResolveRepositoryInp
 		return nil, err
 	}
 
-	repo, err := uc.ownerRepo(in)
+	repo, err := uc.ownerRepo(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +455,7 @@ func (uc *IssueUseCase) UpdateLabel(ctx context.Context, in ResolveRepositoryInp
 		return nil, err
 	}
 
-	repo, err := uc.ownerRepo(in)
+	repo, err := uc.ownerRepo(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -497,7 +497,7 @@ func (uc *IssueUseCase) DeleteLabel(ctx context.Context, in ResolveRepositoryInp
 		return err
 	}
 
-	repo, err := uc.ownerRepo(in)
+	repo, err := uc.ownerRepo(ctx, in)
 	if err != nil {
 		return err
 	}
@@ -521,8 +521,8 @@ func (uc *IssueUseCase) DeleteLabel(ctx context.Context, in ResolveRepositoryInp
 	return nil
 }
 
-func (uc *IssueUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	repo, err := ResolveReadable(uc.repos, uc.authz, in)
+func (uc *IssueUseCase) readable(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, error) {
+	repo, err := ResolveReadable(ctx, uc.repos, uc.authz, in)
 	if err != nil {
 		return nil, err
 	}
@@ -534,12 +534,12 @@ func (uc *IssueUseCase) readable(in ResolveRepositoryInput) (*domain.Repository,
 	return repo, nil
 }
 
-func (uc *IssueUseCase) ownerRepo(in ResolveRepositoryInput) (*domain.Repository, error) {
+func (uc *IssueUseCase) ownerRepo(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, error) {
 	if in.ViewerID == 0 {
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}

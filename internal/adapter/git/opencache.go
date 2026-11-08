@@ -26,6 +26,10 @@ func (c *openCache) getOrOpen(path string, open func() (*gogit.Repository, error
 	return c.c.GetOrOpen(path, open)
 }
 
+func (c *openCache) Len() int {
+	return c.c.Len()
+}
+
 func (c *openCache) evict(path string) {
 	c.c.Evict(path)
 }

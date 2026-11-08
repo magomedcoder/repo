@@ -24,6 +24,10 @@ type siteResponse struct {
 	Name string `json:"name"`
 }
 
+type stepUpRequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
 type passwordChangeRequest struct {
 	Current string `json:"current"`
 	Next    string `json:"next"`

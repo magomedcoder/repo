@@ -4,6 +4,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -21,9 +22,10 @@ const (
 type ctxKey struct{}
 
 var (
-	once     sync.Once
-	loadErr  error
-	messages map[Locale]map[string]string
+	once         sync.Once
+	loadFailOnce sync.Once
+	loadErr      error
+	messages     map[Locale]map[string]string
 )
 
 func load() {
@@ -45,11 +47,22 @@ func load() {
 	}
 }
 
-func ensureLoaded() {
+func Preload() error {
 	once.Do(load)
 	if loadErr != nil {
-		panic("i18n: load locales: " + loadErr.Error())
+		return fmt.Errorf("i18n: load locales: %w", loadErr)
 	}
+
+	return nil
+}
+
+func ensureLoaded() bool {
+	if err := Preload(); err != nil {
+		loadFailOnce.Do(func() { slog.Error("i18n unavailable, falling back to message keys", "err", err) })
+		return false
+	}
+
+	return true
 }
 
 func ParseAcceptLanguage(header string) Locale {
@@ -85,7 +98,10 @@ func FromContext(ctx context.Context) Locale {
 }
 
 func T(ctx context.Context, key string) string {
-	ensureLoaded()
+	if !ensureLoaded() {
+		return key
+	}
+
 	locale := FromContext(ctx)
 	if msg, ok := messages[locale][key]; ok {
 		return msg
@@ -99,7 +115,7 @@ func T(ctx context.Context, key string) string {
 }
 
 func Middleware(next http.Handler) http.Handler {
-	ensureLoaded()
+	_ = ensureLoaded()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		locale := ParseAcceptLanguage(r.Header.Get("Accept-Language"))
 		next.ServeHTTP(w, r.WithContext(WithLocale(r.Context(), locale)))

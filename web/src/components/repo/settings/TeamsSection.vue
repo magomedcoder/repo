@@ -13,7 +13,7 @@ defineProps<{
 
 const emit = defineEmits<{
   submit: []
-  revoke: [slug: string]
+  revoke: [teamID: number]
 }>()
 
 const teamSlug = defineModel<string>('teamSlug', { required: true })
@@ -63,17 +63,18 @@ const showForm = defineModel<boolean>('showForm', { required: true })
     <ul class="divide-y divide-line">
       <li
         v-for="g in grants"
-        :key="g.team_slug"
+        :key="g.team_id"
         class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4"
       >
         <div>
           <p class="font-semibold">{{ g.team_name }}</p>
           <p class="text-xs text-ink-muted">
             {{ $t(`collaborators.roles.${g.role}`) }}
+            <span v-if="g.team_owner && !g.owned"> @{{ g.team_owner }}</span>
             <span v-if="!g.owned"> {{ $t('repoSettings.teams.external') }}</span>
           </p>
         </div>
-        <button type="button" class="btn-warn" @click="emit('revoke', g.team_slug)">
+        <button type="button" class="btn-warn" @click="emit('revoke', g.team_id)">
           <Icon name="trash" size="sm" />
           {{ $t('repoSettings.teams.revoke') }}
         </button>

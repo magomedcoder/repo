@@ -77,6 +77,53 @@ type AdminUseCase struct {
 	hasher   domain.PasswordHasher
 	repos    domain.RepositoryStore
 	logs     domain.AccessLogStore
+
+	collabs     domain.RepoCollaboratorStore
+	teams       domain.TeamStore
+	teamMembers domain.TeamMemberStore
+	teamGrants  domain.TeamRepoGrantStore
+}
+
+func (uc *AdminUseCase) SetAccessCleanup(collabs domain.RepoCollaboratorStore, teams domain.TeamStore, members domain.TeamMemberStore, grants domain.TeamRepoGrantStore) {
+	uc.collabs = collabs
+	uc.teams = teams
+	uc.teamMembers = members
+	uc.teamGrants = grants
+}
+
+func (uc *AdminUseCase) cleanupUserAccess(userID uint) error {
+	if uc.collabs != nil {
+		if err := uc.collabs.DeleteByUserID(userID); err != nil {
+			return fmt.Errorf("delete collaborators: %w", err)
+		}
+	}
+
+	if uc.teams != nil {
+		owned, err := uc.teams.ListByOwner(userID)
+		if err != nil {
+			return fmt.Errorf("list owned teams: %w", err)
+		}
+
+		for _, t := range owned {
+			if uc.teamGrants != nil {
+				if err := uc.teamGrants.DeleteByTeam(t.ID); err != nil {
+					return fmt.Errorf("delete team grants: %w", err)
+				}
+			}
+
+			if uc.teamMembers != nil {
+				if err := uc.teamMembers.DeleteByTeam(t.ID); err != nil {
+					return fmt.Errorf("delete team members: %w", err)
+				}
+			}
+
+			if err := uc.teams.Delete(t.ID); err != nil {
+				return fmt.Errorf("delete team: %w", err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func NewAdminUseCase(users domain.UserStore, sessions domain.SessionStore, tokens domain.AccessTokenStore, auth *AuthUseCase, hasher domain.PasswordHasher) *AdminUseCase {
@@ -94,8 +141,29 @@ func (uc *AdminUseCase) SetDataStores(repos domain.RepositoryStore, logs domain.
 	uc.logs = logs
 }
 
-func (uc *AdminUseCase) Overview(ctx context.Context) (*AdminOverview, error) {
+func (uc *AdminUseCase) requireSiteAdmin(ctx context.Context, actorID uint) error {
+	if actorID == 0 {
+		return ErrUnauthorized
+	}
+
+	actor, err := uc.users.FindByID(ctx, actorID)
+	if err != nil || actor == nil {
+		return ErrUnauthorized
+	}
+
+	if !actor.IsAdmin() {
+		return ErrAdminRequired
+	}
+
+	return nil
+}
+
+func (uc *AdminUseCase) Overview(ctx context.Context, actorID uint) (*AdminOverview, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := uc.requireSiteAdmin(ctx, actorID); err != nil {
 		return nil, err
 	}
 
@@ -162,10 +230,15 @@ type AdminListInput struct {
 	Offset int
 }
 
-func (uc *AdminUseCase) ListUsers(ctx context.Context, in AdminListInput) (*AdminListResult, error) {
+func (uc *AdminUseCase) ListUsers(ctx context.Context, actorID uint, in AdminListInput) (*AdminListResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	if err := uc.requireSiteAdmin(ctx, actorID); err != nil {
+		return nil, err
+	}
+
 	offset, limit := ClampPagination(in.Offset, in.Limit, DefaultPageLimit, 100)
 
 	users, total, err := uc.users.List(domain.UserListFilter{
@@ -192,10 +265,15 @@ func (uc *AdminUseCase) ListUsers(ctx context.Context, in AdminListInput) (*Admi
 	}, nil
 }
 
-func (uc *AdminUseCase) ListRepos(ctx context.Context, filter domain.AdminRepoFilter) (*AdminRepoListResult, error) {
+func (uc *AdminUseCase) ListRepos(ctx context.Context, actorID uint, filter domain.AdminRepoFilter) (*AdminRepoListResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	if err := uc.requireSiteAdmin(ctx, actorID); err != nil {
+		return nil, err
+	}
+
 	if uc.repos == nil {
 		return nil, ErrUnauthorized
 	}
@@ -246,6 +324,14 @@ func (uc *AdminUseCase) ListRepos(ctx context.Context, filter domain.AdminRepoFi
 }
 
 func (uc *AdminUseCase) Create(ctx context.Context, actorID uint, in AdminCreateInput) (*AdminUserItem, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := uc.requireSiteAdmin(ctx, actorID); err != nil {
+		return nil, err
+	}
+
 	if !in.Role.Valid() {
 		return nil, ErrInvalidRole
 	}
@@ -271,6 +357,10 @@ func (uc *AdminUseCase) Create(ctx context.Context, actorID uint, in AdminCreate
 
 func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUpdateInput) (*AdminUserItem, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := uc.requireSiteAdmin(ctx, actorID); err != nil {
 		return nil, err
 	}
 
@@ -347,7 +437,7 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 	}
 
 	if in.Password != nil {
-		password := *in.Password
+		password := strings.TrimSpace(*in.Password)
 		if password == "" {
 			return nil, ErrPasswordRequired
 		}
@@ -381,6 +471,10 @@ func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint, currentPas
 		return err
 	}
 
+	if err := uc.requireSiteAdmin(ctx, actorID); err != nil {
+		return err
+	}
+
 	if actorID == id {
 		return ErrCannotModifySelf
 	}
@@ -408,6 +502,10 @@ func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint, currentPas
 		if err := uc.tokens.DeleteByUserID(id); err != nil {
 			return fmt.Errorf("revoke access tokens: %w", err)
 		}
+	}
+
+	if err := uc.cleanupUserAccess(id); err != nil {
+		return err
 	}
 
 	if err := uc.users.Delete(id); err != nil {

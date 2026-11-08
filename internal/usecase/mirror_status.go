@@ -142,7 +142,7 @@ func (uc *RepositoryUseCase) GetMirrorStatus(ctx context.Context, in ResolveRepo
 		return nil, err
 	}
 
-	repo, _, err := uc.resolve(in)
+	repo, _, err := uc.resolve(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (uc *RepositoryUseCase) MirrorHistory(ctx context.Context, in ResolveReposi
 		return nil, ErrUnauthorized
 	}
 
-	repo, _, err := uc.resolve(in)
+	repo, _, err := uc.resolve(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -212,13 +212,13 @@ func (uc *RepositoryUseCase) CheckMirror(ctx context.Context, in CheckMirrorInpu
 		return nil, ErrUnauthorized
 	}
 
-	repo, _, err := uc.resolve(in.ResolveRepositoryInput)
+	repo, _, err := uc.resolve(ctx, in.ResolveRepositoryInput)
 	if err != nil {
 		return nil, err
 	}
 
-	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
-		return nil, ErrRepoNotFound
+	if err := uc.requireMirrorMutate(ctx, repo, in.ViewerID); err != nil {
+		return nil, err
 	}
 
 	target := strings.TrimSpace(in.URL)
@@ -241,6 +241,12 @@ func (uc *RepositoryUseCase) CheckMirror(ctx context.Context, in CheckMirrorInpu
 	opts, err := uc.mirrorOptions(repo)
 	if err != nil {
 		return nil, err
+	}
+
+	if target != repo.MirrorURL {
+		opts.Auth = nil
+		opts.SSHPrivateKey = ""
+		opts.SSHPassphrase = ""
 	}
 
 	if in.Username != nil || in.Password != nil {

@@ -1,6 +1,13 @@
 package git
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"magomedcoder.ru/repo/internal/domain"
+)
 
 func TestValidateRefName(t *testing.T) {
 	t.Parallel()
@@ -45,5 +52,83 @@ func TestLockRepoSerializes(t *testing.T) {
 	repoLocksMu.Unlock()
 	if leaked {
 		t.Fatal("lock entry leaked")
+	}
+}
+
+func TestAcquireSemRespectsContext(t *testing.T) {
+	t.Parallel()
+
+	sem := make(chan struct{}, 1)
+	release, err := acquireSem(context.Background(), sem)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := acquireSem(ctx, sem); !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context.Canceled, got %v", err)
+	}
+
+	release()
+	if r, err := acquireSem(context.Background(), sem); err != nil {
+		t.Fatal(err)
+	} else {
+		r()
+	}
+}
+
+func TestMoveAndRemoveEvictOpenCache(t *testing.T) {
+	t.Parallel()
+
+	r := NewRepository(t.TempDir())
+	oldPath := r.Root + "/old.git"
+	newPath := r.Root + "/new.git"
+	if err := r.InitBare(oldPath, domain.BareInitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := r.open(oldPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := r.OpenCacheLen(); n != 1 {
+		t.Fatalf("cache len=%d want 1", n)
+	}
+
+	if err := r.Move(oldPath, newPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := r.OpenCacheLen(); n != 0 {
+		t.Fatalf("cache len after Move=%d want 0", n)
+	}
+
+	if _, err := r.open(newPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Remove(newPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := r.OpenCacheLen(); n != 0 {
+		t.Fatalf("cache len after Remove=%d want 0", n)
+	}
+}
+
+func TestDiffSemBusy(t *testing.T) {
+	for range cap(diffSem) {
+		diffSem <- struct{}{}
+	}
+
+	defer func() {
+		for range cap(diffSem) {
+			<-diffSem
+		}
+	}()
+
+	if _, err := acquireSemWithTimeout(context.Background(), diffSem, 20*time.Millisecond); !errors.Is(err, domain.ErrBusy) {
+		t.Fatalf("err=%v want ErrBusy", err)
 	}
 }

@@ -17,6 +17,7 @@ func TestMirrorConfigureAndClear(t *testing.T) {
 	}
 
 	cfg := doJSON(t, srv, http.MethodPut, "/api/repos/app/mirror", `{
+		"current_password": "password1",
 		"enabled": true,
 		"direction": "push",
 		"url": "https://example.com/org/app.git",
@@ -60,7 +61,7 @@ func TestMirrorStatusHistoryAndAdminGuard(t *testing.T) {
 		t.Fatalf("create %d %s", r.StatusCode, r.Body)
 	}
 
-	if r := doJSON(t, srv, http.MethodPut, "/api/repos/svc/mirror", `{"enabled":true,"direction":"push","url":"https://example.com/o/svc.git","interval":"1h","conflict_policy":"reject"}`, cookies); r.StatusCode != http.StatusOK {
+	if r := doJSON(t, srv, http.MethodPut, "/api/repos/svc/mirror", `{"current_password":"password1","enabled":true,"direction":"push","url":"https://example.com/o/svc.git","interval":"1h","conflict_policy":"reject"}`, cookies); r.StatusCode != http.StatusOK {
 		t.Fatalf("configure %d %s", r.StatusCode, r.Body)
 	}
 

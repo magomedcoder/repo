@@ -19,15 +19,17 @@ const (
 )
 
 type GitUseCase struct {
-	repos    domain.RepositoryStore
-	users    domain.UserStore
-	tokens   domain.AccessTokenStore
-	hasher   domain.PasswordHasher
-	git      domain.GitRepository
-	activity domain.ActivityStore
-	authz    *Authz
-	attempts attempts.Counter
-	pepper   string
+	repos           domain.RepositoryStore
+	users           domain.UserStore
+	tokens          domain.AccessTokenStore
+	hasher          domain.PasswordHasher
+	git             domain.GitRepository
+	activity        domain.ActivityStore
+	authz           *Authz
+	attempts        attempts.Counter
+	userAttempts    attempts.Counter
+	pepper          string
+	requireAuthRead bool
 }
 
 func NewGitUseCase(
@@ -58,7 +60,13 @@ func (uc *GitUseCase) SetTokenPepper(pepper string) {
 }
 
 func (uc *GitUseCase) StartAttemptsSweep(ctx context.Context, every time.Duration) {
-	attempts.StartBackgroundSweep(ctx, every, uc.attempts)
+	attempts.StartBackgroundSweep(ctx, every, uc.attempts, uc.userAttempts)
+}
+
+func (uc *GitUseCase) SetUserAttempts(c attempts.Counter) {
+	if uc != nil {
+		uc.userAttempts = c
+	}
 }
 
 func (uc *GitUseCase) ResolveClonePath(ctx context.Context, path string) (*domain.Repository, error) {
@@ -100,7 +108,7 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 	secret = strings.TrimSpace(secret)
 
 	if strings.HasPrefix(secret, "repo_") {
-		user, err := uc.authenticateTokenWithAttempts(secret)
+		user, err := uc.authenticateTokenWithAttempts(ctx, secret)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +125,12 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 	}
 
 	attemptKey := "git\n" + remoteIP + "\n" + username
+	userKey := "login-user\n" + remoteIP + "\n" + username
 	if uc.attempts != nil && uc.attempts.Locked(attemptKey) {
+		return nil, ErrTooManyAttempts
+	}
+
+	if uc.userAttempts != nil && uc.userAttempts.Locked(userKey) {
 		return nil, ErrTooManyAttempts
 	}
 
@@ -127,12 +140,20 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 		if uc.attempts != nil {
 			_ = uc.attempts.Fail(attemptKey)
 		}
+
+		if uc.userAttempts != nil {
+			_ = uc.userAttempts.Fail(userKey)
+		}
 		return nil, ErrUnauthorized
 	}
 
 	if err := uc.hasher.Compare(user.PasswordHash, secret); err != nil {
 		if uc.attempts != nil {
 			_ = uc.attempts.Fail(attemptKey)
+		}
+
+		if uc.userAttempts != nil {
+			_ = uc.userAttempts.Fail(userKey)
 		}
 		return nil, ErrUnauthorized
 	}
@@ -141,16 +162,23 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 		uc.attempts.Reset(attemptKey)
 	}
 
-	return sanitizeUser(user), nil
+	if uc.userAttempts != nil {
+		uc.userAttempts.Reset(userKey)
+	}
+
+	out := sanitizeUser(user)
+	out.TokenScope = domain.TokenScopeGitWrite
+
+	return out, nil
 }
 
-func (uc *GitUseCase) authenticateTokenWithAttempts(raw string) (*domain.User, error) {
+func (uc *GitUseCase) authenticateTokenWithAttempts(ctx context.Context, raw string) (*domain.User, error) {
 	attemptKey := "git-token\n" + hashAccessToken(raw, uc.pepper)
 	if uc.attempts != nil && uc.attempts.Locked(attemptKey) {
 		return nil, ErrTooManyAttempts
 	}
 
-	user, err := uc.authenticateToken(raw)
+	user, err := uc.authenticateToken(ctx, raw)
 	if err != nil {
 		if uc.attempts != nil {
 			_ = uc.attempts.Fail(attemptKey)
@@ -165,8 +193,8 @@ func (uc *GitUseCase) authenticateTokenWithAttempts(raw string) (*domain.User, e
 	return user, nil
 }
 
-func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
-	token, err := lookupAccessTokenHash(uc.tokens, raw, uc.pepper)
+func (uc *GitUseCase) authenticateToken(ctx context.Context, raw string) (*domain.User, error) {
+	token, err := uc.tokens.FindByHash(hashAccessToken(raw, uc.pepper))
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
@@ -175,20 +203,26 @@ func (uc *GitUseCase) authenticateToken(raw string) (*domain.User, error) {
 		return nil, ErrUnauthorized
 	}
 
-	user, err := uc.users.FindByID(context.Background(), token.UserID)
+	if token.Scope != domain.TokenScopeGitRead && token.Scope != domain.TokenScopeGitWrite {
+		return nil, ErrUnauthorized
+	}
+
+	user, err := uc.users.FindByID(ctx, token.UserID)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
 
 	_ = uc.tokens.TouchLastUsed(token.ID, time.Now())
 	out := sanitizeUser(user)
-	scope := token.Scope
-	if scope == "" {
-		scope = domain.TokenScopeGitWrite
-	}
-	out.TokenScope = scope
+	out.TokenScope = token.Scope
 
 	return out, nil
+}
+
+func (uc *GitUseCase) SetRequireAuthForGitRead(v bool) {
+	if uc != nil {
+		uc.requireAuthRead = v
+	}
 }
 
 func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, viewer *domain.User, service GitService) error {
@@ -199,6 +233,10 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 	switch service {
 	case GitUploadPack:
 		if !repo.IsPrivate {
+			if uc.requireAuthRead && viewer == nil {
+				return ErrUnauthorized
+			}
+
 			return nil
 		}
 
@@ -206,7 +244,7 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 			return ErrUnauthorized
 		}
 
-		if viewer.TokenScope == domain.TokenScopeGitRead || viewer.TokenScope == domain.TokenScopeGitWrite || viewer.TokenScope == "" {
+		if viewer.TokenScope == domain.TokenScopeGitRead || viewer.TokenScope == domain.TokenScopeGitWrite {
 			if !uc.authz.CanReadPrivateRepo(repo, viewer.ID) {
 				return ErrRepoForbidden
 			}
@@ -215,20 +253,20 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 
 		return ErrRepoForbidden
 	case GitReceivePack:
-		if repo.MirrorDirection == domain.MirrorPull {
-			return ErrMirrorReadOnly
-		}
-
 		if viewer == nil {
 			return ErrUnauthorized
 		}
 
-		if viewer.TokenScope == domain.TokenScopeGitRead {
+		if viewer.TokenScope != domain.TokenScopeGitWrite {
 			return ErrRepoForbidden
 		}
 
 		if !uc.authz.CanWriteGit(repo, viewer.ID) {
 			return ErrRepoForbidden
+		}
+
+		if repo.MirrorDirection == domain.MirrorPull {
+			return ErrMirrorReadOnly
 		}
 
 		return nil

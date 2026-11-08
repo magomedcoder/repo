@@ -21,7 +21,7 @@ func NewAccessTokenRepo(db *gorm.DB) *AccessToken {
 func (s *AccessToken) Create(token *domain.AccessToken) error {
 	scope := token.Scope
 	if scope == "" {
-		scope = domain.TokenScopeGitWrite
+		scope = domain.TokenScopeGitRead
 	}
 
 	m := &model.AccessToken{

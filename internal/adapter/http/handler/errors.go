@@ -34,6 +34,8 @@ func statusFor(kind usecase.Kind) int {
 		return http.StatusConflict
 	case usecase.KindRateLimited:
 		return http.StatusTooManyRequests
+	case usecase.KindUnavailable:
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}

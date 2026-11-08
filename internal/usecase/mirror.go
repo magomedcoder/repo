@@ -20,36 +20,69 @@ var (
 	ErrMirrorLFSUnavailable     = NewError(KindValidation, "lfs_unavailable")
 	ErrMirrorPartialUnavailable = NewError(KindValidation, "partial_mirror_unavailable")
 	ErrMirrorHTTPForbidden      = NewError(KindValidation, "mirror_http_forbidden")
-	ErrMirrorSecretUnsealed     = NewError(KindValidation, "mirror_secret_unsealed")
+	ErrMirrorVerifyNoTrust      = NewError(KindValidation, "mirror_verify_no_trust")
 )
 
 type ConfigureMirrorInput struct {
-	ViewerID       uint
-	Name           string
-	Direction      string
-	URL            string
-	Username       *string
-	Password       *string
-	ClearPassword  bool
-	Enabled        bool
-	Clear          bool
-	Interval       *string
-	SyncWindow     *string
-	Force          *bool
-	Prune          *bool
-	Refspecs       *string
-	SSHPrivateKey  *string
-	SSHPassphrase  *string
-	ClearSSHKey    bool
-	InsecureTLS    *bool
-	PinnedHosts    *string
-	LFS            *bool
-	MaxBytes       *int64
-	ConflictPolicy *string
-	OwnerOnly      *bool
-	GroupID        *uint
-	Partial        *bool
-	VerifySigned   *bool
+	ViewerID        uint
+	Name            string
+	Direction       string
+	URL             string
+	Username        *string
+	Password        *string
+	ClearPassword   bool
+	Enabled         bool
+	Clear           bool
+	Interval        *string
+	SyncWindow      *string
+	Force           *bool
+	Prune           *bool
+	Refspecs        *string
+	SSHPrivateKey   *string
+	SSHPassphrase   *string
+	ClearSSHKey     bool
+	InsecureTLS     *bool
+	PinnedHosts     *string
+	LFS             *bool
+	MaxBytes        *int64
+	ConflictPolicy  *string
+	OwnerOnly       *bool
+	GroupID         *uint
+	Partial         *bool
+	VerifySigned    *bool
+	CurrentPassword string
+}
+
+type mirrorTrustChecker interface {
+	VerifyTrustConfigured() bool
+}
+
+func (uc *RepositoryUseCase) requireVerifyTrust() error {
+	if checker, ok := uc.git.(mirrorTrustChecker); ok && !checker.VerifyTrustConfigured() {
+		return ErrMirrorVerifyNoTrust
+	}
+
+	return nil
+}
+
+func mirrorNeedsStepUp(repo *domain.Repository, in ConfigureMirrorInput) bool {
+	if u := strings.TrimSpace(in.URL); u != "" && u != repo.MirrorURL {
+		return true
+	}
+
+	if in.ClearPassword || in.ClearSSHKey {
+		return true
+	}
+
+	if in.Password != nil && *in.Password != "" {
+		return true
+	}
+
+	if in.SSHPrivateKey != nil && strings.TrimSpace(*in.SSHPrivateKey) != "" {
+		return true
+	}
+
+	return in.SSHPassphrase != nil
 }
 
 func (uc *RepositoryUseCase) viewerIsSiteAdmin(ctx context.Context, viewerID uint) bool {
@@ -74,6 +107,18 @@ func (uc *RepositoryUseCase) requireSiteAdmin(ctx context.Context, viewerID uint
 	return nil
 }
 
+func (uc *RepositoryUseCase) requireMirrorMutate(ctx context.Context, repo *domain.Repository, viewerID uint) error {
+	if !uc.authz.CanAdminRepo(repo, viewerID) {
+		return ErrRepoNotFound
+	}
+
+	if repo.MirrorOwnerOnly && !isPersonalOwner(repo, viewerID) && !uc.viewerIsSiteAdmin(ctx, viewerID) {
+		return ErrMirrorOwnerOnly
+	}
+
+	return nil
+}
+
 func (uc *RepositoryUseCase) ConfigureMirror(ctx context.Context, in ConfigureMirrorInput) (*RepositoryItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -83,7 +128,7 @@ func (uc *RepositoryUseCase) ConfigureMirror(ctx context.Context, in ConfigureMi
 		return nil, ErrUnauthorized
 	}
 
-	repo, ownerSlug, err := uc.resolve(ResolveRepositoryInput{
+	repo, ownerSlug, err := uc.resolve(ctx, ResolveRepositoryInput{
 		Name:     in.Name,
 		ViewerID: in.ViewerID,
 	})
@@ -91,16 +136,18 @@ func (uc *RepositoryUseCase) ConfigureMirror(ctx context.Context, in ConfigureMi
 		return nil, err
 	}
 
-	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
-		return nil, ErrRepoNotFound
+	if err := uc.requireMirrorMutate(ctx, repo, in.ViewerID); err != nil {
+		return nil, err
+	}
+
+	if !in.Clear && mirrorNeedsStepUp(repo, in) {
+		if err := uc.requireViewerPassword(ctx, in.ViewerID, in.CurrentPassword); err != nil {
+			return nil, err
+		}
 	}
 
 	siteAdmin := uc.viewerIsSiteAdmin(ctx, in.ViewerID)
 	isOwner := isPersonalOwner(repo, in.ViewerID)
-
-	if repo.MirrorOwnerOnly && !isOwner && !siteAdmin {
-		return nil, ErrMirrorOwnerOnly
-	}
 
 	lock := uc.mirrorLock(repo.ID)
 	if !lock.TryLock() {
@@ -285,9 +332,26 @@ func (uc *RepositoryUseCase) applyMirrorCore(repo *domain.Repository, in Configu
 
 	if changedDir || changedURL {
 		resetMirrorState(repo)
+		clearMirrorSecretsUnlessProvided(repo, in)
 	}
 
 	return uc.applyMirrorCredentials(repo, in)
+}
+
+func clearMirrorSecretsUnlessProvided(repo *domain.Repository, in ConfigureMirrorInput) {
+	keepPassword := in.Password != nil && strings.TrimSpace(*in.Password) != "" && !in.ClearPassword
+	keepSSH := in.SSHPrivateKey != nil && strings.TrimSpace(*in.SSHPrivateKey) != "" && !in.ClearSSHKey
+	if !keepPassword {
+		repo.MirrorPassword = ""
+		if in.Username == nil {
+			repo.MirrorUsername = ""
+		}
+	}
+
+	if !keepSSH {
+		repo.MirrorSSHPrivateKey = ""
+		repo.MirrorSSHPassphrase = ""
+	}
 }
 
 func (uc *RepositoryUseCase) applyMirrorCredentials(repo *domain.Repository, in ConfigureMirrorInput) error {
@@ -383,6 +447,12 @@ func (uc *RepositoryUseCase) applyMirrorTuning(repo *domain.Repository, in Confi
 	}
 
 	if in.VerifySigned != nil {
+		if *in.VerifySigned {
+			if err := uc.requireVerifyTrust(); err != nil {
+				return err
+			}
+		}
+
 		repo.MirrorVerifySigned = *in.VerifySigned
 	}
 
@@ -464,6 +534,19 @@ func (uc *RepositoryUseCase) applyMirrorRestricted(repo *domain.Repository, in C
 	}
 
 	if in.GroupID != nil {
+		if gid := *in.GroupID; gid != 0 {
+			if uc.mirror.groups == nil {
+				return ErrMirrorGroupNotFound
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_, err := uc.mirror.groups.FindByID(ctx, gid)
+			cancel()
+			if err != nil {
+				return ErrMirrorGroupNotFound
+			}
+		}
+
 		repo.MirrorGroupID = *in.GroupID
 	}
 
@@ -489,6 +572,12 @@ func (uc *RepositoryUseCase) auditConfigure(repo, prev *domain.Repository, actor
 	}
 
 	slog.Info("mirror configured", "repo_id", repo.ID, "actor_id", actorID, "change", what, "remote_host", mirrorHost(repo.MirrorURL))
+	if repo.MirrorInsecureTLS && !prev.MirrorInsecureTLS {
+		slog.Warn("mirror insecure_tls enabled: TLS verification disabled", "repo_id", repo.ID, "actor_id", actorID, "remote_host", mirrorHost(repo.MirrorURL))
+	} else if !repo.MirrorInsecureTLS && prev.MirrorInsecureTLS {
+		slog.Info("mirror insecure_tls disabled", "repo_id", repo.ID, "actor_id", actorID)
+	}
+
 	recordRepoActivity(uc.activity, repo, actorID, domain.ActivityMirrorConfigure, activitySummary("%s", what))
 }
 
@@ -501,13 +590,13 @@ func (uc *RepositoryUseCase) SyncMirror(ctx context.Context, in ResolveRepositor
 		return nil, ErrUnauthorized
 	}
 
-	repo, ownerSlug, err := uc.resolve(in)
+	repo, ownerSlug, err := uc.resolve(ctx, in)
 	if err != nil {
 		return nil, err
 	}
 
-	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
-		return nil, ErrRepoNotFound
+	if err := uc.requireMirrorMutate(ctx, repo, in.ViewerID); err != nil {
+		return nil, err
 	}
 
 	if repo.MirrorDirection == domain.MirrorNone || strings.TrimSpace(repo.MirrorURL) == "" {

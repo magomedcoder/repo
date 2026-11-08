@@ -1,6 +1,7 @@
 package attempts
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -72,5 +73,23 @@ func TestDefaultMaxKeysLowered(t *testing.T) {
 	t.Parallel()
 	if defaultMaxKeys > 8192 {
 		t.Fatalf("defaultMaxKeys=%d", defaultMaxKeys)
+	}
+}
+
+func TestFailCapsKeysPerScope(t *testing.T) {
+	t.Parallel()
+
+	c := New(Config{MaxKeys: 1000}).(*memory)
+	for i := range 200 {
+		c.Fail(fmt.Sprintf("login-user\n1.2.3.4\nuser%d", i))
+	}
+
+	if n := c.scopes["login-user\n1.2.3.4"]; n > maxKeysPerScope {
+		t.Fatalf("scope keys = %d, want <= %d", n, maxKeysPerScope)
+	}
+
+	c.Fail("login-user\n5.6.7.8\nbob")
+	if len(c.fails) > maxKeysPerScope+1 {
+		t.Fatalf("total keys = %d", len(c.fails))
 	}
 }

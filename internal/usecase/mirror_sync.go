@@ -28,6 +28,25 @@ type syncRequest struct {
 	ActorID uint
 }
 
+const maxMirrorDebounceEntries = 10000
+
+type MirrorRuntimeStats struct {
+	Locks    int
+	Debounce int
+	Pending  int
+}
+
+func (uc *RepositoryUseCase) MirrorRuntimeStats() MirrorRuntimeStats {
+	uc.mirror.mu.Lock()
+	defer uc.mirror.mu.Unlock()
+
+	return MirrorRuntimeStats{
+		Locks:    len(uc.mirror.locks),
+		Debounce: len(uc.mirror.debounce),
+		Pending:  len(uc.mirror.pending),
+	}
+}
+
 func (uc *RepositoryUseCase) SchedulePushMirror(repoID uint) {
 	if repoID == 0 {
 		return
@@ -41,6 +60,12 @@ func (uc *RepositoryUseCase) SchedulePushMirror(repoID uint) {
 
 	if t, ok := m.debounce[repoID]; ok {
 		t.Reset(cfg.PushDebounce)
+
+		return
+	}
+
+	if len(m.debounce) >= maxMirrorDebounceEntries {
+		slog.Warn("mirror push debounce map full, dropping schedule", "repo_id", repoID, "entries", len(m.debounce))
 
 		return
 	}
@@ -662,6 +687,10 @@ func (uc *RepositoryUseCase) finishSync(ctx context.Context, repo *domain.Reposi
 
 	if syncErr != nil {
 		return fmt.Errorf("%w: %s", ErrMirrorFailed, msg)
+	}
+
+	if repo.MirrorDirection == domain.MirrorPull {
+		uc.ScheduleCodeIndex(repo.ID)
 	}
 
 	return nil

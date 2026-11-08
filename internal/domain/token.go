@@ -25,9 +25,9 @@ type AccessToken struct {
 
 func NormalizeTokenScope(scope string) string {
 	switch strings.TrimSpace(strings.ToLower(scope)) {
-	case "", TokenScopeGitWrite, "write":
+	case TokenScopeGitWrite, "write":
 		return TokenScopeGitWrite
-	case TokenScopeGitRead, "read":
+	case "", TokenScopeGitRead, "read":
 		return TokenScopeGitRead
 	default:
 		return ""

@@ -24,10 +24,11 @@ type CollaboratorItem struct {
 }
 
 type AccessUseCase struct {
-	repos   domain.RepositoryStore
-	users   domain.UserStore
-	collabs domain.RepoCollaboratorStore
-	authz   *Authz
+	repos     domain.RepositoryStore
+	users     domain.UserStore
+	collabs   domain.RepoCollaboratorStore
+	teamRepos domain.TeamRepoGrantStore
+	authz     *Authz
 }
 
 func NewAccessUseCase(
@@ -44,12 +45,18 @@ func NewAccessUseCase(
 	}
 }
 
+func (uc *AccessUseCase) SetTeamRepos(store domain.TeamRepoGrantStore) {
+	if uc != nil {
+		uc.teamRepos = store
+	}
+}
+
 func (uc *AccessUseCase) ListCollaborators(ctx context.Context, in ResolveRepositoryInput) ([]CollaboratorItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	repo, err := ResolveReadable(uc.repos, uc.authz, in)
+	repo, err := ResolveReadable(ctx, uc.repos, uc.authz, in)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +114,7 @@ func (uc *AccessUseCase) AddCollaborator(ctx context.Context, in UpsertCollabora
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := ResolveReadable(uc.repos, uc.authz, in.ResolveRepositoryInput)
+	repo, err := ResolveReadable(ctx, uc.repos, uc.authz, in.ResolveRepositoryInput)
 	if err != nil {
 		return nil, err
 	}
@@ -130,11 +137,13 @@ func (uc *AccessUseCase) AddCollaborator(ctx context.Context, in UpsertCollabora
 		return nil, ErrCannotCollabSelf
 	}
 
+	demotedFromAdmin := false
 	if existing, err := uc.collabs.Find(repo.ID, user.ID); err == nil && existing != nil {
 		if existing.Role.CanAdmin() && !role.CanAdmin() {
 			if err := uc.ensureOtherRepoAdmin(repo, user.ID); err != nil {
 				return nil, err
 			}
+			demotedFromAdmin = true
 		}
 	}
 
@@ -145,6 +154,12 @@ func (uc *AccessUseCase) AddCollaborator(ctx context.Context, in UpsertCollabora
 	}
 	if err := uc.collabs.Upsert(c); err != nil {
 		return nil, fmt.Errorf("add collaborator: %w", err)
+	}
+
+	if demotedFromAdmin && uc.teamRepos != nil {
+		if err := uc.teamRepos.DeleteByRepoAndTeamOwner(repo.ID, user.ID); err != nil {
+			return nil, fmt.Errorf("revoke team grants: %w", err)
+		}
 	}
 
 	return &CollaboratorItem{
@@ -165,7 +180,7 @@ func (uc *AccessUseCase) RemoveCollaborator(ctx context.Context, in ResolveRepos
 		return ErrUnauthorized
 	}
 
-	repo, err := ResolveReadable(uc.repos, uc.authz, in)
+	repo, err := ResolveReadable(ctx, uc.repos, uc.authz, in)
 	if err != nil {
 		return err
 	}
@@ -190,7 +205,17 @@ func (uc *AccessUseCase) RemoveCollaborator(ctx context.Context, in ResolveRepos
 		}
 	}
 
-	return uc.collabs.Delete(repo.ID, user.ID)
+	if err := uc.collabs.Delete(repo.ID, user.ID); err != nil {
+		return err
+	}
+
+	if uc.teamRepos != nil {
+		if err := uc.teamRepos.DeleteByRepoAndTeamOwner(repo.ID, user.ID); err != nil {
+			return fmt.Errorf("revoke team grants: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (uc *AccessUseCase) ensureOtherRepoAdmin(repo *domain.Repository, exceptUserID uint) error {

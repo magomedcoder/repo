@@ -29,11 +29,12 @@ const (
 )
 
 type CreateTokenInput struct {
-	UserID    uint
-	Name      string
-	Scope     string
-	ExpiresIn *int
-	ExpiresAt *time.Time
+	UserID          uint
+	Name            string
+	Scope           string
+	ExpiresIn       *int
+	ExpiresAt       *time.Time
+	CurrentPassword string
 }
 
 type TokenItem struct {
@@ -55,6 +56,8 @@ type TokenUseCase struct {
 	tokens domain.AccessTokenStore
 	gen    domain.TokenGenerator
 	pepper string
+	users  domain.UserStore
+	hasher domain.PasswordHasher
 }
 
 func NewTokenUseCase(tokens domain.AccessTokenStore, gen domain.TokenGenerator) *TokenUseCase {
@@ -70,6 +73,34 @@ func (uc *TokenUseCase) SetPepper(pepper string) {
 	}
 }
 
+func (uc *TokenUseCase) SetStepUp(users domain.UserStore, hasher domain.PasswordHasher) {
+	if uc != nil {
+		uc.users, uc.hasher = users, hasher
+	}
+}
+
+func (uc *TokenUseCase) requireStepUp(ctx context.Context, userID uint, password string) error {
+	if uc.users == nil || uc.hasher == nil {
+		return ErrPasswordRequired
+	}
+
+	password = strings.TrimSpace(password)
+	if password == "" {
+		return ErrPasswordRequired
+	}
+
+	user, err := uc.users.FindByID(ctx, userID)
+	if err != nil {
+		return ErrUnauthorized
+	}
+
+	if err := uc.hasher.Compare(user.PasswordHash, password); err != nil {
+		return ErrCurrentPasswordWrong
+	}
+
+	return nil
+}
+
 func (uc *TokenUseCase) Create(ctx context.Context, in CreateTokenInput) (*CreateTokenOutput, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -77,6 +108,10 @@ func (uc *TokenUseCase) Create(ctx context.Context, in CreateTokenInput) (*Creat
 
 	if in.UserID == 0 {
 		return nil, ErrUnauthorized
+	}
+
+	if err := uc.requireStepUp(ctx, in.UserID, in.CurrentPassword); err != nil {
+		return nil, err
 	}
 
 	name := strings.TrimSpace(in.Name)
@@ -153,13 +188,17 @@ func (uc *TokenUseCase) List(ctx context.Context, userID uint) ([]TokenItem, err
 	return items, nil
 }
 
-func (uc *TokenUseCase) Revoke(ctx context.Context, userID, tokenID uint) error {
+func (uc *TokenUseCase) Revoke(ctx context.Context, userID, tokenID uint, currentPassword string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
 	if userID == 0 {
 		return ErrUnauthorized
+	}
+
+	if err := uc.requireStepUp(ctx, userID, currentPassword); err != nil {
+		return err
 	}
 
 	if err := uc.tokens.DeleteByUserAndID(userID, tokenID); err != nil {
@@ -172,53 +211,25 @@ func (uc *TokenUseCase) Revoke(ctx context.Context, userID, tokenID uint) error 
 const accessTokenHashV2Prefix = "v2:"
 
 func hashAccessToken(raw, pepper string) string {
-	if pepper == "" {
-		sum := sha256.Sum256([]byte(raw))
-		return hex.EncodeToString(sum[:])
-	}
-
 	mac := hmac.New(sha256.New, []byte(pepper))
 	_, _ = mac.Write([]byte(raw))
 	return accessTokenHashV2Prefix + hex.EncodeToString(mac.Sum(nil))
 }
 
-func hashAccessTokenLegacy(raw string) string {
-	sum := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(sum[:])
-}
-
-func lookupAccessTokenHash(store domain.AccessTokenStore, raw, pepper string) (*domain.AccessToken, error) {
-	token, err := store.FindByHash(hashAccessToken(raw, pepper))
-	if err == nil {
-		return token, nil
-	}
-
-	if pepper == "" {
-		return nil, err
-	}
-
-	return store.FindByHash(hashAccessTokenLegacy(raw))
-}
-
 func formatTokenPrefix(raw string) string {
-	if len(raw) <= 12 {
+	if len(raw) <= 8 {
 		return raw
 	}
 
-	return raw[:12]
+	return raw[:8]
 }
 
 func toTokenItem(t *domain.AccessToken) TokenItem {
-	scope := t.Scope
-	if scope == "" {
-		scope = domain.TokenScopeGitWrite
-	}
-
 	return TokenItem{
 		ID:         t.ID,
 		Name:       t.Name,
 		Prefix:     t.Prefix,
-		Scope:      scope,
+		Scope:      t.Scope,
 		CreatedAt:  t.CreatedAt,
 		LastUsedAt: t.LastUsedAt,
 		ExpiresAt:  t.ExpiresAt,
@@ -244,6 +255,9 @@ func resolveTokenExpiry(days *int, at *time.Time, now time.Time) (*time.Time, er
 			return nil, ErrTokenExpiryInvalid
 		}
 		exp := at.UTC()
+		if exp.Sub(now) > 3650*24*time.Hour {
+			return nil, ErrTokenExpiryInvalid
+		}
 		return &exp, nil
 	}
 

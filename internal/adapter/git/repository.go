@@ -17,6 +17,8 @@ import (
 	"magomedcoder.ru/repo/pkg/fsutil"
 )
 
+const openCacheMax = 16
+
 type Repository struct {
 	Root  string
 	opens *openCache
@@ -27,9 +29,17 @@ type Repository struct {
 func NewRepository(dataDir string) *Repository {
 	return &Repository{
 		Root:  filepath.Join(dataDir, "repos"),
-		opens: newOpenCache(32),
+		opens: newOpenCache(openCacheMax),
 		stats: newStatsCache(),
 	}
+}
+
+func (r *Repository) OpenCacheLen() int {
+	if r.opens == nil {
+		return 0
+	}
+
+	return r.opens.Len()
 }
 
 func (r *Repository) GetReposRoot() string {
@@ -199,12 +209,11 @@ func (r *Repository) ServePack(ctx context.Context, repoPath, service string, st
 		ctx = context.Background()
 	}
 
-	select {
-	case servePackSem <- struct{}{}:
-		defer func() { <-servePackSem }()
-	case <-ctx.Done():
-		return ctx.Err()
+	release, err := acquireSem(ctx, servePackSem)
+	if err != nil {
+		return err
 	}
+	defer release()
 
 	repo, err := r.open(repoPath)
 	if err != nil {

@@ -62,6 +62,7 @@ const (
 const dummyPasswordHash = "argon2id$v=19$m=65536,t=2,p=4$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 var ErrRegistrationFailed = NewError(KindConflict, "registration_failed")
+var ErrEmailUnavailable = NewError(KindConflict, "email_unavailable")
 
 type AuthOutput struct {
 	User  *domain.User
@@ -138,6 +139,14 @@ func (uc *AuthUseCase) StartAttemptsSweep(ctx context.Context, every time.Durati
 	attempts.StartBackgroundSweep(ctx, every, uc.attempts, uc.userAttempts)
 }
 
+func (uc *AuthUseCase) UserAttempts() attempts.Counter {
+	if uc == nil {
+		return nil
+	}
+
+	return uc.userAttempts
+}
+
 func (uc *AuthUseCase) SetSessionSecret(secret string) {
 	uc.secret = secret
 }
@@ -178,7 +187,7 @@ func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domai
 	}
 	username := strings.ToLower(strings.TrimSpace(in.Username))
 	email := strings.ToLower(strings.TrimSpace(in.Email))
-	password := in.Password
+	password := strings.TrimSpace(in.Password)
 
 	if err := validateUsername(username); err != nil {
 		return nil, err
@@ -249,11 +258,17 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 	}
 
 	login := strings.ToLower(strings.TrimSpace(in.Login))
+	in.Password = strings.TrimSpace(in.Password)
 	if login == "" || in.Password == "" {
 		return nil, ErrInvalidCredentials
 	}
 
-	userKey := "login-user\n" + login
+	ipPart := in.Key
+	if ipPart == "" {
+		ipPart = in.IP
+	}
+
+	userKey := "login-user\n" + ipPart + "\n" + login
 	if uc.loginLocked(in.Key, userKey) {
 		return nil, ErrTooManyAttempts
 	}
@@ -328,6 +343,8 @@ func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInpu
 		return ErrUnauthorized
 	}
 
+	in.Current = strings.TrimSpace(in.Current)
+	in.Next = strings.TrimSpace(in.Next)
 	if len(in.Next) < minPasswordLen {
 		return ErrPasswordTooShort
 	}
@@ -551,7 +568,7 @@ func (uc *AuthUseCase) RevokeOtherSessions(ctx context.Context, userID uint, kee
 	return uc.sessions.DeleteByUserIDExcept(userID, keepToken)
 }
 
-func (uc *AuthUseCase) RevokeAllSessions(ctx context.Context, userID uint) error {
+func (uc *AuthUseCase) RevokeAllSessions(ctx context.Context, userID uint, currentPassword string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -560,7 +577,28 @@ func (uc *AuthUseCase) RevokeAllSessions(ctx context.Context, userID uint) error
 		return ErrUnauthorized
 	}
 
+	if err := uc.requireStepUp(ctx, userID, currentPassword); err != nil {
+		return err
+	}
+
 	return uc.sessions.DeleteByUserID(userID)
+}
+
+func (uc *AuthUseCase) requireStepUp(ctx context.Context, userID uint, password string) error {
+	if strings.TrimSpace(password) == "" {
+		return ErrPasswordRequired
+	}
+
+	user, err := uc.users.FindByID(ctx, userID)
+	if err != nil {
+		return ErrUnauthorized
+	}
+
+	if err := uc.hasher.Compare(user.PasswordHash, password); err != nil {
+		return ErrCurrentPasswordWrong
+	}
+
+	return nil
 }
 
 func validateUsername(username string) error {

@@ -12,6 +12,7 @@ import (
 
 const (
 	MinSessionSecretLen         = 32
+	MinSecretLen                = MinSessionSecretLen
 	DefaultReceiveMax           = 512 << 20
 	DefaultPath                 = "config.yaml"
 	DefaultSiteName             = "Repo"
@@ -25,13 +26,18 @@ const (
 )
 
 type Config struct {
-	HTTPAddr           string   `yaml:"http_addr"`
-	DataDir            string   `yaml:"data_dir"`
-	SiteName           string   `yaml:"site_name"`
-	CookieSecure       bool     `yaml:"cookie_secure"`
-	SessionSecret      string   `yaml:"session_secret"`
-	MirrorSecretsKey   string   `yaml:"mirror_secrets_key"`
-	AllowRegistration  bool     `yaml:"allow_registration"`
+	HTTPAddr              string `yaml:"http_addr"`
+	DataDir               string `yaml:"data_dir"`
+	SiteName              string `yaml:"site_name"`
+	CookieSecure          bool   `yaml:"cookie_secure"`
+	SessionSecret         string `yaml:"session_secret"`
+	TokenPepper           string `yaml:"token_pepper"`
+	CSRFSecret            string `yaml:"csrf_secret"`
+	MirrorSecretsKey      string `yaml:"mirror_secrets_key"`
+	AllowRegistration     bool   `yaml:"allow_registration"`
+	AllowPublicContribute bool   `yaml:"allow_public_contribute"`
+	RequireAuthForGitRead bool   `yaml:"require_auth_for_git_read"`
+
 	TrustedProxies     []string `yaml:"trusted_proxies"`
 	ReceiveMaxBytes    int64    `yaml:"receive_max_bytes"`
 	MirrorPullInterval string   `yaml:"mirror_pull_interval"`
@@ -171,23 +177,80 @@ func parseDurationDefault(field, raw string, def time.Duration) (time.Duration, 
 }
 
 func (c Config) ValidateSecrets() error {
-	if len(c.SessionSecret) < MinSessionSecretLen {
-		return fmt.Errorf("session_secret required in config (min %d characters)", MinSessionSecretLen)
+	secrets := []struct{ name, val string }{
+		{"session_secret", c.SessionSecret},
+		{"token_pepper", c.TokenPepper},
+		{"csrf_secret", c.CSRFSecret},
+		{"mirror_secrets_key", c.MirrorSecretsKey},
+	}
+	for _, s := range secrets {
+		if len(strings.TrimSpace(s.val)) < MinSecretLen {
+			return fmt.Errorf("%s required in config (min %d characters)", s.name, MinSecretLen)
+		}
 	}
 
-	if k := strings.TrimSpace(c.MirrorSecretsKey); k != "" && len(k) < MinSessionSecretLen {
-		return fmt.Errorf("mirror_secrets_key must be at least %d characters when set", MinSessionSecretLen)
+	for i := range secrets {
+		for j := i + 1; j < len(secrets); j++ {
+			if strings.TrimSpace(secrets[i].val) == strings.TrimSpace(secrets[j].val) {
+				return fmt.Errorf("%s and %s must be different", secrets[i].name, secrets[j].name)
+			}
+		}
 	}
 
 	return nil
 }
 
-func (c Config) MirrorSecretsMaterial() string {
-	if k := strings.TrimSpace(c.MirrorSecretsKey); k != "" {
-		return k
+func (c Config) WarnInsecure() []string {
+	var out []string
+
+	if c.AllowRegistration {
+		out = append(out, "allow_registration is true: anyone who can reach the server can create an account")
 	}
 
-	return c.SessionSecret
+	if c.AllowPublicContribute {
+		out = append(out, "allow_public_contribute is true: any logged-in user can open issues/PRs/comments on public repos")
+	}
+
+	if !c.CookieSecure && !c.listensLoopbackOnly() {
+		out = append(out, "cookie_secure is false while http_addr "+c.HTTPAddr+" is not loopback-only: session cookies may be sent over plain HTTP; set cookie_secure: true behind HTTPS")
+	}
+
+	if c.CookieSecure && len(c.TrustedProxies) == 0 && !c.listensLoopbackOnly() {
+		out = append(out, "cookie_secure is true but trusted_proxies is empty: behind a reverse proxy all clients share the proxy IP (rate limits/lockouts/audit) and X-Forwarded-Proto is ignored; set trusted_proxies to the proxy address")
+	}
+
+	return out
+}
+
+func (c Config) listensLoopbackOnly() bool {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(c.HTTPAddr))
+	if err != nil {
+		host = strings.TrimSpace(c.HTTPAddr)
+	}
+
+	host = strings.Trim(host, "[]")
+	if host == "" {
+		return false
+	}
+
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func (c Config) TokenPepperMaterial() string {
+	return strings.TrimSpace(c.TokenPepper)
+}
+
+func (c Config) CSRFSecretMaterial() string {
+	return strings.TrimSpace(c.CSRFSecret)
+}
+
+func (c Config) MirrorSecretsMaterial() string {
+	return strings.TrimSpace(c.MirrorSecretsKey)
 }
 
 func parseCIDRs(cidrs []string) ([]*net.IPNet, error) {
@@ -213,6 +276,10 @@ func parseCIDRs(cidrs []string) ([]*net.IPNet, error) {
 		_, network, err := net.ParseCIDR(raw)
 		if err != nil {
 			return nil, fmt.Errorf("trusted_proxies: %w", err)
+		}
+
+		if ones, _ := network.Mask.Size(); ones == 0 {
+			return nil, fmt.Errorf("trusted_proxies: %q covers all addresses; list real reverse-proxy CIDRs only", raw)
 		}
 
 		out = append(out, network)

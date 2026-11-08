@@ -71,6 +71,7 @@ func TestMirrorURLRejectsNipIO(t *testing.T) {
 	}
 
 	cfg := doJSON(t, env.Server, http.MethodPut, "/api/repos/ssrfapp/mirror", `{
+		"current_password": "password1",
 		"enabled": true,
 		"direction": "push",
 		"url": "https://127.0.0.1.nip.io/evil.git"
@@ -90,6 +91,7 @@ func TestMirrorPasswordStoredSealed(t *testing.T) {
 	}
 
 	cfg := doJSON(t, env.Server, http.MethodPut, "/api/repos/sealapp/mirror", `{
+		"current_password": "password1",
 		"enabled": true,
 		"direction": "push",
 		"url": "https://example.com/org/sealapp.git",
@@ -119,7 +121,7 @@ func TestMirrorPasswordStoredSealed(t *testing.T) {
 	}
 }
 
-func TestCreateNameCollisionHidesPrivateForeign(t *testing.T) {
+func TestCreateNameCollisionUniformResponse(t *testing.T) {
 	env := newTestServer(t)
 	ownerCookies := loginUser(t, env, "ownerpriv", "ownerpriv@example.com", "password1")
 	otherCookies := loginUser(t, env, "otherpriv", "otherpriv@example.com", "password1")
@@ -130,8 +132,8 @@ func TestCreateNameCollisionHidesPrivateForeign(t *testing.T) {
 	}
 
 	probe := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"secret-name","private":false}`, otherCookies)
-	if probe.StatusCode != http.StatusBadRequest || !strings.Contains(probe.Body, "invalid_repository_name") {
-		t.Fatalf("foreign private collision must be invalid_name: %d %s", probe.StatusCode, probe.Body)
+	if probe.StatusCode != http.StatusConflict || !strings.Contains(probe.Body, "repository_already_exists") {
+		t.Fatalf("foreign private collision must be already_exists: %d %s", probe.StatusCode, probe.Body)
 	}
 
 	dup := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"secret-name","private":true}`, ownerCookies)
@@ -149,7 +151,6 @@ func TestDeleteConfirmIgnoresQuery(t *testing.T) {
 		t.Fatalf("create %d %s", created.StatusCode, created.Body)
 	}
 
-	// confirm only in query (legacy) must not authorize delete.
 	res := doJSON(t, env.Server, http.MethodDelete, "/api/repos/delme?confirm=delme", `{"current_password":"password1"}`, cookies)
 	if res.StatusCode == http.StatusNoContent {
 		t.Fatalf("delete must not succeed with confirm only in query: %d %s", res.StatusCode, res.Body)

@@ -41,19 +41,28 @@
 cp config.example.yaml config.yaml
 ```
 
-| Ключ                            | Описание                                                                                                     |
-|---------------------------------|--------------------------------------------------------------------------------------------------------------|
-| `http_addr`                     | Адрес HTTP-сервера (по умолчанию `:8080`)                                                                    |
-| `data_dir`                      | Каталог для SQLite, Git-репозиториев и аватаров                                                              |
-| `site_name`                     | Название сайта в UI                                                                                          |
-| `session_secret`                | Секрет подписи сессий (обязателен, мин. 32 символа; например `openssl rand -hex 32`)                         |
-| `cookie_secure`                 | `true` за HTTPS (Secure-cookie + HSTS)                                                                       |
-| `allow_registration`            | Публичная саморегистрация (по умолчанию `true`); иначе пользователи через CLI/админку                        |
-| `receive_max_bytes`             | Максимальный размер Git push в байтах (по умолчанию 512 MiB)                                                 |
-| `mirror_pull_interval`          | Как часто pull-зеркала делают fetch (`5m` по умолчанию; `0` - без планировщика)                              |
-| `mirror_verify_openpgp_keyring` | Armored OpenPGP public keyring для `mirror_verify_signed` (путь относительно `data_dir`, если не абсолютный) |
-| `mirror_verify_allowed_signers` | Файл SSH `allowed_signers` (namespace `git`) для `mirror_verify_signed`                                      |
-| `trusted_proxies`               | Опциональные CIDR/IP для `X-Forwarded-For` / `X-Forwarded-Proto`                                             |
+Каждый секрет генерируйте через `openssl rand -hex 32`. Все четыре секрета обязательны (мин. 32 символа каждый) и не подставляются друг за друга.
+
+| Ключ                                                                    | Описание                                                                                                                                                                  |
+|-------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `http_addr`                                                             | Адрес HTTP-сервера (по умолчанию `:8080`)                                                                                                                                 |
+| `data_dir`                                                              | Каталог для SQLite, Git-репозиториев и аватаров                                                                                                                           |
+| `site_name`                                                             | Название сайта в UI                                                                                                                                                       |
+| `session_secret`                                                        | Подпись session-cookie                                                                                                                                                    |
+| `token_pepper`                                                          | Хеширование personal access tokens                                                                                                                                        |
+| `csrf_secret`                                                           | Привязка CSRF-токена к сессии                                                                                                                                             |
+| `mirror_secrets_key`                                                    | Шифрование сохранённых учётных данных зеркал                                                                                                                              |
+| `cookie_secure`                                                         | `true`, если сайт отдаётся по HTTPS (в том числе за reverse proxy). При `false` и не-loopback `http_addr` сервер пишет предупреждение при старте                          |
+| `allow_registration`                                                    | Публичная саморегистрация. На публичных инстансах оставляйте `false` и создавайте пользователей через CLI/админку; при `true` сервер предупреждает при старте             |
+| `allow_public_contribute`                                               | При `true` любой залогиненный может открывать issues/PR/комментарии на public-репо. При `false` (по умолчанию) - только владельцы, collaborators и участники команд       |
+| `require_auth_for_git_read`                                             | При `true` анонимный `git clone`/fetch публичных репо запрещён (нужен пароль или access token)                                                                            |
+| `receive_max_bytes`                                                     | Максимальный размер Git push в байтах (по умолчанию 512 MiB)                                                                                                              |
+| `trusted_proxies`                                                       | Реальные CIDR/IP reverse proxy для доверия `X-Forwarded-For` / `X-Forwarded-Proto`. Нельзя `0.0.0.0/0` и `::/0` (отклоняются при старте). Пустой список - если прокси нет |
+| `mirror_pull_interval`                                                  | Как часто pull-зеркала делают fetch (`5m` по умолчанию; `0` - без планировщика)                                                                                           |
+| `mirror_workers`                                                        | Число параллельных воркеров зеркалирования                                                                                                                                |
+| `mirror_clone_timeout` / `mirror_fetch_timeout` / `mirror_push_timeout` | Таймауты операций зеркала                                                                                                                                                 |
+| `mirror_verify_openpgp_keyring`                                         | Armored OpenPGP public keyring для `mirror_verify_signed` (путь относительно `data_dir`, если не абсолютный)                                                              |
+| `mirror_verify_allowed_signers`                                         | Файл SSH `allowed_signers` (namespace `git`) для `mirror_verify_signed`                                                                                                   |
 
 В ответах выставляются CSP, `X-Frame-Options`, `X-Content-Type-Options` и (по HTTPS / при `cookie_secure`) HSTS с `includeSubDomains; preload`. После запуска сайта на HTTPS домен можно подать на [hstspreload.org](https://hstspreload.org).
 
@@ -63,6 +72,8 @@ cp config.example.yaml config.yaml
 - Настройка при создании (*Зеркало* / *Импорт*) или в настройках репо; админ видит все зеркала в `/cp/mirrors`
 - Опция `mirror_verify_signed`: после каждого pull tip должен проверяться по OpenPGP keyring и/или SSH `allowed_signers` сервера (не host GPG trustdb; рантайму не нужен системный бинарник `git`)
 - Внутренние хосты по умолчанию заблокированы (SSRF); интервал и воркеры - в `config.example.yaml`
+- `mirror_verify_signed` можно включить только при непустом keyring или `allowed_signers`; при старте сервер предупреждает, если оба файла отсутствуют или пусты
+- Смена URL зеркала и сохранённых секретов (пароль / SSH-ключ) требует текущий пароль аккаунта (`current_password`)
 
 ## Обратный прокси
 

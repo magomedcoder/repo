@@ -15,7 +15,6 @@ var (
 	ErrMirrorLFSUnavailable     = errors.New("mirror: LFS sync over system git is unavailable")
 	ErrMirrorPartialUnavailable = errors.New("mirror: partial clone over system git is unavailable")
 	ErrMirrorUnsigned           = errors.New("mirror: upstream tip is not a verified signed commit")
-	ErrMirrorSecretUnsealed     = errors.New("mirror: stored secret is not sealed")
 )
 
 func RedactURL(raw string) string {

@@ -19,9 +19,11 @@ import (
 
 func (r *Repository) Compare(ctx context.Context, repoPath, base, head string) (*domain.CompareResult, error) {
 	return r.withTimeout(ctx, func(ctx context.Context) (*domain.CompareResult, error) {
-		if err := ctx.Err(); err != nil {
+		release, err := acquireSem(ctx, diffSem)
+		if err != nil {
 			return nil, err
 		}
+		defer release()
 
 		return r.compare(ctx, repoPath, base, head)
 	})

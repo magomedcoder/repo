@@ -26,10 +26,11 @@ func (h *TokenHandler) SetAccessLogger(log *audit.Logger) {
 }
 
 type createTokenRequest struct {
-	Name      string  `json:"name"`
-	Scope     string  `json:"scope"`
-	ExpiresIn *int    `json:"expires_in"`
-	ExpiresAt *string `json:"expires_at"`
+	Name            string  `json:"name"`
+	Scope           string  `json:"scope"`
+	ExpiresIn       *int    `json:"expires_in"`
+	ExpiresAt       *string `json:"expires_at"`
+	CurrentPassword string  `json:"current_password"`
 }
 
 func (h *TokenHandler) Create(c *httpx.Context) error {
@@ -44,10 +45,11 @@ func (h *TokenHandler) Create(c *httpx.Context) error {
 	}
 
 	in := usecase.CreateTokenInput{
-		UserID:    user.ID,
-		Name:      req.Name,
-		Scope:     req.Scope,
-		ExpiresIn: req.ExpiresIn,
+		UserID:          user.ID,
+		Name:            req.Name,
+		Scope:           req.Scope,
+		ExpiresIn:       req.ExpiresIn,
+		CurrentPassword: req.CurrentPassword,
 	}
 	if req.ExpiresAt != nil && strings.TrimSpace(*req.ExpiresAt) != "" {
 		t, perr := time.Parse(time.RFC3339, strings.TrimSpace(*req.ExpiresAt))
@@ -95,7 +97,12 @@ func (h *TokenHandler) Revoke(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, "invalid_token_id")
 	}
 
-	if err := h.tokens.Revoke(c.Ctx(), user.ID, id); err != nil {
+	currentPassword := ""
+	if req, bindErr := httpx.BindJSON[stepUpRequest](c); bindErr == nil {
+		currentPassword = req.CurrentPassword
+	}
+
+	if err := h.tokens.Revoke(c.Ctx(), user.ID, id, currentPassword); err != nil {
 		return mapError(c, err)
 	}
 

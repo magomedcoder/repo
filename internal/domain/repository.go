@@ -322,4 +322,13 @@ type GitRepository interface {
 	FindReadme(repoPath, ref string) (*BlobContent, error)
 
 	Grep(ctx context.Context, repoPath, query string, limit int) ([]CodeSearchHit, error)
+
+	TipSHA(repoPath string) (string, error)
+
+	WalkTextFiles(ctx context.Context, repoPath string) (tipSHA string, files []IndexedTextFile, err error)
+}
+
+type IndexedTextFile struct {
+	Path string
+	Body string
 }

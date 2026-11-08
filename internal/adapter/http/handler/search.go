@@ -40,19 +40,29 @@ func (h *RepositoryHandler) Search(c *httpx.Context) error {
 		})
 
 	case "code":
-		items, err := h.repos.SearchCode(c.Ctx(), q, viewerID)
+		cursor := strings.TrimSpace(c.Query("cursor"))
+		page, err := h.repos.SearchCode(c.Ctx(), q, viewerID, cursor)
 		if err != nil {
 			return mapError(c, err)
 		}
 
-		if items == nil {
-			items = []usecase.CodeSearchResult{}
+		if page == nil {
+			page = &usecase.CodeSearchPage{Items: []usecase.CodeSearchResult{}}
 		}
 
-		return httpx.OK(c, map[string]any{
+		if page.Items == nil {
+			page.Items = []usecase.CodeSearchResult{}
+		}
+
+		out := map[string]any{
 			"type":  "code",
-			"items": items,
-		})
+			"items": page.Items,
+		}
+		if page.NextCursor != "" {
+			out["next_cursor"] = page.NextCursor
+		}
+
+		return httpx.OK(c, out)
 
 	default:
 		return c.Error(http.StatusBadRequest, "invalid_search_type")

@@ -25,8 +25,11 @@ export const searchApi = {
     
     return api<{ type: 'repositories'; repos: Repository[] }>(`/api/search?${params}`, init)
   },
-  code(q: string, init?: RequestInit) {
+  code(q: string, paging?: { cursor?: string }, init?: RequestInit) {
     const params = new URLSearchParams({ q, type: 'code' })
-    return api<{ type: 'code'; items: CodeSearchHit[] }>(`/api/search?${params}`, init)
+    if (paging?.cursor) {
+      params.set('cursor', paging.cursor)
+    }
+    return api<{ type: 'code'; items: CodeSearchHit[]; next_cursor?: string }>(`/api/search?${params}`, init)
   },
 }

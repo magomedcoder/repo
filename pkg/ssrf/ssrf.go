@@ -36,7 +36,35 @@ func InternalIP(ip net.IP) bool {
 		return true
 	}
 
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return true
+	}
+
+	if ip4 := ip.To4(); ip4 != nil {
+		switch {
+		case ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127: // 100.64.0.0/10 CGNAT
+			return true
+		case ip4[0] == 0: // 0.0.0.0/8
+			return true
+		case ip4[0] == 192 && ip4[1] == 0 && ip4[2] == 0: // 192.0.0.0/24
+			return true
+		case ip4[0] == 198 && (ip4[1] == 18 || ip4[1] == 19): // 198.18.0.0/15
+			return true
+		case ip4[0] >= 224:
+			return true
+		}
+		return false
+	}
+
+	if ip[0] == 0xff { // multicast
+		return true
+	}
+
+	if ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x0d && ip[3] == 0xb8 { // 2001:db8::/32
+		return true
+	}
+
+	return false
 }
 
 func CloudMetadataHost(host string) bool {

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
+	"os"
+	"strings"
 
 	"magomedcoder.ru/repo/internal/adapter/sqlite"
 	"magomedcoder.ru/repo/internal/config"
@@ -30,15 +33,20 @@ func runUserCreate(args []string) error {
 	fs := flag.NewFlagSet("user create", flag.ContinueOnError)
 	username := fs.String("username", "", "username")
 	email := fs.String("email", "", "email")
-	password := fs.String("password", "", "password (min 8)")
+	password := fs.String("password", "", "password (min 8); discouraged - visible in process list. Prefer REPO_USER_PASSWORD env or stdin")
 	roleFlag := fs.String("role", domain.RoleUser.String(), "role: user|admin")
 	configPath := fs.String("config", config.DefaultPath, "path to config.yaml")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	if *username == "" || *email == "" || *password == "" {
-		return fmt.Errorf("required: -username -email -password")
+	if *username == "" || *email == "" {
+		return fmt.Errorf("required: -username -email (password via REPO_USER_PASSWORD or stdin)")
+	}
+
+	pw, err := resolveUserPassword(*password, os.Getenv, os.Stdin)
+	if err != nil {
+		return err
 	}
 
 	role, ok := domain.ParseRole(*roleFlag)
@@ -68,7 +76,7 @@ func runUserCreate(args []string) error {
 	user, err := authUC.CreateUser(context.Background(), usecase.RegisterInput{
 		Username: *username,
 		Email:    *email,
-		Password: *password,
+		Password: pw,
 		Role:     role,
 	})
 	if err != nil {
@@ -77,4 +85,34 @@ func runUserCreate(args []string) error {
 
 	fmt.Printf("created user %s (id=%d role=%s)\n", user.Username, user.ID, user.Role)
 	return nil
+}
+
+func resolveUserPassword(flagValue string, getenv func(string) string, stdin *os.File) (string, error) {
+	if flagValue != "" {
+		return flagValue, nil
+	}
+
+	if v := getenv("REPO_USER_PASSWORD"); v != "" {
+		return v, nil
+	}
+
+	if stdin == nil {
+		return "", fmt.Errorf("password required: set REPO_USER_PASSWORD or pipe it on stdin")
+	}
+
+	if fi, err := stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		fmt.Fprint(os.Stderr, "Password: ")
+	}
+
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && line == "" {
+		return "", fmt.Errorf("read password from stdin: %w", err)
+	}
+
+	pw := strings.TrimRight(line, "\r\n")
+	if pw == "" {
+		return "", fmt.Errorf("password required: set REPO_USER_PASSWORD or pipe it on stdin")
+	}
+
+	return pw, nil
 }

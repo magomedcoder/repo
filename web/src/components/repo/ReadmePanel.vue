@@ -54,6 +54,7 @@ function sanitizeReadmeHtml(raw: string): string {
 
   try {
     return DOMPurify.sanitize(raw, {
+      FORBID_TAGS: ['svg', 'math', 'style', 'form'],
       FORBID_ATTR: ['style'],
       ALLOWED_URI_REGEXP,
     })

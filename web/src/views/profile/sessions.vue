@@ -9,6 +9,7 @@ import { formatDate, i18n, localizeError } from '@/i18n'
 import Icon from '@/components/ui/Icon.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import Surface from '@/components/ui/Surface.vue'
+import { promptStepUpPassword } from '@/lib/stepUp'
 
 const router = useRouter()
 const auth = useAuth()
@@ -75,10 +76,15 @@ async function revokeAll() {
     return
   }
 
+  const password = promptStepUpPassword('sessions.confirmPassword')
+  if (!password) {
+    return
+  }
+
   busy.value = true
   error.value = ''
   try {
-    await authApi.revokeAllSessions()
+    await authApi.revokeAllSessions(password)
     auth.setUser(null)
     await router.push({ name: 'login' })
   } catch (err) {

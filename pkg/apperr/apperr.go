@@ -9,6 +9,7 @@ const (
 	KindNotFound
 	KindConflict
 	KindRateLimited
+	KindUnavailable
 )
 
 type Error struct {

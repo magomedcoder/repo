@@ -6,7 +6,7 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 )
 
-func ResolveReadable(repos domain.RepositoryStore, authz *Authz, in ResolveRepositoryInput) (*domain.Repository, error) {
+func ResolveReadable(ctx context.Context, repos domain.RepositoryStore, authz *Authz, in ResolveRepositoryInput) (*domain.Repository, error) {
 	name, err := normalizeRepoName(in.Name)
 	if err != nil {
 		return nil, err
@@ -18,7 +18,7 @@ func ResolveReadable(repos domain.RepositoryStore, authz *Authz, in ResolveRepos
 		return nil, ErrRepoNotFound
 	}
 
-	repo, err := repos.FindByRepoPath(context.Background(), logical)
+	repo, err := repos.FindByRepoPath(ctx, logical)
 	if err != nil {
 		return nil, ErrRepoNotFound
 	}

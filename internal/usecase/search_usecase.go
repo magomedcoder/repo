@@ -11,13 +11,14 @@ import (
 )
 
 const (
-	minSearchQueryLen      = 2
-	maxSearchQueryLen      = 200
-	maxCodeScanRepos       = 40
-	maxCodeHitsPerRepo     = 3
-	maxCodeHitsTotal       = 50
-	codeGrepTimeoutPerRepo = 1500 * time.Millisecond
+	minSearchQueryLen     = 2
+	maxSearchQueryLen     = 200
+	codeSearchTimeout     = 5 * time.Second
+	codeSearchQueueWait   = 2 * time.Second
+	maxConcurrentSearches = 2
 )
+
+var codeSearchSem = make(chan struct{}, maxConcurrentSearches)
 
 type CodeSearchResult struct {
 	RepoName string `json:"repo_name"`
@@ -26,6 +27,11 @@ type CodeSearchResult struct {
 	Path     string `json:"path"`
 	Line     int    `json:"line"`
 	Content  string `json:"content"`
+}
+
+type CodeSearchPage struct {
+	Items      []CodeSearchResult `json:"items"`
+	NextCursor string             `json:"next_cursor,omitempty"`
 }
 
 func normalizeSearchQuery(raw string) (string, error) {
@@ -65,10 +71,10 @@ func (uc *RepositoryUseCase) SearchAccessibleRepos(ctx context.Context, query st
 		return nil, fmt.Errorf("search accessible repositories: %w", err)
 	}
 
-	return uc.mapReposWithOwners(repos)
+	return uc.mapReposWithOwners(ctx, repos)
 }
 
-func (uc *RepositoryUseCase) SearchCode(ctx context.Context, query string, viewerID uint) ([]CodeSearchResult, error) {
+func (uc *RepositoryUseCase) SearchCode(ctx context.Context, query string, viewerID uint, cursor string) (*CodeSearchPage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -77,40 +83,69 @@ func (uc *RepositoryUseCase) SearchCode(ctx context.Context, query string, viewe
 	if err != nil {
 		return nil, err
 	}
-
 	if q == "" {
-		return nil, nil
+		return &CodeSearchPage{Items: []CodeSearchResult{}}, nil
 	}
 
-	candidates, err := uc.store.ListAccessible(ctx, viewerID, maxCodeScanRepos, 0, domain.RepoOrderUpdated)
+	if uc.codeIndex == nil {
+		return &CodeSearchPage{Items: []CodeSearchResult{}}, nil
+	}
+
+	tokens := tokenizeCodeQuery(q)
+	if len(tokens) == 0 {
+		return &CodeSearchPage{Items: []CodeSearchResult{}}, nil
+	}
+
+	afterRepoID, afterPath, err := decodeCodeCursor(cursor)
 	if err != nil {
-		return nil, fmt.Errorf("list accessible repositories: %w", err)
+		return nil, err
 	}
 
-	out := make([]CodeSearchResult, 0, maxCodeHitsTotal)
-	userCache := map[uint]string{}
+	wait := time.NewTimer(codeSearchQueueWait)
+	select {
+	case codeSearchSem <- struct{}{}:
+		wait.Stop()
+		defer func() { <-codeSearchSem }()
+	case <-wait.C:
+		return nil, ErrBusy
+	case <-ctx.Done():
+		wait.Stop()
+		return nil, ctx.Err()
+	}
 
-	for _, repo := range candidates {
-		if len(out) >= maxCodeHitsTotal {
+	ctx, cancelSearch := context.WithTimeout(ctx, codeSearchTimeout)
+	defer cancelSearch()
+
+	fileHits, err := uc.codeIndex.Search(ctx, viewerID, tokens, afterRepoID, afterPath, maxCodePageFiles+1)
+	if err != nil {
+		return nil, fmt.Errorf("code index search: %w", err)
+	}
+
+	hasMoreFiles := len(fileHits) > maxCodePageFiles
+	if hasMoreFiles {
+		fileHits = fileHits[:maxCodePageFiles]
+	}
+
+	out := make([]CodeSearchResult, 0, maxCodePageHits)
+	userCache := map[uint]string{}
+	repoCache := map[uint]*domain.Repository{}
+	var lastRepoID uint
+	var lastPath string
+
+	for _, fh := range fileHits {
+		if len(out) >= maxCodePageHits {
+			hasMoreFiles = true
 			break
 		}
 
-		if err := ctx.Err(); err != nil {
-			return out, err
-		}
-
-		remain := maxCodeHitsTotal - len(out)
-		perRepo := min(remain, maxCodeHitsPerRepo)
-
-		grepCtx, cancel := context.WithTimeout(ctx, codeGrepTimeoutPerRepo)
-		hits, gerr := uc.git.Grep(grepCtx, repo.Path, q, perRepo)
-		cancel()
-		if gerr != nil {
-			continue
-		}
-
-		if len(hits) == 0 {
-			continue
+		repo := repoCache[fh.RepoID]
+		if repo == nil {
+			r, rerr := uc.store.FindByID(ctx, fh.RepoID)
+			if rerr != nil || r == nil {
+				continue
+			}
+			repo = r
+			repoCache[fh.RepoID] = repo
 		}
 
 		owner := userCache[repo.OwnerID]
@@ -121,7 +156,21 @@ func (uc *RepositoryUseCase) SearchCode(ctx context.Context, query string, viewe
 			}
 		}
 
-		for _, hit := range hits {
+		remain := maxCodePageHits - len(out)
+		perFile := min(remain, maxCodeHitsPerFile)
+		lines := extractLineHits(fh.Path, fh.Body, q, perFile)
+		if len(lines) == 0 {
+			preview := sanitizeIndexedLine(firstNonEmptyLine(fh.Body))
+			lines = []domain.CodeSearchHit{
+				{
+					Path:    fh.Path,
+					Line:    1,
+					Content: preview,
+				},
+			}
+		}
+
+		for _, hit := range lines {
 			out = append(out, CodeSearchResult{
 				RepoName: repo.Name,
 				RepoPath: repo.RepoPath,
@@ -130,11 +179,25 @@ func (uc *RepositoryUseCase) SearchCode(ctx context.Context, query string, viewe
 				Line:     hit.Line,
 				Content:  hit.Content,
 			})
-			if len(out) >= maxCodeHitsTotal {
-				break
-			}
+		}
+		lastRepoID = fh.RepoID
+		lastPath = fh.Path
+	}
+
+	page := &CodeSearchPage{Items: out}
+	if hasMoreFiles && lastRepoID != 0 {
+		page.NextCursor = encodeCodeCursor(lastRepoID, lastPath)
+	}
+
+	return page, nil
+}
+
+func firstNonEmptyLine(body string) string {
+	for line := range strings.SplitSeq(body, "\n") {
+		if strings.TrimSpace(line) != "" {
+			return line
 		}
 	}
 
-	return out, nil
+	return ""
 }

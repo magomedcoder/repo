@@ -80,6 +80,24 @@ func (s *TeamRepoGrant) DeleteByTeam(teamID uint) error {
 	return s.DeleteWhere(context.Background(), "team_id = ?", teamID)
 }
 
+func (s *TeamRepoGrant) DeleteByRepoAndTeamOwner(repoID, ownerUserID uint) error {
+	if repoID == 0 || ownerUserID == 0 {
+		return nil
+	}
+
+	ctx := context.Background()
+	return s.DB(ctx).Exec(`
+		UPDATE team_repo_grants
+		SET deleted_at = CURRENT_TIMESTAMP
+		WHERE deleted_at IS NULL
+		  AND repo_id = ?
+		  AND team_id IN (
+			SELECT id FROM teams
+			WHERE owner_user_id = ? AND deleted_at IS NULL
+		  )
+	`, repoID, ownerUserID).Error
+}
+
 func (s *TeamRepoGrant) ListByRepoUser(repoID, userID uint) ([]domain.TeamRepoGrant, error) {
 	models, err := s.FindAll(context.Background(),
 		gormutil.WithJoins("JOIN team_members ON team_members.team_id = team_repo_grants.team_id AND team_members.deleted_at IS NULL"),

@@ -55,7 +55,12 @@ type adminDeleteRequest struct {
 }
 
 func (h *AdminHandler) Overview(c *httpx.Context) error {
-	out, err := h.admin.Overview(c.Ctx())
+	actor, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	out, err := h.admin.Overview(c.Ctx(), actor.ID)
 	if err != nil {
 		return mapError(c, err)
 	}
@@ -64,6 +69,11 @@ func (h *AdminHandler) Overview(c *httpx.Context) error {
 }
 
 func (h *AdminHandler) ListUsers(c *httpx.Context) error {
+	actor, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	offset, _ := strconv.Atoi(c.Query("offset"))
 	var role *domain.Role
@@ -73,7 +83,7 @@ func (h *AdminHandler) ListUsers(c *httpx.Context) error {
 		}
 	}
 
-	out, err := h.admin.ListUsers(c.Ctx(), usecase.AdminListInput{
+	out, err := h.admin.ListUsers(c.Ctx(), actor.ID, usecase.AdminListInput{
 		Query:  c.Query("q"),
 		Role:   role,
 		Sort:   c.Query("sort"),
@@ -88,6 +98,11 @@ func (h *AdminHandler) ListUsers(c *httpx.Context) error {
 }
 
 func (h *AdminHandler) ListRepos(c *httpx.Context) error {
+	actor, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	offset, _ := strconv.Atoi(c.Query("offset"))
 	filter := domain.AdminRepoFilter{
@@ -106,7 +121,7 @@ func (h *AdminHandler) ListRepos(c *httpx.Context) error {
 		filter.Private = &v
 	}
 
-	out, err := h.admin.ListRepos(c.Ctx(), filter)
+	out, err := h.admin.ListRepos(c.Ctx(), actor.ID, filter)
 	if err != nil {
 		return mapError(c, err)
 	}
@@ -117,6 +132,11 @@ func (h *AdminHandler) ListRepos(c *httpx.Context) error {
 func (h *AdminHandler) ListAccessLogs(c *httpx.Context) error {
 	if h.accessUC == nil {
 		return c.Error(http.StatusNotFound, "not_found")
+	}
+
+	actor, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
 	limit, _ := strconv.Atoi(c.Query("limit"))
@@ -141,7 +161,7 @@ func (h *AdminHandler) ListAccessLogs(c *httpx.Context) error {
 		}
 	}
 
-	out, err := h.accessUC.ListFilter(c.Ctx(), filter)
+	out, err := h.accessUC.ListFilter(c.Ctx(), actor.ID, filter)
 	if err != nil {
 		return mapError(c, err)
 	}

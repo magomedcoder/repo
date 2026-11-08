@@ -5,6 +5,7 @@ import type { MirrorConflictPolicy, MirrorDirection, MirrorDryRun, MirrorStatus,
 import { useAuth } from '@/composables/useAuth'
 import { i18n, localizeError } from '@/i18n'
 import { hasMirror, isSSHURL, mirrorUiStatus, normalizeRefspecs, refspecsToText } from '@/lib/mirror'
+import { promptStepUpPassword } from '@/lib/stepUp'
 
 const MIB = 1024 * 1024
 
@@ -171,6 +172,27 @@ export function useMirrorForm(
     }
   }
 
+  function needsMirrorStepUp(body: MirrorConfigureBody): boolean {
+    const nextURL = (body.url || '').trim()
+    if (nextURL && nextURL !== (current.value.mirror_url || '')) {
+      return true
+    }
+
+    if (body.clear_password || body.clear_ssh_key) {
+      return true
+    }
+
+    if (body.password) {
+      return true
+    }
+
+    if (body.ssh_private_key) {
+      return true
+    }
+
+    return !!body.ssh_passphrase
+  }
+
   function buildBody(): MirrorConfigureBody {
     const body: MirrorConfigureBody = {
       enabled: !paused.value,
@@ -231,7 +253,17 @@ export function useMirrorForm(
         return
       }
 
-      await reposApi.configureMirror(path(), buildBody())
+      const body = buildBody()
+      if (needsMirrorStepUp(body)) {
+        const stepUp = promptStepUpPassword('settings.confirmMirrorPassword')
+        if (!stepUp) {
+          return
+        }
+        
+        body.current_password = stepUp
+      }
+
+      await reposApi.configureMirror(path(), body)
       message.value = i18n.global.t('settings.mirrorSaved')
       await refreshRepo()
     } catch (err) {

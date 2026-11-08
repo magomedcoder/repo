@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"fmt"
 
 	"gorm.io/gorm"
@@ -20,6 +21,10 @@ func runMigrations(db *gorm.DB, _ string) error {
 	}
 
 	if err := ensureMissingTables(db); err != nil {
+		return err
+	}
+
+	if err := NewCodeIndex(db).EnsureSchema(context.Background()); err != nil {
 		return err
 	}
 
@@ -58,7 +63,6 @@ func ensureIndexes(db *gorm.DB) error {
 	for _, stmt := range []string{
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE deleted_at IS NULL`,
-		`DROP INDEX IF EXISTS idx_repo_scope`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repositories_name ON repositories (name) WHERE deleted_at IS NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_repositories_owner ON repositories (owner_id) WHERE deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repositories_repo_path ON repositories (repo_path) WHERE deleted_at IS NULL`,

@@ -34,4 +34,6 @@ type ActivityStore interface {
 	ListPublicByOwner(ownerID uint, limit int) ([]ActivityEvent, error)
 
 	DeleteOlderThan(ctx context.Context, before time.Time) (int64, error)
+
+	DeleteByRepo(ctx context.Context, repoID uint) error
 }

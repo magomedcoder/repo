@@ -1,11 +1,23 @@
 package lrucache
 
-import "sync"
+import (
+	"errors"
+	"sync"
+)
+
+var errOpenPanicked = errors.New("lrucache: open panicked")
+
+type flight[V any] struct {
+	done chan struct{}
+	v    V
+	err  error
+}
 
 type Cache[V any] struct {
 	mu      sync.Mutex
 	max     int
 	entries map[string]V
+	flights map[string]*flight[V]
 	order   []string
 	onEvict func(V)
 }
@@ -17,6 +29,7 @@ func New[V any](max int, onEvict func(V)) *Cache[V] {
 	return &Cache[V]{
 		max:     max,
 		entries: make(map[string]V),
+		flights: make(map[string]*flight[V]),
 		onEvict: onEvict,
 	}
 }
@@ -29,21 +42,51 @@ func (c *Cache[V]) GetOrOpen(key string, open func() (V, error)) (V, error) {
 		c.mu.Unlock()
 		return v, nil
 	}
+
+	if f, ok := c.flights[key]; ok {
+		c.mu.Unlock()
+		<-f.done
+		if f.err != nil {
+			return zero, f.err
+		}
+		return f.v, nil
+	}
+
+	f := &flight[V]{done: make(chan struct{})}
+	c.flights[key] = f
 	c.mu.Unlock()
 
-	v, err := open()
+	var (
+		v   V
+		err = errOpenPanicked
+	)
+	defer func() {
+		c.mu.Lock()
+		delete(c.flights, key)
+		if err == nil {
+			v = c.storeLocked(key, v)
+		}
+		c.mu.Unlock()
+
+		f.v, f.err = v, err
+		close(f.done)
+	}()
+
+	v, err = open()
 	if err != nil {
 		return zero, err
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	return v, nil
+}
+
+func (c *Cache[V]) storeLocked(key string, v V) V {
 	if existing, ok := c.entries[key]; ok {
 		if c.onEvict != nil {
 			c.onEvict(v)
 		}
 		c.touchLocked(key)
-		return existing, nil
+		return existing
 	}
 
 	c.entries[key] = v
@@ -59,7 +102,7 @@ func (c *Cache[V]) GetOrOpen(key string, open func() (V, error)) (V, error) {
 		}
 	}
 
-	return v, nil
+	return v
 }
 
 func (c *Cache[V]) Get(key string) (V, bool) {

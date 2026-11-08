@@ -55,10 +55,12 @@ type TeamRepoGrantItem struct {
 }
 
 type RepoTeamGrantItem struct {
-	TeamName string `json:"team_name"`
-	TeamSlug string `json:"team_slug"`
-	Role     string `json:"role"`
-	Owned    bool   `json:"owned"`
+	TeamID    uint   `json:"team_id"`
+	TeamName  string `json:"team_name"`
+	TeamSlug  string `json:"team_slug"`
+	TeamOwner string `json:"team_owner,omitzero"`
+	Role      string `json:"role"`
+	Owned     bool   `json:"owned"`
 }
 
 type SetTeamRepoInput struct {
@@ -367,6 +369,9 @@ func (uc *TeamUseCase) ListRepos(ctx context.Context, viewerID uint, slug string
 		if err != nil || repo == nil {
 			continue
 		}
+		if err := uc.authz.CanReadRepo(repo, viewerID); err != nil {
+			continue
+		}
 
 		out = append(out, uc.grantItem(ctx, repo, g.Role))
 	}
@@ -398,7 +403,10 @@ func (uc *TeamUseCase) SetRepo(ctx context.Context, in SetTeamRepoInput) (*TeamR
 		return nil, ErrRepoNotFound
 	}
 
-	if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
+	if !uc.authz.CanGrantTeamRepos(repo, in.ViewerID) {
+		if !uc.authz.CanAdminRepo(repo, in.ViewerID) {
+			return nil, ErrRepoForbidden
+		}
 		return nil, ErrRepoForbidden
 	}
 
@@ -459,7 +467,7 @@ func (uc *TeamUseCase) ListRepoTeams(ctx context.Context, in ResolveRepositoryIn
 		return nil, err
 	}
 
-	repo, err := ResolveReadable(uc.repos, uc.authz, in)
+	repo, err := ResolveReadable(ctx, uc.repos, uc.authz, in)
 	if err != nil {
 		return nil, err
 	}
@@ -480,12 +488,17 @@ func (uc *TeamUseCase) ListRepoTeams(ctx context.Context, in ResolveRepositoryIn
 			continue
 		}
 
-		out = append(out, RepoTeamGrantItem{
+		item := RepoTeamGrantItem{
+			TeamID:   t.ID,
 			TeamName: t.Name,
 			TeamSlug: t.Slug,
 			Role:     string(g.Role),
 			Owned:    t.OwnerUserID == in.ViewerID,
-		})
+		}
+		if u, uerr := uc.users.FindByID(ctx, t.OwnerUserID); uerr == nil && u != nil {
+			item.TeamOwner = u.Username
+		}
+		out = append(out, item)
 	}
 
 	return out, nil
@@ -508,6 +521,7 @@ func (uc *TeamUseCase) GrantRepoTeam(ctx context.Context, in SetRepoTeamInput) (
 	}
 
 	return &RepoTeamGrantItem{
+		TeamID:   t.ID,
 		TeamName: t.Name,
 		TeamSlug: t.Slug,
 		Role:     item.Role,
@@ -515,12 +529,12 @@ func (uc *TeamUseCase) GrantRepoTeam(ctx context.Context, in SetRepoTeamInput) (
 	}, nil
 }
 
-func (uc *TeamUseCase) RevokeRepoTeam(ctx context.Context, in ResolveRepositoryInput, teamSlug string) error {
+func (uc *TeamUseCase) RevokeRepoTeam(ctx context.Context, in ResolveRepositoryInput, teamID uint) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	repo, err := ResolveReadable(uc.repos, uc.authz, in)
+	repo, err := ResolveReadable(ctx, uc.repos, uc.authz, in)
 	if err != nil {
 		return err
 	}
@@ -529,23 +543,24 @@ func (uc *TeamUseCase) RevokeRepoTeam(ctx context.Context, in ResolveRepositoryI
 		return ErrRepoNotFound
 	}
 
-	slug := strings.ToLower(strings.TrimSpace(teamSlug))
+	if teamID == 0 {
+		return ErrTeamNotFound
+	}
+
+	t, err := uc.teams.FindByID(teamID)
+	if err != nil || t == nil {
+		return ErrTeamNotFound
+	}
+
 	rows, err := uc.teamRepos.ListByRepo(repo.ID)
 	if err != nil {
 		return err
 	}
 
 	for _, g := range rows {
-		t, err := uc.teams.FindByID(g.TeamID)
-		if err != nil || t == nil {
-			continue
+		if g.TeamID == teamID {
+			return uc.teamRepos.Delete(teamID, repo.ID)
 		}
-
-		if t.Slug != slug {
-			continue
-		}
-
-		return uc.teamRepos.Delete(t.ID, repo.ID)
 	}
 
 	return ErrTeamNotFound

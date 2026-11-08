@@ -9,6 +9,7 @@
     "close": "Close",
     "copy": "Copy",
     "ok": "Done",
+    "confirmPassword": "Enter your current password to continue:",
     "binary": "binary",
     "sizeB": "{n} B",
     "sizeKB": "{n} KB",
@@ -259,6 +260,8 @@
     "confirmDelete": "Delete repository “{path}”? This cannot be undone.",
     "confirmDeleteName": "Type the repository name “{name}” to confirm deletion:",
     "confirmDeletePassword": "Enter your current password to delete this repository:",
+    "confirmSensitivePassword": "Enter your current password to change visibility or rename the repository:",
+    "confirmMirrorPassword": "Enter your current password to update mirror URL or credentials:",
     "mirrorTitle": "Mirroring",
     "mirrorIntro": "Pull updates into this repository from a remote, or push this repository out to a remote. Only http(s) URLs are supported.",
     "mirrorEnable": "Enable mirroring",
@@ -438,6 +441,7 @@
     "prefix": "Prefix",
     "lastUsed": "Last used",
     "confirmRevoke": "Revoke this token?",
+    "confirmPassword": "Enter your current password to manage access tokens:",
     "createdTitle": "Token created",
     "createdHint": "Copy the token now. It will not be shown again.",
     "expiresIn": "Expires in (days)",
@@ -463,7 +467,8 @@
     "confirmRevoke": "Revoke this session?",
     "confirmRevokeCurrent": "Sign out on this device?",
     "confirmRevokeOthers": "Sign out on all other devices?",
-    "confirmRevokeAll": "Sign out on every device, including this one?"
+    "confirmRevokeAll": "Sign out on every device, including this one?",
+    "confirmPassword": "Enter your current password to sign out everywhere:"
   },
   "errors": {
     "codes": {
@@ -475,6 +480,8 @@
       "password_too_short": "Password must be at least 8 characters",
       "username_taken": "This username is already taken",
       "email_taken": "This email is already taken",
+      "email_unavailable": "This email cannot be used",
+      "registration_failed": "Registration failed",
       "invalid_credentials": "Incorrect username or password",
       "current_password_wrong": "Current password is incorrect",
       "unauthorized": "Access denied",
@@ -490,7 +497,7 @@
       "mirror_http_forbidden": "Cleartext HTTP mirror URLs are not allowed; use HTTPS or SSH",
       "lfs_unavailable": "Git LFS mirroring is unavailable",
       "partial_mirror_unavailable": "Partial mirroring is unavailable",
-      "mirror_secret_unsealed": "Mirror secret must be re-saved (stored value is not encrypted)",
+      "mirror_verify_no_trust": "Enable signature verification only after configuring a non-empty OpenPGP keyring or allowed_signers file",
       "invalid_mirror_direction": "Choose pull or push mirroring",
       "mirror_not_configured": "Mirroring is not configured for this repository",
       "mirror_failed": "Could not mirror the remote repository",

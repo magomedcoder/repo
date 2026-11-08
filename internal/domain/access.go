@@ -112,6 +112,8 @@ type TeamRepoGrantStore interface {
 
 	DeleteByTeam(teamID uint) error
 
+	DeleteByRepoAndTeamOwner(repoID, ownerUserID uint) error
+
 	ListByRepoUser(repoID, userID uint) ([]TeamRepoGrant, error)
 }
 
@@ -123,4 +125,6 @@ type RepoCollaboratorStore interface {
 	Find(repoID, userID uint) (*RepoCollaborator, error)
 
 	ListByRepo(repoID uint) ([]RepoCollaborator, error)
+
+	DeleteByUserID(userID uint) error
 }

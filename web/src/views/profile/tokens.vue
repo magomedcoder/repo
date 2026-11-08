@@ -9,6 +9,7 @@ import PageHeader from '@/components/ui/PageHeader.vue'
 import Surface from '@/components/ui/Surface.vue'
 import SurfaceHeader from '@/components/ui/SurfaceHeader.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import { promptStepUpPassword } from '@/lib/stepUp'
 
 const tokens = ref<AccessToken[]>([])
 const name = ref('')
@@ -34,13 +35,24 @@ async function load() {
 }
 
 async function create() {
+  const password = promptStepUpPassword('tokens.confirmPassword')
+  if (!password) {
+    return
+  }
+
   creating.value = true
   error.value = ''
   createdToken.value = ''
   try {
-    const body: { name: string; scope: string; expires_in?: number } = {
+    const body: {
+      name: string
+      scope: string
+      expires_in?: number
+      current_password: string
+    } = {
       name: name.value.trim(),
       scope: scope.value,
+      current_password: password,
     }
 
     if (expiresInDays.value != null && expiresInDays.value > 0) {
@@ -66,9 +78,14 @@ async function revoke(id: number) {
     return
   }
 
+  const password = promptStepUpPassword('tokens.confirmPassword')
+  if (!password) {
+    return
+  }
+
   error.value = ''
   try {
-    await tokensApi.revoke(id)
+    await tokensApi.revoke(id, password)
     await load()
   } catch (err) {
     error.value = localizeError(err, 'errors.deleteFailed')

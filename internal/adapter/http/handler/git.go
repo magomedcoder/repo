@@ -2,10 +2,14 @@ package handler
 
 import (
 	"compress/gzip"
+	"context"
 	"errors"
+	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"magomedcoder.ru/repo/internal/adapter/http/audit"
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
@@ -17,6 +21,7 @@ const uploadPackMaxBytes = 32 << 20
 
 type pushMirrorScheduler interface {
 	SchedulePushMirror(repoID uint)
+	ScheduleCodeIndex(repoID uint)
 }
 
 type GitHandler struct {
@@ -98,6 +103,11 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		return
 	}
 
+	if !gitPackContentTypeOK(r, service) {
+		http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
+		return
+	}
+
 	limit := int64(uploadPackMaxBytes)
 	var receive *domain.ReceivePackOptions
 
@@ -117,6 +127,15 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		}
 	}
 
+	ctx := r.Context()
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, gitServeTimeout)
+		defer cancel()
+	}
+
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(gitServeTimeout))
+
 	body, err := gitPackBody(w, r, limit)
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -128,11 +147,9 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 
 	w.Header().Set("Content-Type", "application/x-"+string(service)+"-result")
 	w.Header().Set("Cache-Control", "no-cache")
-	if err := h.git.ServePack(r.Context(), repo.Path, service, body, w, receive); err != nil {
-		if errors.Is(err, domain.ErrBranchProtected) {
-			return
-		}
-		http.Error(w, "git error", http.StatusInternalServerError)
+	tw := &trackingWriter{ResponseWriter: w}
+	if err := h.git.ServePack(ctx, repo.Path, service, body, tw, receive); err != nil {
+		h.writeServePackError(w, tw, service, err)
 		return
 	}
 
@@ -152,17 +169,22 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 		}
 		_ = h.git.TouchActivity(r.Context(), repo, actorID)
 		_ = h.git.EnsureDefaultBranch(r.Context(), repo.Path, repo.DefaultBranch)
-		if h.mirrors != nil && repo.MirrorDirection == domain.MirrorPush {
-			h.mirrors.SchedulePushMirror(repo.ID)
+		if h.mirrors != nil {
+			h.mirrors.ScheduleCodeIndex(repo.ID)
+			if repo.MirrorDirection == domain.MirrorPush {
+				h.mirrors.SchedulePushMirror(repo.ID)
+			}
 		}
 	}
 }
 
 func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repoPath string, service usecase.GitService) (*domain.Repository, *domain.User, error) {
 	viewer, authErr := h.authenticateRequest(r)
+	presented := credentialsPresented(r)
+
 	repo, err := h.git.ResolveClonePath(r.Context(), repoPath)
 	if err != nil {
-		if authErr != nil {
+		if authErr != nil && presented {
 			h.challengeGitAuth(w, r, authErr)
 			return nil, nil, authErr
 		}
@@ -173,6 +195,11 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 
 	needAuth := repo.IsPrivate || service == usecase.GitReceivePack
 	if needAuth && authErr != nil {
+		if !presented && repo.IsPrivate {
+			http.Error(w, "not found", http.StatusNotFound)
+			return nil, nil, usecase.ErrRepoNotFound
+		}
+
 		h.challengeGitAuth(w, r, authErr)
 		return nil, nil, authErr
 	}
@@ -183,6 +210,10 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 
 	if err := h.git.Authorize(r.Context(), repo, viewer, service); err != nil {
 		if errors.Is(err, usecase.ErrUnauthorized) {
+			if !presented && repo.IsPrivate {
+				http.Error(w, "not found", http.StatusNotFound)
+				return nil, nil, err
+			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return nil, nil, err
@@ -197,6 +228,24 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 	}
 
 	return repo, viewer, nil
+}
+
+func gitPackContentTypeOK(r *http.Request, service usecase.GitService) bool {
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return false
+	}
+
+	return strings.EqualFold(mt, "application/x-"+string(service)+"-request")
+}
+
+func credentialsPresented(r *http.Request) bool {
+	if _, _, ok := r.BasicAuth(); ok {
+		return true
+	}
+
+	auth := r.Header.Get("Authorization")
+	return len(auth) > 7 && strings.EqualFold(auth[:7], "bearer ") && strings.TrimSpace(auth[7:]) != ""
 }
 
 func (h *GitHandler) challengeGitAuth(w http.ResponseWriter, r *http.Request, authErr error) {
@@ -232,6 +281,10 @@ func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) 
 	if len(auth) > 7 && strings.EqualFold(auth[:7], "bearer ") {
 		tok := strings.TrimSpace(auth[7:])
 		u, err := h.git.Authenticate(r.Context(), middleware.ClientIPKey(r), "", tok)
+		if errors.Is(err, usecase.ErrTooManyAttempts) {
+			return nil, err
+		}
+
 		if err == nil && u != nil && strings.HasPrefix(tok, "repo_") && h.access != nil {
 			h.access.GitToken(r, u, "")
 		}
@@ -240,6 +293,51 @@ func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) 
 	}
 
 	return nil, usecase.ErrUnauthorized
+}
+
+const gitServeTimeout = 15 * time.Minute
+
+type trackingWriter struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (t *trackingWriter) Write(p []byte) (int, error) {
+	if len(p) > 0 {
+		t.wrote = true
+	}
+
+	return t.ResponseWriter.Write(p)
+}
+
+func (t *trackingWriter) Flush() {
+	if f, ok := t.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (t *trackingWriter) Unwrap() http.ResponseWriter { return t.ResponseWriter }
+
+func pktLine(s string) string {
+	return fmt.Sprintf("%04x%s", len(s)+4, s)
+}
+
+func (h *GitHandler) writeServePackError(w http.ResponseWriter, tw *trackingWriter, service usecase.GitService, err error) {
+	switch {
+	case errors.Is(err, domain.ErrBranchProtected):
+		if !tw.wrote {
+			_, _ = io.WriteString(w, pktLine("ERR branch is protected\n"))
+		}
+	case errors.Is(err, domain.ErrBusy):
+		if !tw.wrote {
+			w.Header().Set("Retry-After", "5")
+			http.Error(w, "server busy", http.StatusServiceUnavailable)
+		}
+	default:
+		if !tw.wrote {
+			http.Error(w, "git error", http.StatusInternalServerError)
+		}
+	}
 }
 
 type gzipPackBody struct {
@@ -253,7 +351,11 @@ func (b *gzipPackBody) Close() error {
 }
 
 func gitPackBody(w http.ResponseWriter, r *http.Request, limit int64) (io.ReadCloser, error) {
-	body := http.MaxBytesReader(w, r.Body, limit)
+	return gitPackBodyLimits(w, r, limit, limit)
+}
+
+func gitPackBodyLimits(w http.ResponseWriter, r *http.Request, compressedMax, decompressedMax int64) (io.ReadCloser, error) {
+	body := http.MaxBytesReader(w, r.Body, compressedMax)
 	if !strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
 		return body, nil
 	}
@@ -265,7 +367,7 @@ func gitPackBody(w http.ResponseWriter, r *http.Request, limit int64) (io.ReadCl
 	}
 
 	return &gzipPackBody{
-		Reader: http.MaxBytesReader(w, gz, limit),
+		Reader: http.MaxBytesReader(w, gz, decompressedMax),
 		gz:     gz,
 		body:   body,
 	}, nil

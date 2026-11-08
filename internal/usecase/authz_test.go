@@ -30,6 +30,17 @@ func (m *memCollabs) Delete(repoID, userID uint) error {
 
 	return nil
 }
+
+func (m *memCollabs) DeleteByUserID(userID uint) error {
+	for k, c := range m.byKey {
+		if c.UserID == userID {
+			delete(m.byKey, k)
+		}
+	}
+
+	return nil
+}
+
 func (m *memCollabs) Find(repoID, userID uint) (*domain.RepoCollaborator, error) {
 	if v, ok := m.byKey[m.key(repoID, userID)]; ok {
 		cp := *v
@@ -76,6 +87,12 @@ func (m *memTeamRepos) DeleteByTeam(teamID uint) error {
 
 	m.grants = kept
 
+	return nil
+}
+
+func (m *memTeamRepos) DeleteByRepoAndTeamOwner(repoID, ownerUserID uint) error {
+	_ = repoID
+	_ = ownerUserID
 	return nil
 }
 

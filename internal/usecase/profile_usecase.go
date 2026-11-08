@@ -111,13 +111,13 @@ func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email, c
 	}
 
 	if taken {
-		return nil, ErrEmailTaken
+		return nil, ErrEmailUnavailable
 	}
 
 	user.Email = email
 	if err := uc.users.Update(user); err != nil {
 		if isUniqueViolation(err) {
-			return nil, ErrEmailTaken
+			return nil, ErrEmailUnavailable
 		}
 		return nil, fmt.Errorf("update user: %w", err)
 	}
@@ -164,14 +164,15 @@ func (uc *ProfileUseCase) SetAvatar(ctx context.Context, userID uint, r io.Reade
 		return nil, ErrUnauthorized
 	}
 
-	if err := os.MkdirAll(uc.avatarDir, 0o755); err != nil {
+	if err := os.MkdirAll(uc.avatarDir, 0o700); err != nil {
 		return nil, fmt.Errorf("avatar dir: %w", err)
 	}
+	_ = os.Chmod(uc.avatarDir, 0o700)
 
 	filename := fmt.Sprintf("%d%s", user.ID, ext)
 	dest := filepath.Join(uc.avatarDir, filename)
 	tmp := dest + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, err
 	}

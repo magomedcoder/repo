@@ -6,7 +6,30 @@ import (
 	"testing"
 )
 
-func TestGitHTTPPrivateRepoChallengesWithoutAuth(t *testing.T) {
+func gitInfoRefs(t *testing.T, env testEnv, path, user, pass string) (int, string, string) {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, env.Server.URL+path+"/info/refs?service=git-upload-pack", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if user != "" || pass != "" {
+		req.SetBasicAuth(user, pass)
+	}
+
+	res, err := env.Server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	body, _ := io.ReadAll(res.Body)
+
+	return res.StatusCode, res.Header.Get("WWW-Authenticate"), string(body)
+}
+
+func TestGitHTTPPrivateRepoAnonymousIsNotFound(t *testing.T) {
 	env := newTestServer(t)
 	cookies := loginUser(t, env, "gitpriv", "gitpriv@example.com", "password1")
 
@@ -15,45 +38,38 @@ func TestGitHTTPPrivateRepoChallengesWithoutAuth(t *testing.T) {
 		t.Fatalf("create %d %s", created.StatusCode, created.Body)
 	}
 
-	privateRefs, err := http.NewRequestWithContext(t.Context(), http.MethodGet, env.Server.URL+"/hidden.git/info/refs?service=git-upload-pack", nil)
-	if err != nil {
-		t.Fatal(err)
+	privStatus, privWWW, privBody := gitInfoRefs(t, env, "/hidden.git", "", "")
+	missStatus, missWWW, missBody := gitInfoRefs(t, env, "/nosuch.git", "", "")
+
+	if privStatus != http.StatusNotFound || privWWW != "" {
+		t.Fatalf("private anonymous git status=%d www=%q body=%s", privStatus, privWWW, privBody)
 	}
 
-	missingRefs, err := http.NewRequestWithContext(t.Context(), http.MethodGet, env.Server.URL+"/nosuch.git/info/refs?service=git-upload-pack", nil)
-	if err != nil {
-		t.Fatal(err)
+	if missStatus != http.StatusNotFound || missWWW != "" {
+		t.Fatalf("missing anonymous git status=%d www=%q body=%s", missStatus, missWWW, missBody)
 	}
 
-	privRes, err := env.Server.Client().Do(privateRefs)
-	if err != nil {
-		t.Fatal(err)
+	if privBody != missBody {
+		t.Fatalf("anonymous bodies differ: %q vs %q", privBody, missBody)
 	}
-	defer privRes.Body.Close()
+}
 
-	privBody, _ := io.ReadAll(privRes.Body)
+func TestGitHTTPBadCredentialsChallenge(t *testing.T) {
+	env := newTestServer(t)
+	cookies := loginUser(t, env, "gitbad", "gitbad@example.com", "password1")
 
-	missRes, err := env.Server.Client().Do(missingRefs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer missRes.Body.Close()
-
-	missBody, _ := io.ReadAll(missRes.Body)
-
-	if privRes.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("private git status=%d www=%q body=%s", privRes.StatusCode, privRes.Header.Get("WWW-Authenticate"), privBody)
+	created := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"hidden","private":true}`, cookies)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("create %d %s", created.StatusCode, created.Body)
 	}
 
-	if privRes.Header.Get("WWW-Authenticate") != `Basic realm="git"` {
-		t.Fatalf("private git WWW-Authenticate=%q", privRes.Header.Get("WWW-Authenticate"))
+	status, www, body := gitInfoRefs(t, env, "/hidden.git", "gitbad", "wrong-password")
+	if status != http.StatusUnauthorized || www != `Basic realm="git"` {
+		t.Fatalf("bad creds private status=%d www=%q body=%s", status, www, body)
 	}
 
-	if missRes.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("missing git status=%d body=%s", missRes.StatusCode, missBody)
-	}
-
-	if missRes.Header.Get("WWW-Authenticate") != `Basic realm="git"` {
-		t.Fatalf("missing git WWW-Authenticate=%q", missRes.Header.Get("WWW-Authenticate"))
+	status, www, body = gitInfoRefs(t, env, "/nosuch.git", "gitbad", "wrong-password")
+	if status != http.StatusUnauthorized || www != `Basic realm="git"` {
+		t.Fatalf("bad creds missing status=%d www=%q body=%s", status, www, body)
 	}
 }

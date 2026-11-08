@@ -47,7 +47,10 @@ export const authApi = {
   revokeOtherSessions() {
     return api<void>('/api/auth/sessions/revoke-others', { method: 'POST' })
   },
-  revokeAllSessions() {
-    return api<void>('/api/auth/sessions/revoke-all', { method: 'POST' })
+  revokeAllSessions(current_password: string) {
+    return api<void>('/api/auth/sessions/revoke-all', {
+      method: 'POST',
+      body: JSON.stringify({ current_password }),
+    })
   },
 }

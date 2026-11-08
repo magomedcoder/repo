@@ -24,12 +24,18 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/internal/usecase"
 	"magomedcoder.ru/repo/pkg/argon2id"
+	"magomedcoder.ru/repo/pkg/i18n"
 	"magomedcoder.ru/repo/pkg/secretbox"
 	"magomedcoder.ru/repo/pkg/token"
 )
 
 func runServe() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	if err := i18n.Preload(); err != nil {
+		slog.Error("i18n", "err", err)
+		os.Exit(1)
+	}
 
 	cfg, err := config.Load("")
 	if err != nil {
@@ -40,6 +46,10 @@ func runServe() {
 	if err := cfg.ValidateSecrets(); err != nil {
 		slog.Error("config", "err", err)
 		os.Exit(1)
+	}
+
+	for _, w := range cfg.WarnInsecure() {
+		slog.Warn("insecure configuration", "detail", w)
 	}
 
 	db, err := sqlite.NewDB(cfg.DataDir)
@@ -80,6 +90,12 @@ func runServe() {
 		os.Exit(1)
 	}
 	gitRepo.SetTrust(trust)
+	if trust.Empty() {
+		slog.Warn("mirror verify trust material is empty: mirror_verify_signed cannot be enabled until a non-empty OpenPGP keyring or allowed_signers file is configured",
+			"openpgp_keyring", cfg.MirrorVerifyOpenPGPKeyring,
+			"allowed_signers", cfg.MirrorVerifyAllowedSigners,
+		)
+	}
 
 	hasher := argon2id.NewHasher()
 	tokens := token.NewGenerator()
@@ -87,11 +103,13 @@ func runServe() {
 	middleware.SetTrustedProxies(cfg.TrustedProxyNets)
 
 	authz := usecase.NewAuthz(teamRepoGrantStore, collabStore)
+	authz.SetAllowPublicContribute(cfg.AllowPublicContribute)
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret(cfg.SessionSecret)
 	authUC.SetAllowRegistration(cfg.AllowRegistration)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, userStore, gitRepo, activityStore, authz)
 	repoUC.SetPasswordHasher(hasher)
+	repoUC.SetCodeIndex(sqlite.NewCodeIndex(db))
 	if key, err := secretbox.DeriveKey(cfg.MirrorSecretsMaterial()); err != nil {
 		slog.Error("mirror secrets key", "err", err)
 		os.Exit(1)
@@ -105,24 +123,29 @@ func runServe() {
 	}
 
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
-	tokenUC.SetPepper(cfg.SessionSecret)
+	tokenUC.SetPepper(cfg.TokenPepperMaterial())
+	tokenUC.SetStepUp(userStore, hasher)
 	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
-	gitUC.SetTokenPepper(cfg.SessionSecret)
+	gitUC.SetTokenPepper(cfg.TokenPepperMaterial())
+	gitUC.SetRequireAuthForGitRead(cfg.RequireAuthForGitRead)
+	gitUC.SetUserAttempts(authUC.UserAttempts())
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, userStore, activityStore, authz)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, userStore, gitRepo, activityStore, authz)
 	membershipUC := usecase.NewAccessUseCase(repoStore, userStore, collabStore, authz)
+	membershipUC.SetTeamRepos(teamRepoGrantStore)
 	teamUC := usecase.NewTeamUseCase(teamStore, teamMemberStore, teamRepoGrantStore, repoStore, userStore, authz)
 	profileUC := usecase.NewProfileUseCase(userStore, hasher, cfg.DataDir)
 	profileUC.SetSessionStores(sessionStore, tokenStore)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 	adminUC.SetDataStores(repoStore, accessStore)
-	accessUC := usecase.NewAccessLogUseCase(accessStore)
+	adminUC.SetAccessCleanup(collabStore, teamStore, teamMemberStore, teamRepoGrantStore)
+	accessUC := usecase.NewAccessLogUseCase(accessStore, userStore)
 	adminMirrorUC := usecase.NewAdminMirrorUseCase(repoUC)
 
 	authHandler := handler.NewAuthHandler(authUC)
 	authHandler.SetCookiePolicy(cfg.CookieSecure, http.SameSiteLaxMode)
-	authHandler.SetCSRFSecret(cfg.SessionSecret)
+	authHandler.SetCSRFSecret(cfg.CSRFSecretMaterial())
 	authHandler.SetAllowRegistration(cfg.AllowRegistration)
 	authHandler.SetAccessLogger(accessLog)
 	membershipHandler := handler.NewMembershipHandler(membershipUC)
@@ -139,6 +162,7 @@ func runServe() {
 	issueHandler := handler.NewIssueHandler(issueUC)
 	pullHandler := handler.NewPullRequestHandler(pullUC)
 	profileHandler := handler.NewProfileHandler(profileUC)
+	profileHandler.SetCookieSecure(cfg.CookieSecure)
 	activityHandler := handler.NewActivityHandler(activityUC)
 	siteHandler := handler.NewSiteHandler(cfg.SiteName)
 	adminHandler := handler.NewAdminHandler(adminUC, accessUC)
@@ -146,7 +170,7 @@ func runServe() {
 	adminHandler.SetMirrors(adminMirrorUC)
 	accessHandler := handler.NewAccessHandler(accessLog)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, membershipHandler, teamHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.CookieSecure, cfg.SessionSecret)
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, membershipHandler, teamHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.CookieSecure, cfg.CSRFSecretMaterial())
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -162,6 +186,7 @@ func runServe() {
 
 	repoUC.SetMirrorRootContext(ctx)
 	go repoUC.RunPullMirrorLoop(ctx, cfg.MirrorPullEvery)
+	go repoUC.RunCodeIndexBackfill(ctx)
 	authUC.StartAttemptsSweep(ctx, attemptsSweepEvery)
 	gitUC.StartAttemptsSweep(ctx, attemptsSweepEvery)
 
@@ -308,7 +333,7 @@ func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth mid
 		if access != nil && audit.IsPageVisit(r) {
 			var user *domain.User
 			if auth != nil {
-				if token := middleware.SessionToken(r); token != "" {
+				if token := middleware.SessionTokenFor(r, cookieSecure); token != "" {
 					if u, _, err := auth.Authenticate(r.Context(), token); err == nil {
 						user = u
 					}

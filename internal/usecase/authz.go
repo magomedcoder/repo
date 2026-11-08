@@ -3,8 +3,9 @@ package usecase
 import "magomedcoder.ru/repo/internal/domain"
 
 type Authz struct {
-	TeamRepos domain.TeamRepoGrantStore
-	Collabs   domain.RepoCollaboratorStore
+	TeamRepos        domain.TeamRepoGrantStore
+	Collabs          domain.RepoCollaboratorStore
+	PublicContribute bool
 }
 
 func NewAuthz(teamRepos domain.TeamRepoGrantStore, collabs domain.RepoCollaboratorStore) *Authz {
@@ -91,6 +92,29 @@ func (a *Authz) CanAdminRepo(repo *domain.Repository, viewerID uint) bool {
 	return a.bestTeamRepoRole(repo.ID, viewerID).CanAdmin()
 }
 
+func (a *Authz) CanGrantTeamRepos(repo *domain.Repository, viewerID uint) bool {
+	if viewerID == 0 || repo == nil {
+		return false
+	}
+
+	if isPersonalOwner(repo, viewerID) {
+		return true
+	}
+
+	if a == nil {
+		return false
+	}
+
+	role, ok := a.collabRole(repo.ID, viewerID)
+	return ok && role.CanAdmin()
+}
+
+func (a *Authz) SetAllowPublicContribute(v bool) {
+	if a != nil {
+		a.PublicContribute = v
+	}
+}
+
 func (a *Authz) CanWriteGit(repo *domain.Repository, viewerID uint) bool {
 	return a.CanWriteRepo(repo, viewerID)
 }
@@ -100,7 +124,7 @@ func (a *Authz) CanContribute(repo *domain.Repository, viewerID uint) bool {
 		return false
 	}
 
-	if !repo.IsPrivate {
+	if !repo.IsPrivate && a != nil && a.PublicContribute {
 		return true
 	}
 

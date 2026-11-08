@@ -1,6 +1,9 @@
 package secretbox
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestSealOpenRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -21,7 +24,7 @@ func TestSealOpenRoundTrip(t *testing.T) {
 	}
 }
 
-func TestOpenLegacyPlaintext(t *testing.T) {
+func TestOpenRejectsPlaintext(t *testing.T) {
 	t.Parallel()
 
 	key, err := DeriveKey("0123456789abcdef0123456789abcdef")
@@ -29,8 +32,8 @@ func TestOpenLegacyPlaintext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plain, err := Open(key, "legacy-password")
-	if err != nil || plain != "legacy-password" {
-		t.Fatalf("legacy: %q %v", plain, err)
+	plain, err := Open(key, "not-a-sealed-value")
+	if !errors.Is(err, ErrNotSealed) || plain != "" {
+		t.Fatalf("plaintext must be rejected: %q %v", plain, err)
 	}
 }

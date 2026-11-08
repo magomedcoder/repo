@@ -76,8 +76,10 @@ export interface TeamRepoGrant {
 }
 
 export interface RepoTeamGrant {
+  team_id: number
   team_name: string
   team_slug: string
+  team_owner?: string
   role: RepoCollabRole | string
   owned: boolean
 }

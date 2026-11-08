@@ -6,14 +6,24 @@ import (
 	"magomedcoder.ru/repo/pkg/httpware"
 )
 
-const CSRFCookie = "repo_csrf"
+const (
+	CSRFCookie     = "repo_csrf"
+	HostCSRFCookie = "__Host-repo_csrf"
+)
 
 func csrfConfig(secure bool, secret string) httpware.CSRFConfig {
+	name := CSRFCookie
+	if secure {
+		name = HostCSRFCookie
+	}
+
 	return httpware.CSRFConfig{
-		CookieName:   CSRFCookie,
-		Secure:       secure,
-		Secret:       secret,
-		SessionToken: SessionToken,
+		CookieName: name,
+		Secure:     secure,
+		Secret:     secret,
+		SessionToken: func(r *http.Request) string {
+			return SessionTokenFor(r, secure)
+		},
 	}
 }
 

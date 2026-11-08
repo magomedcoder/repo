@@ -78,8 +78,19 @@ func (s *Repository) Create(repo *domain.Repository) error {
 
 func (s *Repository) Update(repo *domain.Repository) error {
 	m := model.RepositoryFromDomain(repo)
-	if err := s.Save(context.Background(), m, gormutil.WithOmit("IssueSeq", "PullSeq")); err != nil {
-		return err
+	prevUpdated := repo.UpdatedAt
+	db := s.DB(context.Background()).Omit("IssueSeq", "PullSeq")
+	if !prevUpdated.IsZero() {
+		db = db.Where("id = ? AND updated_at = ?", m.ID, prevUpdated)
+	}
+
+	res := db.Save(m)
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if !prevUpdated.IsZero() && res.RowsAffected == 0 {
+		return domain.ErrConflict
 	}
 
 	*repo = m.ToDomain()
@@ -197,14 +208,7 @@ func (s *Repository) ListSharedForUser(ctx context.Context, userID uint, limit, 
 				SELECT repo_id FROM repo_collaborators
 				WHERE user_id = ? AND deleted_at IS NULL
 			)
-			OR id IN (
-				SELECT team_repo_grants.repo_id
-				FROM team_repo_grants
-				JOIN team_members ON team_members.team_id = team_repo_grants.team_id
-					AND team_members.deleted_at IS NULL
-				WHERE team_members.user_id = ?
-					AND team_repo_grants.deleted_at IS NULL
-			)
+			OR `+teamGrantAccessSQL+`
 		)`, userID, userID).
 		Order(repoOrderClause(order)).
 		Limit(limit).
@@ -237,6 +241,17 @@ func (s *Repository) SearchByName(ctx context.Context, query string, ownerID uin
 	return repoModelsToDomain(models), nil
 }
 
+const teamGrantAccessSQL = `id IN (
+			SELECT team_repo_grants.repo_id
+			FROM team_repo_grants
+			JOIN team_members ON team_members.team_id = team_repo_grants.team_id
+				AND team_members.deleted_at IS NULL
+			JOIN teams ON teams.id = team_repo_grants.team_id
+				AND teams.deleted_at IS NULL
+			WHERE team_members.user_id = ?
+				AND team_repo_grants.deleted_at IS NULL
+		)`
+
 func accessibleRepoScope(db *gorm.DB, viewerID uint) *gorm.DB {
 	if viewerID == 0 {
 		return db.Where("is_private = ?", false)
@@ -249,14 +264,7 @@ func accessibleRepoScope(db *gorm.DB, viewerID uint) *gorm.DB {
 			SELECT repo_id FROM repo_collaborators
 			WHERE user_id = ? AND deleted_at IS NULL
 		)
-		OR id IN (
-			SELECT team_repo_grants.repo_id
-			FROM team_repo_grants
-			JOIN team_members ON team_members.team_id = team_repo_grants.team_id
-				AND team_members.deleted_at IS NULL
-			WHERE team_members.user_id = ?
-				AND team_repo_grants.deleted_at IS NULL
-		)
+		OR `+teamGrantAccessSQL+`
 	)`, false, viewerID, viewerID, viewerID)
 }
 
@@ -289,7 +297,7 @@ func (s *Repository) ListAccessible(ctx context.Context, viewerID uint, limit, o
 func (s *Repository) ExistsByName(name string) (bool, error) {
 	return s.QueryExistOpts(context.Background(), "", nil,
 		gormutil.WithUnscoped(),
-		gormutil.WithWhere("name = ?", name),
+		gormutil.WithWhere("lower(name) = ?", strings.ToLower(name)),
 	)
 }
 

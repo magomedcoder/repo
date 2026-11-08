@@ -3,6 +3,7 @@ package httpware
 import (
 	"net"
 	"net/http"
+	"strings"
 )
 
 const DefaultCSP = "" +
@@ -17,7 +18,10 @@ const DefaultCSP = "" +
 	"object-src 'none'; " +
 	"base-uri 'none'; " +
 	"frame-ancestors 'none'; " +
-	"form-action 'self'"
+	"form-action 'self'; " +
+	"report-uri /api/csp-report; report-to csp-endpoint"
+
+const DefaultCSPReportTo = `{"group":"csp-endpoint","max_age":10886400,"endpoints":[{"url":"/api/csp-report"}]}`
 
 const DefaultHSTS = "max-age=31536000; includeSubDomains; preload"
 
@@ -53,8 +57,13 @@ func SecurityHeaders(cfg SecurityConfig) func(http.Handler) http.Handler {
 			}
 
 			h.Set("Content-Security-Policy", policy)
+			h.Set("Report-To", DefaultCSPReportTo)
 			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 			h.Set("X-XSS-Protection", "0")
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				h.Set("Cache-Control", "private, no-store")
+				h.Add("Vary", "Cookie")
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

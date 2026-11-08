@@ -76,6 +76,15 @@ func (s *Activity) DeleteOlderThan(ctx context.Context, before time.Time) (int64
 	return s.DeleteWhereRows(ctx, "created_at < ?", before.In(time.Local))
 }
 
+func (s *Activity) DeleteByRepo(ctx context.Context, repoID uint) error {
+	if repoID == 0 {
+		return nil
+	}
+
+	_, err := s.DeleteWhereRows(ctx, "repo_id = ?", repoID)
+	return err
+}
+
 func activityRowsToDomain(models []model.Activity) []domain.ActivityEvent {
 	out := make([]domain.ActivityEvent, 0, len(models))
 	for _, m := range models {

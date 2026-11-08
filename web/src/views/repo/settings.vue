@@ -18,6 +18,7 @@ import type { PageError } from '@/i18n'
 import { i18n, localizeError } from '@/i18n'
 import { repositoryPath } from '@/lib/repoPath'
 import { repoLocation } from '@/lib/repoNav'
+import { promptStepUpPassword } from '@/lib/stepUp'
 
 const props = defineProps<{
   repoPath: string
@@ -146,11 +147,22 @@ async function save() {
     return
   }
 
+  const nextName = name.value.trim()
+  const visibilityChanged = isPrivate.value !== !!repo.value.is_private
+  const nameChanged = nextName !== repo.value.name
+  let currentPassword: string | undefined
+  if (visibilityChanged || nameChanged) {
+    const password = promptStepUpPassword('settings.confirmSensitivePassword')
+    if (!password) {
+      return
+    }
+    currentPassword = password
+  }
+
   saving.value = true
   formError.value = ''
   message.value = ''
   try {
-    const nextName = name.value.trim()
     const updated = await reposApi.update(props.repoPath, {
       name: nextName,
       description: description.value,
@@ -159,6 +171,7 @@ async function save() {
       default_branch: defaultBranch.value,
       protect_default_branch: protectBranch.value,
       issues_enabled: issuesEnabled.value,
+      current_password: currentPassword,
     })
 
     const currentPath = repositoryPath(updated)
@@ -265,16 +278,16 @@ async function grantTeam() {
   }
 }
 
-async function revokeTeam(slug: string) {
-  const grant = teamGrants.value.find((g) => g.team_slug === slug)
-  if (!confirm(i18n.global.t('repoSettings.teams.confirmRevoke', { team: grant?.team_name || slug }))) {
+async function revokeTeam(teamID: number) {
+  const grant = teamGrants.value.find((g) => g.team_id === teamID)
+  if (!confirm(i18n.global.t('repoSettings.teams.confirmRevoke', { team: grant?.team_name || String(teamID) }))) {
     return
   }
 
   teamError.value = ''
   try {
-    await reposApi.revokeTeam(props.repoPath, slug)
-    teamGrants.value = teamGrants.value.filter((g) => g.team_slug !== slug)
+    await reposApi.revokeTeam(props.repoPath, teamID)
+    teamGrants.value = teamGrants.value.filter((g) => g.team_id !== teamID)
   } catch (err) {
     teamError.value = localizeError(err, 'errors.deleteFailed')
   }

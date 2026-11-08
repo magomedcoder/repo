@@ -420,12 +420,6 @@ func (r *Repository) getBlame(ctx context.Context, repoPath, ref, filePath strin
 		return nil, err
 	}
 
-	select {
-	case blameSem <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-
 	type blameRes struct {
 		b   *gogit.BlameResult
 		err error
@@ -433,7 +427,13 @@ func (r *Repository) getBlame(ctx context.Context, repoPath, ref, filePath strin
 
 	done := make(chan blameRes, 1)
 	go func() {
-		defer func() { <-blameSem }()
+		release, err := acquireSem(ctx, blameSem)
+		if err != nil {
+			done <- blameRes{nil, err}
+			return
+		}
+		defer release()
+
 		b, err := gogit.Blame(commit, filePath)
 		done <- blameRes{b, err}
 	}()
@@ -442,6 +442,9 @@ func (r *Repository) getBlame(ctx context.Context, repoPath, ref, filePath strin
 	select {
 	case res := <-done:
 		if res.err != nil {
+			if errors.Is(res.err, domain.ErrBusy) || errors.Is(res.err, context.Canceled) || errors.Is(res.err, context.DeadlineExceeded) {
+				return nil, res.err
+			}
 			return nil, fmt.Errorf("blame: %w", res.err)
 		}
 		blamed = res.b
@@ -472,9 +475,12 @@ func (r *Repository) getBlame(ctx context.Context, repoPath, ref, filePath strin
 
 func (r *Repository) GetCommitDiff(ctx context.Context, repoPath, sha string) (*domain.CommitDiff, error) {
 	return r.withTimeout(ctx, func(ctx context.Context) (*domain.CommitDiff, error) {
-		if err := ctx.Err(); err != nil {
+		release, err := acquireSem(ctx, diffSem)
+		if err != nil {
 			return nil, err
 		}
+		defer release()
+
 		return r.getCommitDiff(ctx, repoPath, sha)
 	})
 }

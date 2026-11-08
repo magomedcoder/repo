@@ -48,6 +48,10 @@ func (s *RepoCollaborator) Delete(repoID, userID uint) error {
 	return s.DeleteWhere(context.Background(), "repo_id = ? AND user_id = ?", repoID, userID)
 }
 
+func (s *RepoCollaborator) DeleteByUserID(userID uint) error {
+	return s.DeleteWhere(context.Background(), "user_id = ?", userID)
+}
+
 func (s *RepoCollaborator) Find(repoID, userID uint) (*domain.RepoCollaborator, error) {
 	row, err := s.FindByWhere(context.Background(), "repo_id = ? AND user_id = ?", repoID, userID)
 	if err != nil {

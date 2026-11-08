@@ -60,6 +60,7 @@ type PullCompare struct {
 
 type pushMirrorScheduler interface {
 	SchedulePushMirror(repoID uint)
+	ScheduleCodeIndex(repoID uint)
 }
 
 type PullRequestUseCase struct {
@@ -99,7 +100,7 @@ func (uc *PullRequestUseCase) List(ctx context.Context, in ResolveRepositoryInpu
 		return nil, err
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +120,7 @@ func (uc *PullRequestUseCase) Get(ctx context.Context, in ResolveRepositoryInput
 		return nil, err
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +160,7 @@ func (uc *PullRequestUseCase) Create(ctx context.Context, in ResolveRepositoryIn
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +222,7 @@ func (uc *PullRequestUseCase) Update(ctx context.Context, in ResolveRepositoryIn
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +326,7 @@ func (uc *PullRequestUseCase) Delete(ctx context.Context, in ResolveRepositoryIn
 		return ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return err
 	}
@@ -347,7 +348,7 @@ func (uc *PullRequestUseCase) Diff(ctx context.Context, in ResolveRepositoryInpu
 		return nil, err
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -393,7 +394,7 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -457,8 +458,11 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 
 	_ = uc.repos.TouchLastActivity(repo.ID, now)
 	recordRepoActivity(uc.activity, repo, in.ViewerID, domain.ActivityPRMerge, activitySummary("merged pull request #%d", pr.Number))
-	if uc.pushMirrors != nil && repo.MirrorDirection == domain.MirrorPush {
-		uc.pushMirrors.SchedulePushMirror(repo.ID)
+	if uc.pushMirrors != nil {
+		uc.pushMirrors.ScheduleCodeIndex(repo.ID)
+		if repo.MirrorDirection == domain.MirrorPush {
+			uc.pushMirrors.SchedulePushMirror(repo.ID)
+		}
 	}
 
 	return uc.mapPull(pr, nil)
@@ -473,7 +477,7 @@ func (uc *PullRequestUseCase) AddComment(ctx context.Context, in ResolveReposito
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -509,7 +513,7 @@ func (uc *PullRequestUseCase) UpdateComment(ctx context.Context, in ResolveRepos
 		return nil, ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +554,7 @@ func (uc *PullRequestUseCase) DeleteComment(ctx context.Context, in ResolveRepos
 		return ErrUnauthorized
 	}
 
-	repo, err := uc.readable(in)
+	repo, err := uc.readable(ctx, in)
 	if err != nil {
 		return err
 	}
@@ -572,8 +576,8 @@ func (uc *PullRequestUseCase) DeleteComment(ctx context.Context, in ResolveRepos
 	return uc.pulls.DeleteComment(commentID)
 }
 
-func (uc *PullRequestUseCase) readable(in ResolveRepositoryInput) (*domain.Repository, error) {
-	return ResolveReadable(uc.repos, uc.authz, in)
+func (uc *PullRequestUseCase) readable(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, error) {
+	return ResolveReadable(ctx, uc.repos, uc.authz, in)
 }
 
 func (uc *PullRequestUseCase) findPull(repoID uint, number int) (*domain.PullRequest, error) {
@@ -730,12 +734,18 @@ func (uc *PullRequestUseCase) mapComment(c *domain.PullRequestComment, usersByID
 }
 
 func mapGitCompareErr(err error) error {
+	if errors.Is(err, domain.ErrBusy) {
+		return ErrBusy
+	}
+
 	if errors.Is(err, gitadapter.ErrRefNotFound) {
 		return ErrBranchNotFound
 	}
+
 	if errors.Is(err, gitadapter.ErrHistoryTooLarge) {
 		return ErrHistoryTooLarge
 	}
+
 	return err
 }
 

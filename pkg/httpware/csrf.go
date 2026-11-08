@@ -38,6 +38,11 @@ func (c CSRFConfig) errorBody() []byte {
 func CSRF(cfg CSRFConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/csp-report" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			token := EnsureCSRFCookie(w, r, cfg)
 			if needsCSRF(r) && !validCSRF(r, token, cfg) {
 				w.Header().Set("Content-Type", "application/json")

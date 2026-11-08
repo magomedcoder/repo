@@ -2,18 +2,22 @@ http_addr: ":8080"
 data_dir: "data"
 site_name: "Repo"
 session_secret: "" # openssl rand -hex 32
-cookie_secure: false
-allow_registration: true
+token_pepper: ""
+csrf_secret: ""
+
+cookie_secure: true
+allow_registration: false
+allow_public_contribute: false
+require_auth_for_git_read: false
 receive_max_bytes: 536870912
 trusted_proxies:
   - "127.0.0.1/32"
   - "::1/128"
-
 mirror_pull_interval: 5m
 mirror_workers: 4
 mirror_clone_timeout: 15m
 mirror_fetch_timeout: 10m
 mirror_push_timeout: 10m
-mirror_secrets_key: "" # openssl rand -hex 32
+mirror_secrets_key: ""
 mirror_verify_openpgp_keyring: "trust/openpgp.asc"
 mirror_verify_allowed_signers: "trust/allowed_signers"

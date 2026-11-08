@@ -411,6 +411,18 @@ func (g *fakeGit) EnsureDefaultBranch(string, string) error {
 	return nil
 }
 
+func (g *fakeGit) TipSHA(string) (string, error) {
+	return "", nil
+}
+
+func (g *fakeGit) WalkTextFiles(context.Context, string) (string, []domain.IndexedTextFile, error) {
+	return "", nil, nil
+}
+
+func (g *fakeGit) Grep(context.Context, string, string, int) ([]domain.CodeSearchHit, error) {
+	return nil, nil
+}
+
 func (g *fakeGit) DetectHEADBranch(string) (string, error) {
 	return g.head, nil
 }
@@ -453,9 +465,10 @@ func newMirrorEnv() *mirrorEnv {
 	}, head: "main"}
 	users := &memUsers{items: []*domain.User{
 		{
-			ID:       1,
-			Username: "owner",
-			Role:     domain.RoleAdmin,
+			ID:           1,
+			Username:     "owner",
+			Role:         domain.RoleAdmin,
+			PasswordHash: "h:secret",
 		},
 		{
 			ID:       2,
@@ -464,6 +477,7 @@ func newMirrorEnv() *mirrorEnv {
 	}, next: 2}
 	acts := &memActivity{}
 	uc := NewRepositoryUseCase(store, users, git, acts, NewAuthz(nil, nil))
+	uc.SetPasswordHasher(memHasher{})
 	key, err := secretbox.DeriveKey("0123456789abcdef0123456789abcdef")
 	if err != nil {
 		panic(err)

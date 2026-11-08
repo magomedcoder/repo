@@ -28,18 +28,33 @@ type AccessLogListResult struct {
 }
 
 type AccessLogUseCase struct {
-	logs domain.AccessLogStore
+	logs  domain.AccessLogStore
+	users domain.UserStore
 }
 
-func NewAccessLogUseCase(logs domain.AccessLogStore) *AccessLogUseCase {
+func NewAccessLogUseCase(logs domain.AccessLogStore, users domain.UserStore) *AccessLogUseCase {
 	return &AccessLogUseCase{
-		logs: logs,
+		logs:  logs,
+		users: users,
 	}
 }
 
-func (uc *AccessLogUseCase) ListFilter(ctx context.Context, filter domain.AccessLogFilter) (*AccessLogListResult, error) {
+func (uc *AccessLogUseCase) ListFilter(ctx context.Context, actorID uint, filter domain.AccessLogFilter) (*AccessLogListResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+
+	if actorID == 0 || uc.users == nil {
+		return nil, ErrUnauthorized
+	}
+
+	actor, err := uc.users.FindByID(ctx, actorID)
+	if err != nil || actor == nil {
+		return nil, ErrUnauthorized
+	}
+
+	if !actor.IsAdmin() {
+		return nil, ErrAdminRequired
 	}
 
 	offset, limit := ClampPagination(filter.Offset, filter.Limit, DefaultPageLimit, MaxAccessLimit)

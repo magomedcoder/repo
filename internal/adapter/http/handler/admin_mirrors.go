@@ -49,9 +49,6 @@ func (h *AdminHandler) ListMirrors(c *httpx.Context) error {
 	offset, limit = usecase.NormalizePagination(offset, limit)
 
 	errFlag := c.Query("errors")
-	if errFlag == "" {
-		errFlag = c.Query("error")
-	}
 
 	filter := domain.MirrorListFilter{
 		Direction: c.Query("direction"),

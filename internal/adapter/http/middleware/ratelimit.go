@@ -58,6 +58,21 @@ func RateLimitWithContribute(apiLimiter, authLimiter, contributeLimiter *RateLim
 	}
 }
 
+func RateLimitCodeSearch(limiter *RateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if limiter != nil && r.URL.Path == "/api/search" && strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("type")), "code") {
+				if !limiter.Allow(ClientIPKey(r)) {
+					httpware.WriteRateLimited(w)
+					return
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func isContributePath(path string) bool {
 	if !strings.HasPrefix(path, "/api/repos/") {
 		return false
