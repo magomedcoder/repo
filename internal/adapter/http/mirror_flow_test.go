@@ -8,16 +8,13 @@ import (
 
 func TestMirrorConfigureAndClear(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "mirroru", "mirroru@example.com", "password1")
+	cookies := loginUser(t, env, "mirroru", "mirroru@example.com", "test-pass-1")
 	srv := env.Server
 
-	created := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"app","private":false}`, cookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, srv, "app", false, cookies)
 
-	cfg := doJSON(t, srv, http.MethodPut, "/api/repos/app/mirror", `{
-		"current_password": "password1",
+	cfg := doJSON(t, srv, http.MethodPut, "/api/repos/"+pid+"/mirror", `{
+		"current_password": "test-pass-1",
 		"enabled": true,
 		"direction": "push",
 		"url": "https://example.com/org/app.git",
@@ -32,7 +29,7 @@ func TestMirrorConfigureAndClear(t *testing.T) {
 		t.Fatalf("configure body %s", cfg.Body)
 	}
 
-	paused := doJSON(t, srv, http.MethodPut, "/api/repos/app/mirror", `{"enabled":false,"direction":"push","url":"https://example.com/org/app.git"}`, cookies)
+	paused := doJSON(t, srv, http.MethodPut, "/api/repos/"+pid+"/mirror", `{"enabled":false,"direction":"push","url":"https://example.com/org/app.git"}`, cookies)
 	if paused.StatusCode != http.StatusOK {
 		t.Fatalf("pause %d %s", paused.StatusCode, paused.Body)
 	}
@@ -42,7 +39,7 @@ func TestMirrorConfigureAndClear(t *testing.T) {
 		t.Fatalf("pause must keep config: %s", paused.Body)
 	}
 
-	cleared := doJSON(t, srv, http.MethodPut, "/api/repos/app/mirror", `{"clear":true}`, cookies)
+	cleared := doJSON(t, srv, http.MethodPut, "/api/repos/"+pid+"/mirror", `{"clear":true}`, cookies)
 	if cleared.StatusCode != http.StatusOK {
 		t.Fatalf("clear %d %s", cleared.StatusCode, cleared.Body)
 	}
@@ -54,23 +51,21 @@ func TestMirrorConfigureAndClear(t *testing.T) {
 
 func TestMirrorStatusHistoryAndAdminGuard(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "mirrorv", "mirrorv@example.com", "password1")
+	cookies := loginUser(t, env, "mirrorv", "mirrorv@example.com", "test-pass-1")
 	srv := env.Server
 
-	if r := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"svc","private":false}`, cookies); r.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", r.StatusCode, r.Body)
-	}
+	svc := createRepo(t, srv, "svc", false, cookies)
 
-	if r := doJSON(t, srv, http.MethodPut, "/api/repos/svc/mirror", `{"current_password":"password1","enabled":true,"direction":"push","url":"https://example.com/o/svc.git","interval":"1h","conflict_policy":"reject"}`, cookies); r.StatusCode != http.StatusOK {
+	if r := doJSON(t, srv, http.MethodPut, "/api/repos/"+svc+"/mirror", `{"current_password":"test-pass-1","enabled":true,"direction":"push","url":"https://example.com/o/svc.git","interval":"1h","conflict_policy":"reject"}`, cookies); r.StatusCode != http.StatusOK {
 		t.Fatalf("configure %d %s", r.StatusCode, r.Body)
 	}
 
-	st := doJSON(t, srv, http.MethodGet, "/api/repos/svc/mirror", "", cookies)
+	st := doJSON(t, srv, http.MethodGet, "/api/repos/"+svc+"/mirror", "", cookies)
 	if st.StatusCode != http.StatusOK || !strings.Contains(st.Body, `"direction":"push"`) {
 		t.Fatalf("status %d %s", st.StatusCode, st.Body)
 	}
 
-	hist := doJSON(t, srv, http.MethodGet, "/api/repos/svc/mirror/history", "", cookies)
+	hist := doJSON(t, srv, http.MethodGet, "/api/repos/"+svc+"/mirror/history", "", cookies)
 	if hist.StatusCode != http.StatusOK {
 		t.Fatalf("history %d %s", hist.StatusCode, hist.Body)
 	}

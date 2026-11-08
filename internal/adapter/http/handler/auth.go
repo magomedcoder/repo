@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,10 +99,11 @@ func (h *AuthHandler) Login(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
+	ipKey := middleware.ClientIPKey(c.R)
 	out, err := h.auth.Login(c.Ctx(), usecase.LoginInput{
 		Login:     req.Login,
 		Password:  req.Password,
-		Key:       middleware.ClientIPKey(c.R) + "\n" + strings.ToLower(strings.TrimSpace(req.Login)),
+		IPKey:     ipKey,
 		IP:        middleware.ClientIP(c.R),
 		UserAgent: c.R.UserAgent(),
 	})
@@ -109,6 +111,13 @@ func (h *AuthHandler) Login(c *httpx.Context) error {
 		if h.access != nil {
 			h.access.FailedAuth(c.R, strings.TrimSpace(req.Login))
 		}
+		if errors.Is(err, usecase.ErrTooManyAttempts) {
+			if ra := h.auth.LoginRetryAfter(c.Ctx(), req.Login, ipKey); ra > 0 {
+				sec := int(ra.Seconds()) + 1
+				c.W.Header().Set("Retry-After", strconv.Itoa(sec))
+			}
+		}
+
 		return mapError(c, err)
 	}
 
@@ -138,6 +147,11 @@ func (h *AuthHandler) Password(c *httpx.Context) error {
 		Next:      req.Next,
 		KeepToken: middleware.SessionTokenFor(c.R, h.secure),
 	}); err != nil {
+		if errors.Is(err, usecase.ErrTooManyAttempts) {
+			if ra := h.auth.StepUpRetryAfter(user.ID); ra > 0 {
+				c.W.Header().Set("Retry-After", strconv.Itoa(int(ra.Seconds())+1))
+			}
+		}
 		return mapError(c, err)
 	}
 
@@ -205,7 +219,7 @@ func (h *AuthHandler) RevokeSession(c *httpx.Context) error {
 
 	id, err := parseID(c.Param("id"))
 	if err != nil || id == 0 {
-		return c.Error(http.StatusBadRequest, "invalid_json")
+		return c.Error(http.StatusBadRequest, "invalid_id")
 	}
 
 	revokedCurrent, err := h.auth.RevokeSession(c.Ctx(), user.ID, id, middleware.SessionTokenFor(c.R, h.secure))
@@ -227,10 +241,16 @@ func (h *AuthHandler) RevokeOtherSessions(c *httpx.Context) error {
 		return c.Error(http.StatusUnauthorized, "unauthorized")
 	}
 
+	currentPassword := ""
+	if req, bindErr := httpx.BindJSON[stepUpRequest](c); bindErr == nil {
+		currentPassword = req.CurrentPassword
+	}
+
 	token := middleware.SessionTokenFor(c.R, h.secure)
-	if err := h.auth.RevokeOtherSessions(c.Ctx(), user.ID, token); err != nil {
+	if err := h.auth.RevokeOtherSessions(c.Ctx(), user.ID, token, currentPassword); err != nil {
 		return mapError(c, err)
 	}
+
 	return c.NoContent()
 }
 

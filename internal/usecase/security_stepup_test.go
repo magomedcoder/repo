@@ -240,7 +240,7 @@ func TestConfigureMirrorVerifySignedRequiresTrust(t *testing.T) {
 	}
 }
 
-func TestGitAuthorizeRequireAuthForGitRead(t *testing.T) {
+func TestGitAuthorizeRequireAuthRead(t *testing.T) {
 	t.Parallel()
 
 	public := &domain.Repository{
@@ -266,8 +266,9 @@ func TestGitAuthorizeRequireAuthForGitRead(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			uc := &GitUseCase{authz: NewAuthz(nil, nil)}
-			uc.SetRequireAuthForGitRead(tc.require)
+			authz := NewAuthz(nil, nil)
+			authz.SetRequireAuthRead(tc.require)
+			uc := &GitUseCase{authz: authz}
 
 			err := uc.Authorize(context.Background(), public, tc.viewer, GitUploadPack)
 			if !errors.Is(err, tc.want) {

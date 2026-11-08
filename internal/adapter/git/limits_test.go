@@ -47,10 +47,7 @@ func TestLockRepoSerializes(t *testing.T) {
 
 	unlock()
 	<-got
-	repoLocksMu.Lock()
-	_, leaked := repoLocks[r.lockKey(p)]
-	repoLocksMu.Unlock()
-	if leaked {
+	if repoLocks.Len() != 0 {
 		t.Fatal("lock entry leaked")
 	}
 }

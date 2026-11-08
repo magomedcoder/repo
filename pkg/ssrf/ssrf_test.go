@@ -91,3 +91,40 @@ func TestAssertGitRemoteAllowed(t *testing.T) {
 		t.Fatalf("scp private: %v", err)
 	}
 }
+
+func TestInternalIPEmbeddedIPv4(t *testing.T) {
+	t.Parallel()
+
+	blocked := []string{
+		"64:ff9b::7f00:1",           // NAT64 -> 127.0.0.1
+		"64:ff9b::a9fe:a9fe",        // NAT64 -> 169.254.169.254
+		"64:ff9b::0a00:0001",        // NAT64 -> 10.0.0.1
+		"64:ff9b:1::1",              // local-use NAT64
+		"2002:7f00:1::1",            // 6to4 -> 127.0.0.1
+		"2002:a9fe:a9fe::1",         // 6to4 -> metadata
+		"2001:0:7f00:1::",           // Teredo server 127.0.0.1
+		"2001:0:808:808::80ff:fffe", // Teredo client 127.0.0.1 (obfuscated)
+		"::7f00:1",                  // IPv4-compatible loopback-ish
+	}
+	for _, raw := range blocked {
+		ip := net.ParseIP(raw)
+		if ip == nil {
+			t.Fatalf("bad test ip %q", raw)
+		}
+
+		if !InternalIP(ip) {
+			t.Errorf("%s must be blocked", raw)
+		}
+	}
+
+	allowed := []string{
+		"64:ff9b::0808:0808",   // NAT64 -> 8.8.8.8
+		"2002:0808:0808::1",    // 6to4 -> 8.8.8.8
+		"2606:4700:4700::1111", // public v6
+	}
+	for _, raw := range allowed {
+		if InternalIP(net.ParseIP(raw)) {
+			t.Errorf("%s must be allowed", raw)
+		}
+	}
+}

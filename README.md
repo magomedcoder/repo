@@ -8,30 +8,48 @@ Unlike GitHub, GitLab, Gitea, and similar hosts, Repo has **no organizations or 
 
 - Paths are flat: `https://example.com/my-app.git`, not `https://example.com/utest/my-app.git`
 - Repository names are unique on the whole instance (not per user or org)
-- Access is via per-repo collaborators and personal teams - not org membership or nested group trees
 
 Built for a small self-hosted instance where short clone URLs matter more than multi-tenant org hierarchy.
 
 ## Features
 
 - Repositories over HTTP: clone, fetch, push; browse branches, tags, tree, commits, blame, README
-- Issues and pull requests (diff, comments, merge)
-- Flat repositories (`name.git`), per-repo collaborators, and personal teams that grant read/write/admin on your repositories
-- Pull and push mirroring over http(s) and SSH (per-repository interval and sync window, status and history, admin overview)
-- Accounts, sessions, access tokens, admin users; UI in English and Russian
+- Issues and pull requests (diff, comments, merge); optional default-branch protection (blocks force-push/delete for all heads and tags while enabled)
+- Flat repositories (`<name>.git`), per-repo collaborators, and personal teams that grant read/write/admin on your repositories
+- Pull and push mirroring over http(s) and SSH (interval, sync window, status/history, admin overview)
+- Accounts, sessions, access tokens (`git:read` / `git:write`), admin panel at `/cp`; UI in English and Russian
+- Code and repository search; activity feed
 
-## Stack
+## Build and run
 
-- Go 1.27+, CGO for SQLite
-- GORM + SQLite; go-git for repository operations
-- Vue 3, Vite, TypeScript, Tailwind CSS, vue-i18n, vue-router
-- Yarn for the web app; Make for build orchestration
+```bash
+git clone https://magomedcoder.ru/repo.git
+cd repo
+
+cp config.example.yaml config.yaml
+chmod 600 config.yaml
+# fill secrets.session_secret, token_pepper, csrf_secret, mirror_secrets_key
+# each: openssl rand -hex 32
+
+make install   # yarn install in web/
+make build     # yarn build -> embed web/dist, then go build -> build/repo-server
+
+# first admin (password ≥ 8 characters)
+./build/repo-server user create -username admin -email admin@example.com -password 'your-password' -role admin
+
+./build/repo-server serve
+# or: make run
+```
+
+Open `http://127.0.0.1:8080`. Admin UI: `/cp`.
+
+Production tip: reverse proxy + `http.cookie_secure: true` + prefer `auth.git_password_auth: false` (PATs only).
 
 ## Requirements
 
-- Go 1.27.1 or newer with CGO enabled (`gcc` / build essentials)
-- Node.js 22.18+ or 24.12+, and Yarn
-- `config.yaml` (copy from `config.example.yaml`)
+- Go 1.27.3+ with CGO (`gcc` / build essentials); Node.js 22.18+ or 24.12+, Yarn
+- Stack: GORM + SQLite, go-git, Vue 3 / Vite / TypeScript / Tailwind; `make` orchestrates the build
+- `config.yaml` (copy from `config.example.yaml`; mode `0600`/`0400` or the server refuses to start)
 
 ## Configuration
 
@@ -41,74 +59,64 @@ Copy the example and edit values:
 cp config.example.yaml config.yaml
 ```
 
-Generate each secret with `openssl rand -hex 32`. All four secrets are required (min 32 characters each) and must not fall back onto each other.
+Generate each secret with `openssl rand -hex 32`. All four secrets are required (min 32 characters each) and must not fall back onto each other. Nested YAML only (`http` / `server` / `secrets` / `auth` / `mirror`); flat keys are rejected.
 
-| Key                                                                     | Description                                                                                                                                                                       |
-|-------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `http_addr`                                                             | HTTP listen address (default `:8080`)                                                                                                                                             |
-| `data_dir`                                                              | SQLite DB, Git repos, and avatars                                                                                                                                                 |
-| `site_name`                                                             | Site title in the UI                                                                                                                                                              |
-| `session_secret`                                                        | Signs session cookies                                                                                                                                                             |
-| `token_pepper`                                                          | Hashes personal access tokens                                                                                                                                                     |
-| `csrf_secret`                                                           | Binds CSRF tokens to the session                                                                                                                                                  |
-| `mirror_secrets_key`                                                    | Encrypts stored mirror credentials                                                                                                                                                |
-| `cookie_secure`                                                         | Set `true` when served over HTTPS (including behind a reverse proxy). The server warns at startup if this is `false` and `http_addr` is not loopback-only                         |
-| `allow_registration`                                                    | Public self-registration. Keep `false` on public instances and create users via CLI/admin; the server warns when `true`                                                           |
-| `allow_public_contribute`                                               | When `true`, any logged-in user may open issues/PRs/comments on public repos. When `false` (default), only owners, collaborators, and team members may contribute                 |
-| `require_auth_for_git_read`                                             | When `true`, refuse anonymous `git clone`/fetch of public repos (password or access token required)                                                                               |
-| `receive_max_bytes`                                                     | Max Git push size in bytes (default 512 MiB)                                                                                                                                      |
-| `trusted_proxies`                                                       | Real reverse-proxy CIDRs/IPs trusted for `X-Forwarded-For` / `X-Forwarded-Proto`. Never use `0.0.0.0/0` or `::/0` (rejected at startup). Leave empty if there is no reverse proxy |
-| `mirror_pull_interval`                                                  | How often pull mirrors fetch (`5m` by default; `0` disables the scheduler)                                                                                                        |
-| `mirror_workers`                                                        | Concurrent mirror worker count                                                                                                                                                    |
-| `mirror_clone_timeout` / `mirror_fetch_timeout` / `mirror_push_timeout` | Per-operation timeouts                                                                                                                                                            |
-| `mirror_verify_openpgp_keyring`                                         | Armored OpenPGP public keyring for `mirror_verify_signed` (path under `data_dir` unless absolute)                                                                                 |
-| `mirror_verify_allowed_signers`                                         | SSH `allowed_signers` file (namespace `git`) for `mirror_verify_signed`                                                                                                           |
+```yaml
+http:
+  # Bind loopback behind a reverse proxy. Non-loopback requires cookie_secure: true.
+  addr: "127.0.0.1:8080"
+  # true (HTTPS / reverse proxy) -> __Host-session / __Host-repo_csrf (Secure).
+  # false (loopback/dev only) -> plain session / repo_csrf; __Host- is never issued without Secure.
+  cookie_secure: true
+  # Real proxy CIDRs for X-Forwarded-For / Proto. Never 0.0.0.0/0 or ::/0. Empty if no proxy.
+  trusted_proxies:
+    - "127.0.0.1/32"
+    - "::1/128"
+  receive_max_bytes: 268435456   # max Git push size (default 256 MiB)
 
-Responses include CSP, `X-Frame-Options`, `X-Content-Type-Options`, and (over HTTPS / with `cookie_secure`) HSTS with `includeSubDomains; preload`. After the site is live on HTTPS, you can submit the domain at [hstspreload.org](https://hstspreload.org).
+server:
+  data_dir: "data"               # SQLite, Git repos, avatars
+  site_name: "Repo"              # UI title
+  soft_deleted_retention: 168h   # purge soft-deleted repos after this
+
+secrets:
+  session_secret: ""             # openssl rand -hex 32 - signs session cookies
+  token_pepper: ""               # hashes personal access tokens
+  csrf_secret: ""                # binds CSRF tokens to the session
+  mirror_secrets_key: ""         # encrypts stored mirror credentials
+
+auth:
+  allow_registration: false      # public self-signup; keep false on public instances
+  allow_public_contribute: false # any logged-in user may open issues/PRs on public repos
+  require_auth_for_read: false   # true = login required for all reads (incl. public)
+  git_password_auth: true        # false = Git HTTP accepts only PATs; prefer false in prod (password ignores PAT repo_ids)
+  session_absolute: 720h         # hard session lifetime
+  session_idle: 336h             # idle timeout (refreshed on activity)
+  # Login / Git password soft-lock is in-memory only: process restart clears lockouts.
+
+mirror:
+  pull_interval: 5m              # how often pull mirrors fetch; 0 disables scheduler
+  workers: 4                     # concurrent mirror workers
+  clone_timeout: 15m
+  fetch_timeout: 10m
+  push_timeout: 10m
+  default_max_bytes: 5368709120  # used when a mirror leaves max_bytes at 0 (5 GiB)
+  # verify:                      # relative to data_dir only (absolute paths rejected at startup)
+  #   openpgp_keyring: "trust/openpgp.asc"
+  #   allowed_signers: "trust/allowed_signers"
+```
+
+Git **push** always challenges with `401` Basic. Write needs owner or collaborator/team with write. Anonymous **read** of private repos returns `404`. Auth: account password (if `auth.git_password_auth: true`) or a `git:write` PAT.
+
+Responses set CSP and related headers; with HTTPS / `http.cookie_secure`, HSTS is enabled. Failed logins share an in-memory soft-lock (`429` + `Retry-After`); a process restart clears it.
 
 ## Mirroring
 
-- **Pull** mirrors stay in sync with a remote (read-only here); **push** mirrors publish after `git push` / merge
-- Configure on create (*Mirror* / *Import*) or in repository settings; admins manage all mirrors at `/cp/mirrors`
-- Optional `mirror_verify_signed`: after each pull, the tip must verify against the server OpenPGP keyring and/or SSH `allowed_signers` (not the host GPG trustdb; runtime does not need a system `git` binary)
-- Internal hosts blocked by default (SSRF); interval and workers in `config.example.yaml`
-- `mirror_verify_signed` can only be enabled when a non-empty keyring or `allowed_signers` file is loaded; the server warns at startup if both are missing/empty
-- Changing the mirror URL or stored secrets (password / SSH key) requires the current account password (`current_password`)
+Pull (read-only here) and push after local `git push` / merge. Configure in the UI or `/cp/mirrors`. Tip signature checks use `mirror.verify` (files under `data_dir`). Internal hosts are blocked (SSRF); changing URL/secrets needs `current_password`.
 
 ## Reverse proxy
 
-Example nginx config: `nginx.example.conf` (TLS termination, large Git pushes, forwarded headers). Point `trusted_proxies` at the proxy and set `cookie_secure: true`.
-
-## Build
-
-```bash
-make install # yarn install in web/
-make build # yarn build -> embed web/dist, then go build -> build/repo-server
-```
-
-After `make build` the binary is `./build/repo-server`. A release asset is `repo-linux-amd64.tar.gz` with `repo-server` inside:
-
-```bash
-tar -xzf repo-linux-amd64.tar.gz
-./repo-server serve
-```
-
-## Run
-
-```bash
-./build/repo-server serve
-# or after unpacking a release: ./repo-server serve
-# or: make run
-```
-
-## First user
-
-Create the first admin via CLI. Password must be at least 8 characters.
-
-```bash
-./build/repo-server user create -username admin -email admin@example.com -password 'your-password' -role admin
-# release binary: ./repo-server user create ...
-```
+[`nginx.example.conf`](./nginx.example.conf): TLS and Git pushes. Set `http.trusted_proxies` and `http.cookie_secure: true`.
 
 ## Test
 

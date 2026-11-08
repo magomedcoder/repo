@@ -23,7 +23,7 @@ function isNotFound(error: PageError | string | null | undefined) {
   return typeof error === 'object' && error?.kind === 'not_found'
 }
 
-const repoName = computed(() => normalizeRepoPath(props.repoPath) || props.repoPath)
+const repoName = computed(() => props.repo?.name || normalizeRepoPath(props.repoPath) || props.repoPath)
 const issuesEnabled = computed(() => props.repo?.issues_enabled !== false)
 </script>
 

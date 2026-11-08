@@ -59,10 +59,15 @@ async function revokeOthers() {
     return
   }
 
+  const password = promptStepUpPassword('sessions.confirmPassword')
+  if (!password) {
+    return
+  }
+
   busy.value = true
   error.value = ''
   try {
-    await authApi.revokeOtherSessions()
+    await authApi.revokeOtherSessions(password)
     await load()
   } catch (err) {
     error.value = localizeError(err, 'errors.deleteFailed')

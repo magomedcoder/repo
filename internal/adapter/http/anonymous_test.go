@@ -7,14 +7,11 @@ import (
 
 func TestAnonymousPrivateAndMissingReposMatch(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "ada", "ada@example.com", "password1")
+	cookies := loginUser(t, env, "ada", "ada@example.com", "test-pass-1")
 
-	created := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"secret","private":true}`, cookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, env.Server, "secret", true, cookies)
 
-	privateRepo := doJSON(t, env.Server, http.MethodGet, "/api/repos/secret", "", nil)
+	privateRepo := doJSON(t, env.Server, http.MethodGet, "/api/repos/"+pid, "", nil)
 	missing := doJSON(t, env.Server, http.MethodGet, "/api/repos/missing", "", nil)
 	if privateRepo.StatusCode != http.StatusNotFound || missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("private %d %s missing %d %s", privateRepo.StatusCode, privateRepo.Body, missing.StatusCode, missing.Body)

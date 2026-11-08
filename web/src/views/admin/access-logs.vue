@@ -8,6 +8,7 @@ import { useAdminAccessLogs } from '@/composables/admin/useAdminAccessLogs'
 const ACTIONS = [
   '',
   'visit',
+  'visit_client',
   'clone',
   'push',
   'download',

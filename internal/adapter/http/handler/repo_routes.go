@@ -60,12 +60,10 @@ func mountRepoDetailRoutes(pub, authed *httpx.Router, d *RepoDispatcher, base st
 	authed.PATCH(base+"/issues/{number}/comments/{commentID}", d.explicitPatch("issue-comment"))
 	authed.DELETE(base+"/issues/{number}", d.explicitDelete("issue"))
 	authed.DELETE(base+"/issues/{number}/comments/{commentID}", d.explicitDelete("issue-comment"))
-	authed.PATCH(base+"/labels/{labelID}", d.explicitPatch("label"))
 	authed.DELETE(base+"/labels/{labelID}", d.explicitDelete("label"))
 
 	pub.GET(base+"/pulls/{number}", d.explicitGet("pull"))
 	pub.GET(base+"/pulls/{number}/diff", d.explicitGet("pull-diff"))
-	pub.GET(base+"/pulls/{number}/commits", d.explicitGet("pull-commits"))
 	authed.POST(base+"/pulls/{number}/comments", d.explicitPost("pull-comments"))
 	authed.POST(base+"/pulls/{number}/merge", d.explicitPost("pull-merge"))
 	authed.PATCH(base+"/pulls/{number}", d.explicitPatch("pull"))
@@ -194,7 +192,7 @@ func namedRepoParts(c *httpx.Context) []string {
 
 func explicitExtra(c *httpx.Context, action string) []string {
 	switch action {
-	case "issue", "pull", "pull-diff", "pull-commits", "pull-merge", "pull-comments", "issue-comments", "label":
+	case "issue", "pull", "pull-diff", "pull-merge", "pull-comments", "issue-comments", "label":
 		if n := c.Param("number"); n != "" {
 			return []string{n}
 		}

@@ -33,7 +33,7 @@ func TestMirrorCheckRedirectRejectsHTTPSToHTTP(t *testing.T) {
 	}
 }
 
-func TestMirrorCheckRedirectAllowsHTTPS(t *testing.T) {
+func TestMirrorCheckRedirectAllowsSameHostHTTPS(t *testing.T) {
 	t.Parallel()
 
 	via := []*http.Request{{
@@ -42,8 +42,30 @@ func TestMirrorCheckRedirectAllowsHTTPS(t *testing.T) {
 			Host:   "git.example.com",
 			Path:   "/a.git",
 		},
-	},
+	}}
+	req := &http.Request{
+		URL: &url.URL{
+			Scheme: "https",
+			Host:   "git.example.com",
+			Path:   "/b.git",
+		},
 	}
+
+	if err := mirrorCheckRedirect(req, via, testSafeLookup); err != nil {
+		t.Fatalf("same-host https redirect should be allowed: %v", err)
+	}
+}
+
+func TestMirrorCheckRedirectRejectsCrossHostHTTPS(t *testing.T) {
+	t.Parallel()
+
+	via := []*http.Request{{
+		URL: &url.URL{
+			Scheme: "https",
+			Host:   "git.example.com",
+			Path:   "/a.git",
+		},
+	}}
 	req := &http.Request{
 		URL: &url.URL{
 			Scheme: "https",
@@ -52,8 +74,8 @@ func TestMirrorCheckRedirectAllowsHTTPS(t *testing.T) {
 		},
 	}
 
-	if err := mirrorCheckRedirect(req, via, testSafeLookup); err != nil {
-		t.Fatalf("https-https should be allowed: %v", err)
+	if err := mirrorCheckRedirect(req, via, testSafeLookup); err == nil {
+		t.Fatal("cross-host https redirect must be rejected")
 	}
 }
 

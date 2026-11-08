@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -51,15 +52,14 @@ var (
 )
 
 const (
-	minPasswordLen     = 8
-	sessionAbsoluteTTL = 30 * 24 * time.Hour
-	sessionIdleTTL     = 14 * 24 * time.Hour
-	minUsernameLen     = 3
-	maxUsernameLen     = 39
-	userMaxFails       = 20
+	defaultSessionAbsoluteTTL = 30 * 24 * time.Hour
+	defaultSessionIdleTTL     = 14 * 24 * time.Hour
+	minUsernameLen            = 3
+	maxUsernameLen            = 39
+	maxSessionsPerUser        = 20
 )
 
-const dummyPasswordHash = "argon2id$v=19$m=65536,t=2,p=4$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+const dummyPasswordHash = "argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 var ErrRegistrationFailed = NewError(KindConflict, "registration_failed")
 var ErrEmailUnavailable = NewError(KindConflict, "email_unavailable")
@@ -81,7 +81,7 @@ type RegisterInput struct {
 type LoginInput struct {
 	Login     string
 	Password  string
-	Key       string
+	IPKey     string
 	IP        string
 	UserAgent string
 }
@@ -104,16 +104,18 @@ type ChangePasswordInput struct {
 }
 
 type AuthUseCase struct {
-	users             domain.UserStore
-	sessions          domain.SessionStore
-	accessTokens      domain.AccessTokenStore
-	hasher            domain.PasswordHasher
-	tokens            domain.TokenGenerator
-	attempts          attempts.Counter
-	userAttempts      attempts.Counter
-	secret            string
-	allowRegistration bool
-	now               func() time.Time
+	users              domain.UserStore
+	sessions           domain.SessionStore
+	accessTokens       domain.AccessTokenStore
+	hasher             domain.PasswordHasher
+	tokens             domain.TokenGenerator
+	guard              *LoginGuard
+	stepUp             *PasswordGate
+	secret             string
+	allowRegistration  bool
+	sessionAbsoluteTTL time.Duration
+	sessionIdleTTL     time.Duration
+	now                func() time.Time
 }
 
 func NewAuthUseCase(
@@ -124,31 +126,86 @@ func NewAuthUseCase(
 	tokens domain.TokenGenerator,
 ) *AuthUseCase {
 	return &AuthUseCase{
-		users:        users,
-		sessions:     sessions,
-		accessTokens: accessTokens,
-		hasher:       hasher,
-		tokens:       tokens,
-		attempts:     attempts.New(),
-		userAttempts: attempts.New(attempts.Config{MaxFails: userMaxFails}),
-		now:          time.Now,
+		users:              users,
+		sessions:           sessions,
+		accessTokens:       accessTokens,
+		sessionAbsoluteTTL: defaultSessionAbsoluteTTL,
+		sessionIdleTTL:     defaultSessionIdleTTL,
+		hasher:             hasher,
+		tokens:             tokens,
+		guard:              NewLoginGuard(),
+		stepUp:             NewPasswordGate(hasher),
+		now:                time.Now,
 	}
 }
 
 func (uc *AuthUseCase) StartAttemptsSweep(ctx context.Context, every time.Duration) {
-	attempts.StartBackgroundSweep(ctx, every, uc.attempts, uc.userAttempts)
+	counters := append(uc.guard.Counters(), uc.stepUp.Attempts())
+	attempts.StartBackgroundSweep(ctx, every, counters...)
 }
 
-func (uc *AuthUseCase) UserAttempts() attempts.Counter {
+func (uc *AuthUseCase) LoginRetryAfter(ctx context.Context, login, ipKey string) time.Duration {
+	if uc == nil || uc.guard == nil {
+		return 0
+	}
+
+	login = normalizeLogin(login)
+	var user *domain.User
+	if login != "" {
+		var err error
+		if strings.Contains(login, "@") {
+			user, err = uc.users.FindByEmail(ctx, login)
+		} else {
+			user, err = uc.users.FindByUsername(ctx, login)
+		}
+		if err != nil {
+			user = nil
+		}
+	}
+
+	return uc.guard.RetryAfter(ipKey, AccountKey(user, login))
+}
+
+func (uc *AuthUseCase) LoginGuard() *LoginGuard {
 	if uc == nil {
 		return nil
 	}
 
-	return uc.userAttempts
+	return uc.guard
+}
+
+func (uc *AuthUseCase) PasswordGate() *PasswordGate {
+	if uc == nil {
+		return nil
+	}
+
+	return uc.stepUp
+}
+
+func (uc *AuthUseCase) StepUpRetryAfter(userID uint) time.Duration {
+	if uc == nil || uc.stepUp == nil {
+		return 0
+	}
+
+	return uc.stepUp.RetryAfter(userID)
 }
 
 func (uc *AuthUseCase) SetSessionSecret(secret string) {
 	uc.secret = secret
+}
+
+func (uc *AuthUseCase) SetSessionTTL(absolute, idle time.Duration) {
+	if uc == nil {
+		return
+	}
+
+	if absolute > 0 {
+		uc.sessionAbsoluteTTL = absolute
+	}
+
+	if idle > 0 {
+		uc.sessionIdleTTL = idle
+	}
 }
 
 func (uc *AuthUseCase) SetAllowRegistration(allow bool) {
@@ -201,32 +258,12 @@ func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domai
 		return nil, ErrInvalidEmail
 	}
 
-	if password == "" {
-		return nil, ErrPasswordRequired
-	}
-
-	if len(password) < minPasswordLen {
-		return nil, ErrPasswordTooShort
+	if err := validateNewPassword(password); err != nil {
+		return nil, err
 	}
 
 	if IsReservedSlug(username) {
 		return nil, ErrReservedSlug
-	}
-
-	taken, err := uc.users.ExistsByUsername(username)
-	if err != nil {
-		return nil, fmt.Errorf("check username: %w", err)
-	}
-	if taken {
-		return nil, ErrUsernameTaken
-	}
-
-	taken, err = uc.users.ExistsByEmail(email)
-	if err != nil {
-		return nil, fmt.Errorf("check email: %w", err)
-	}
-	if taken {
-		return nil, ErrEmailTaken
 	}
 
 	role := in.Role
@@ -234,8 +271,32 @@ func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domai
 		return nil, ErrInvalidRole
 	}
 
+	taken, err := uc.users.ExistsByUsername(username)
+	if err != nil {
+		return nil, fmt.Errorf("check username: %w", err)
+	}
+
+	if !taken {
+		taken, err = uc.users.ExistsByEmail(email)
+		if err != nil {
+			return nil, fmt.Errorf("check email: %w", err)
+		}
+
+		if taken {
+			uc.burnHash(password)
+			return nil, ErrEmailTaken
+		}
+	} else {
+		uc.burnHash(password)
+		return nil, ErrUsernameTaken
+	}
+
 	hash, err := uc.hasher.Hash(password)
 	if err != nil {
+		if isHasherBusy(err) {
+			return nil, ErrBusy
+		}
+
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
@@ -246,10 +307,26 @@ func (uc *AuthUseCase) CreateUser(ctx context.Context, in RegisterInput) (*domai
 		Role:         role,
 	}
 	if err := uc.users.Create(user); err != nil {
+		if isUniqueViolation(err) {
+			if usernameConflict(err) {
+				return nil, ErrUsernameTaken
+			}
+
+			return nil, ErrEmailTaken
+		}
+
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
 	return sanitizeUser(user), nil
+}
+
+func usernameConflict(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "username")
+}
+
+func (uc *AuthUseCase) burnHash(password string) {
+	_, _ = uc.hasher.Hash(password)
 }
 
 func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, error) {
@@ -257,20 +334,20 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 		return nil, err
 	}
 
-	login := strings.ToLower(strings.TrimSpace(in.Login))
+	login := normalizeLogin(in.Login)
 	in.Password = strings.TrimSpace(in.Password)
-	if login == "" || in.Password == "" {
-		return nil, ErrInvalidCredentials
+
+	ipKey := in.IPKey
+	if ipKey == "" {
+		ipKey = in.IP
 	}
 
-	ipPart := in.Key
-	if ipPart == "" {
-		ipPart = in.IP
-	}
-
-	userKey := "login-user\n" + ipPart + "\n" + login
-	if uc.loginLocked(in.Key, userKey) {
+	if uc.guard.IPLocked(ipKey) {
 		return nil, ErrTooManyAttempts
+	}
+
+	if login == "" {
+		return nil, ErrInvalidCredentials
 	}
 
 	var (
@@ -284,23 +361,37 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 	}
 
 	if err != nil {
-		_ = uc.hasher.Compare(dummyPasswordHash, in.Password)
-		uc.loginFailed(in.Key, userKey)
+		user = nil
+	}
+
+	acctKey := AccountKey(user, login)
+	if uc.guard.AccountLocked(acctKey) {
+		return nil, ErrTooManyAttempts
+	}
+
+	if in.Password == "" || len(in.Password) > maxPasswordLen {
+		return nil, ErrInvalidCredentials
+	}
+
+	if user == nil {
+		if err := uc.hasher.Compare(dummyPasswordHash, in.Password); isHasherBusy(err) {
+			return nil, ErrBusy
+		}
+
+		uc.guard.Fail(ipKey, acctKey)
 		return nil, ErrInvalidCredentials
 	}
 
 	if err := uc.hasher.Compare(user.PasswordHash, in.Password); err != nil {
-		uc.loginFailed(in.Key, userKey)
+		if isHasherBusy(err) {
+			return nil, ErrBusy
+		}
+
+		uc.guard.Fail(ipKey, acctKey)
 		return nil, ErrInvalidCredentials
 	}
 
-	if in.Key != "" && uc.attempts != nil {
-		uc.attempts.Reset(in.Key)
-	}
-
-	if uc.userAttempts != nil {
-		uc.userAttempts.Reset(userKey)
-	}
+	uc.guard.Success(acctKey)
 
 	if uc.hasher.NeedsRehash(user.PasswordHash) {
 		if hash, herr := uc.hasher.Hash(in.Password); herr == nil {
@@ -317,24 +408,6 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (*AuthOutput, e
 	return &AuthOutput{User: sanitizeUser(user), Token: token}, nil
 }
 
-func (uc *AuthUseCase) loginLocked(key, userKey string) bool {
-	if key != "" && uc.attempts != nil && uc.attempts.Locked(key) {
-		return true
-	}
-
-	return uc.userAttempts != nil && uc.userAttempts.Locked(userKey)
-}
-
-func (uc *AuthUseCase) loginFailed(key, userKey string) {
-	if key != "" && uc.attempts != nil {
-		uc.attempts.Fail(key)
-	}
-
-	if uc.userAttempts != nil {
-		uc.userAttempts.Fail(userKey)
-	}
-}
-
 func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInput) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -345,8 +418,16 @@ func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInpu
 
 	in.Current = strings.TrimSpace(in.Current)
 	in.Next = strings.TrimSpace(in.Next)
-	if len(in.Next) < minPasswordLen {
-		return ErrPasswordTooShort
+	if in.Current == "" {
+		return ErrPasswordRequired
+	}
+
+	if len(in.Current) > maxPasswordLen {
+		return ErrPasswordTooLong
+	}
+
+	if err := validateNewPassword(in.Next); err != nil {
+		return err
 	}
 
 	user, err := uc.users.FindByID(ctx, in.UserID)
@@ -354,12 +435,16 @@ func (uc *AuthUseCase) ChangePassword(ctx context.Context, in ChangePasswordInpu
 		return ErrUnauthorized
 	}
 
-	if err := uc.hasher.Compare(user.PasswordHash, in.Current); err != nil {
-		return ErrCurrentPasswordWrong
+	if err := uc.stepUp.Verify(user.ID, user.PasswordHash, in.Current, ErrCurrentPasswordWrong); err != nil {
+		return err
 	}
 
 	hash, err := uc.hasher.Hash(in.Next)
 	if err != nil {
+		if isHasherBusy(err) {
+			return ErrBusy
+		}
+
 		return fmt.Errorf("hash password: %w", err)
 	}
 
@@ -423,7 +508,7 @@ func (uc *AuthUseCase) Authenticate(ctx context.Context, token string) (*domain.
 		return nil, nil, ErrSessionExpired
 	}
 
-	if !session.CreatedAt.IsZero() && now.After(session.CreatedAt.Add(sessionAbsoluteTTL)) {
+	if !session.CreatedAt.IsZero() && now.After(session.CreatedAt.Add(uc.sessionAbsoluteTTL)) {
 		_ = uc.sessions.DeleteByToken(token)
 		return nil, nil, ErrSessionExpired
 	}
@@ -433,13 +518,13 @@ func (uc *AuthUseCase) Authenticate(ctx context.Context, token string) (*domain.
 		lastSeen = session.CreatedAt
 	}
 
-	if !lastSeen.IsZero() && now.After(lastSeen.Add(sessionIdleTTL)) {
+	if !lastSeen.IsZero() && now.After(lastSeen.Add(uc.sessionIdleTTL)) {
 		_ = uc.sessions.DeleteByToken(token)
 		return nil, nil, ErrSessionExpired
 	}
 
-	absoluteEnd := session.CreatedAt.Add(sessionAbsoluteTTL)
-	idleEnd := now.Add(sessionIdleTTL)
+	absoluteEnd := session.CreatedAt.Add(uc.sessionAbsoluteTTL)
+	idleEnd := now.Add(uc.sessionIdleTTL)
 	newExpiry := absoluteEnd
 	if idleEnd.Before(absoluteEnd) {
 		newExpiry = idleEnd
@@ -474,7 +559,7 @@ func (uc *AuthUseCase) createSession(userID uint, ip, userAgent string) (string,
 		UserID:     userID,
 		IP:         strings.TrimSpace(ip),
 		UserAgent:  strings.TrimSpace(userAgent),
-		ExpiresAt:  now.Add(sessionIdleTTL),
+		ExpiresAt:  now.Add(uc.sessionIdleTTL),
 		LastSeenAt: now,
 		CreatedAt:  now,
 	}
@@ -482,7 +567,43 @@ func (uc *AuthUseCase) createSession(userID uint, ip, userAgent string) (string,
 		return "", fmt.Errorf("create session: %w", err)
 	}
 
+	uc.pruneSessions(userID, session.ID)
+
 	return token, nil
+}
+
+func (uc *AuthUseCase) pruneSessions(userID, keepID uint) {
+	list, err := uc.sessions.ListByUserID(userID)
+	if err != nil || len(list) <= maxSessionsPerUser {
+		return
+	}
+
+	sort.SliceStable(list, func(i, j int) bool {
+		return sessionActivity(list[i]).Before(sessionActivity(list[j]))
+	})
+
+	excess := len(list) - maxSessionsPerUser
+	for _, old := range list {
+		if excess <= 0 {
+			break
+		}
+
+		if old.ID == keepID {
+			continue
+		}
+
+		if err := uc.sessions.DeleteByUserAndID(userID, old.ID); err == nil || errors.Is(err, domain.ErrNotFound) {
+			excess--
+		}
+	}
+}
+
+func sessionActivity(s domain.Session) time.Time {
+	if !s.LastSeenAt.IsZero() {
+		return s.LastSeenAt
+	}
+
+	return s.CreatedAt
 }
 
 func (uc *AuthUseCase) ListSessions(ctx context.Context, userID uint, currentToken string) ([]SessionItem, error) {
@@ -552,7 +673,7 @@ func (uc *AuthUseCase) RevokeSession(ctx context.Context, userID, sessionID uint
 	return currentID != 0 && sessionID == currentID, nil
 }
 
-func (uc *AuthUseCase) RevokeOtherSessions(ctx context.Context, userID uint, keepToken string) error {
+func (uc *AuthUseCase) RevokeOtherSessions(ctx context.Context, userID uint, keepToken, currentPassword string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -563,6 +684,10 @@ func (uc *AuthUseCase) RevokeOtherSessions(ctx context.Context, userID uint, kee
 
 	if keepToken == "" {
 		return ErrUnauthorized
+	}
+
+	if err := uc.requireStepUp(ctx, userID, currentPassword); err != nil {
+		return err
 	}
 
 	return uc.sessions.DeleteByUserIDExcept(userID, keepToken)
@@ -585,7 +710,8 @@ func (uc *AuthUseCase) RevokeAllSessions(ctx context.Context, userID uint, curre
 }
 
 func (uc *AuthUseCase) requireStepUp(ctx context.Context, userID uint, password string) error {
-	if strings.TrimSpace(password) == "" {
+	password = strings.TrimSpace(password)
+	if password == "" {
 		return ErrPasswordRequired
 	}
 
@@ -594,11 +720,7 @@ func (uc *AuthUseCase) requireStepUp(ctx context.Context, userID uint, password 
 		return ErrUnauthorized
 	}
 
-	if err := uc.hasher.Compare(user.PasswordHash, password); err != nil {
-		return ErrCurrentPasswordWrong
-	}
-
-	return nil
+	return uc.stepUp.Verify(user.ID, user.PasswordHash, password, ErrCurrentPasswordWrong)
 }
 
 func validateUsername(username string) error {

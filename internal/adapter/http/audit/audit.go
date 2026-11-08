@@ -1,8 +1,6 @@
 package audit
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"path"
@@ -13,6 +11,7 @@ import (
 
 	"magomedcoder.ru/repo/internal/adapter/http/middleware"
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/hashutil"
 )
 
 const (
@@ -136,13 +135,13 @@ func (l *Logger) stopped() bool {
 
 func (l *Logger) write(ev *domain.AccessLog) {
 	if err := l.store.Create(ev); err != nil {
-		slog.Warn("access_log", "action", ev.Action, "err", err)
+		slog.Warn("access log", "action", ev.Action, "err", err)
 	}
 	n := l.writes.Add(1)
 	if n%accessPurgeEveryN == 0 {
 		cutoff := time.Now().Add(-accessLogRetention)
 		if err := l.store.DeleteOlderThan(cutoff); err != nil {
-			slog.Warn("access_log_purge", "err", err)
+			slog.Warn("access log purge", "err", err)
 		}
 	}
 }
@@ -178,6 +177,14 @@ func (l *Logger) Visit(r *http.Request, user *domain.User) {
 }
 
 func (l *Logger) VisitPath(r *http.Request, user *domain.User, pathValue string) {
+	l.visitPath(r, user, pathValue, domain.AccessVisit)
+}
+
+func (l *Logger) VisitClientPath(r *http.Request, user *domain.User, pathValue string) {
+	l.visitPath(r, user, pathValue, domain.AccessVisitClient)
+}
+
+func (l *Logger) visitPath(r *http.Request, user *domain.User, pathValue, action string) {
 	if l == nil {
 		return
 	}
@@ -190,16 +197,20 @@ func (l *Logger) VisitPath(r *http.Request, user *domain.User, pathValue string)
 		return
 	}
 
-	if !l.allowVisit(r, pathValue) {
+	if !l.allowVisit(r, pathValue, action) {
 		return
 	}
 
-	l.record(r, domain.AccessVisit, user, "", "", pathValue)
+	l.record(r, action, user, "", "", pathValue)
 }
 
-func (l *Logger) allowVisit(r *http.Request, pathValue string) bool {
+func (l *Logger) allowVisit(r *http.Request, pathValue, action string) bool {
 	ip := middleware.ClientIPKey(r)
 	key := ip + "\n" + pathValue
+	if action == domain.AccessVisitClient {
+		key = ip + "\nclient\n" + pathValue
+	}
+
 	now := time.Now()
 
 	l.visitMu.Lock()
@@ -349,11 +360,11 @@ func (l *Logger) record(r *http.Request, action string, user *domain.User, repo,
 		ev.Username = user.Username
 	}
 
-	if action == domain.AccessVisit {
+	if action == domain.AccessVisit || action == domain.AccessVisitClient {
 		select {
 		case l.visits <- ev:
 		default:
-			slog.Debug("access_log_visit_dropped")
+			slog.Debug("access log drop")
 		}
 		return
 	}
@@ -377,24 +388,8 @@ func (l *Logger) record(r *http.Request, action string, user *domain.User, repo,
 		}
 
 		l.securityDrops.Add(1)
-		slog.Error("access_log_security_dropped", "action", action, "total_dropped", l.securityDrops.Load())
+		slog.Error("access log drop", "action", action)
 	}
-}
-
-func (l *Logger) SecurityDrops() uint64 {
-	if l == nil {
-		return 0
-	}
-
-	return l.securityDrops.Load()
-}
-
-func (l *Logger) SyncFallbacks() uint64 {
-	if l == nil {
-		return 0
-	}
-
-	return l.syncWrites.Load()
 }
 
 func (l *Logger) reportMetrics(lastDrops, lastSync *uint64) {
@@ -404,18 +399,11 @@ func (l *Logger) reportMetrics(lastDrops, lastSync *uint64) {
 	}
 
 	*lastDrops, *lastSync = drops, syncs
-	slog.Warn("access_log_metrics", "security_dropped_total", drops, "security_sync_fallback_total", syncs, "security_queue_len", len(l.security), "visit_queue_len", len(l.visits))
+	slog.Warn("access log", "drops", drops, "syncs", syncs)
 }
 
 func loginFingerprint(login string) string {
-	login = strings.TrimSpace(strings.ToLower(login))
-	if login == "" {
-		return ""
-	}
-
-	sum := sha256.Sum256([]byte(login))
-
-	return hex.EncodeToString(sum[:8])
+	return hashutil.LoginFingerprint(login)
 }
 
 func IsPageVisit(r *http.Request) bool {

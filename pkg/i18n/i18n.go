@@ -58,7 +58,9 @@ func Preload() error {
 
 func ensureLoaded() bool {
 	if err := Preload(); err != nil {
-		loadFailOnce.Do(func() { slog.Error("i18n unavailable, falling back to message keys", "err", err) })
+		loadFailOnce.Do(func() {
+			slog.Error("i18n", "err", err)
+		})
 		return false
 	}
 

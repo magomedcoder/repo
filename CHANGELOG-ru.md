@@ -18,7 +18,8 @@
 - Зеркалирование: pull и push по http(s) и SSH; расписание, пауза, ручной sync; создание Import vs Mirror; админ-страница «Зеркала» с массовым sync, группами и verify
 - Поиск репозиториев по имени; публичная главная
 - Лента активности: push, issues, pull requests, создание репозитория
-- YAML-конфиг: сервер, хранилище, имя сайта, cookies, сессии, регистрация, proxies, лимиты receive и параметры зеркал
+- YAML-конфиг (вложенный `http` / `server` / `secrets` / `auth` / `mirror`): адрес, хранилище, имя сайта, cookies, сессии, регистрация, proxies, лимиты receive и параметры зеркал
+- Git HTTP push: анонимный receive-pack отвечает `401` Basic challenge (в т.ч. для private); write - только owner или collaborator/team с write
 - UI на английском и русском
-- Security: rate limiting, CSRF, CSP, HSTS; Argon2id; step-up пароль для чувствительных действий админа и удаления
+- Security: rate limiting, CSRF, CSP (+ лимит CSP-report по IP), HSTS; Argon2id; step-up пароль для админ-действий, удаления и revoke-others; admin-удаление пользователя держит имена репо; `git:write` PAT требует write ACL; mirror `insecure_tls` требует pin хостов и same-host redirect; trust-пути только под `data_dir`; receive по умолчанию 256 MiB / лимит зеркала 5 GiB; настраиваемый TTL сессий
 - Обслуживание: очистка просроченных сессий/токенов, старой activity и soft-deleted репозиториев; bootstrap схемы SQLite на пустой БД; CLI для запуска сервера и создания пользователей

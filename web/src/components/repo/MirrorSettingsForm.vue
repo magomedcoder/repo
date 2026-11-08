@@ -35,12 +35,11 @@ const {
   force,
   prune,
   refspecs,
-  lfs,
-  partial,
   verifySigned,
   maxMiB,
   conflictPolicy,
   insecureTLS,
+  pinnedHosts,
   ownerOnly,
   events,
   historyLoading,
@@ -132,12 +131,11 @@ const statusBindings = computed(() => ({
         v-model:force="force"
         v-model:prune="prune"
         v-model:refspecs="refspecs"
-        v-model:lfs="lfs"
-        v-model:partial="partial"
         v-model:verify-signed="verifySigned"
         v-model:maxMiB="maxMiB"
         v-model:conflict-policy="conflictPolicy"
         v-model:insecureTLS="insecureTLS"
+        v-model:pinned-hosts="pinnedHosts"
         v-model:owner-only="ownerOnly"
         :configured="configured"
         :has-password="hasPassword"

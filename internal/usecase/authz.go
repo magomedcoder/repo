@@ -6,6 +6,7 @@ type Authz struct {
 	TeamRepos        domain.TeamRepoGrantStore
 	Collabs          domain.RepoCollaboratorStore
 	PublicContribute bool
+	RequireAuthRead  bool
 }
 
 func NewAuthz(teamRepos domain.TeamRepoGrantStore, collabs domain.RepoCollaboratorStore) *Authz {
@@ -18,6 +19,10 @@ func NewAuthz(teamRepos domain.TeamRepoGrantStore, collabs domain.RepoCollaborat
 func (a *Authz) CanReadRepo(repo *domain.Repository, viewerID uint) error {
 	if repo == nil {
 		return ErrRepoNotFound
+	}
+
+	if viewerID == 0 && a.AnonymousReadDenied() {
+		return ErrUnauthorized
 	}
 
 	if !repo.IsPrivate {
@@ -92,6 +97,10 @@ func (a *Authz) CanAdminRepo(repo *domain.Repository, viewerID uint) bool {
 	return a.bestTeamRepoRole(repo.ID, viewerID).CanAdmin()
 }
 
+func (a *Authz) CanOwnRepo(repo *domain.Repository, viewerID uint) bool {
+	return repo != nil && isPersonalOwner(repo, viewerID)
+}
+
 func (a *Authz) CanGrantTeamRepos(repo *domain.Repository, viewerID uint) bool {
 	if viewerID == 0 || repo == nil {
 		return false
@@ -107,6 +116,16 @@ func (a *Authz) CanGrantTeamRepos(repo *domain.Repository, viewerID uint) bool {
 
 	role, ok := a.collabRole(repo.ID, viewerID)
 	return ok && role.CanAdmin()
+}
+
+func (a *Authz) SetRequireAuthRead(v bool) {
+	if a != nil {
+		a.RequireAuthRead = v
+	}
+}
+
+func (a *Authz) AnonymousReadDenied() bool {
+	return a != nil && a.RequireAuthRead
 }
 
 func (a *Authz) SetAllowPublicContribute(v bool) {

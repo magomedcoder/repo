@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/urlredact"
 )
 
 const mirrorCheckRefsCap = 50
@@ -31,7 +32,6 @@ type MirrorStatusItem struct {
 	Force          *bool      `json:"force,omitzero"`
 	Prune          *bool      `json:"prune,omitzero"`
 	Refspecs       string     `json:"refspecs,omitzero"`
-	LFS            *bool      `json:"lfs,omitzero"`
 	MaxBytes       int64      `json:"max_bytes,omitzero"`
 	ConflictPolicy string     `json:"conflict_policy,omitzero"`
 	HasSSHKey      *bool      `json:"has_ssh_key,omitzero"`
@@ -96,7 +96,7 @@ func (uc *RepositoryUseCase) mirrorStatusFromRepo(repo *domain.Repository, canAd
 		return st
 	}
 
-	st.URL = domain.RedactURL(repo.MirrorURL)
+	st.URL = urlredact.URL(repo.MirrorURL)
 	st.LastSyncAt = repo.MirrorLastSyncAt
 	st.Progress = repo.MirrorLastProgress
 	st.RemoteHead = repo.MirrorRemoteHEAD
@@ -114,13 +114,13 @@ func (uc *RepositoryUseCase) mirrorStatusFromRepo(repo *domain.Repository, canAd
 }
 
 func (uc *RepositoryUseCase) fillMirrorAdminStatus(st *MirrorStatusItem, repo *domain.Repository) {
-	force, prune, lfs := repo.MirrorForce, repo.MirrorPrune, repo.MirrorLFS
+	force, prune := repo.MirrorForce, repo.MirrorPrune
 	hasKey, insecure, ownerOnly := repo.MirrorSSHPrivateKey != "", repo.MirrorInsecureTLS, repo.MirrorOwnerOnly
 
 	st.LastError = repo.MirrorLastError
 	st.NextSyncAt = repo.MirrorNextSyncAt
 	st.FailCount = repo.MirrorFailCount
-	st.Force, st.Prune, st.LFS = &force, &prune, &lfs
+	st.Force, st.Prune = &force, &prune
 	st.Refspecs = repo.MirrorRefspecs
 	st.MaxBytes = repo.MirrorMaxBytes
 	st.ConflictPolicy = repo.MirrorConflictPolicy
@@ -222,7 +222,7 @@ func (uc *RepositoryUseCase) CheckMirror(ctx context.Context, in CheckMirrorInpu
 	}
 
 	target := strings.TrimSpace(in.URL)
-	if target == "" {
+	if repo.MirrorURL != "" {
 		target = repo.MirrorURL
 	}
 

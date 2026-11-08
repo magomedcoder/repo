@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -25,14 +26,19 @@ import (
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/fsutil"
 	"magomedcoder.ru/repo/pkg/ssrf"
+	"magomedcoder.ru/repo/pkg/urlredact"
 )
 
 const (
 	mirrorRemoteName  = "origin"
 	defaultMirrorSpec = "refs/heads/*:refs/heads/*"
-	sizeCheckEvery    = 15 * time.Second
+	sizeCheckEvery    = 2 * time.Second
 	mirrorRefsCap     = 200
 )
+
+func insecureTLS() *tls.Config {
+	return &tls.Config{InsecureSkipVerify: true}
+}
 
 func orZeroOptions(opts *domain.MirrorOptions) *domain.MirrorOptions {
 	if opts == nil {
@@ -187,9 +193,16 @@ func mirrorCheckRedirect(req *http.Request, via []*http.Request, lookup ssrf.Loo
 	}
 
 	if len(via) > 0 && via[len(via)-1].URL != nil {
-		prev := strings.ToLower(via[len(via)-1].URL.Scheme)
+		prevURL := via[len(via)-1].URL
+		prev := strings.ToLower(prevURL.Scheme)
 		if prev == "https" && scheme != "https" {
 			return errors.New("https to insecure redirect forbidden")
+		}
+
+		prevHost := strings.ToLower(prevURL.Hostname())
+		nextHost := strings.ToLower(req.URL.Hostname())
+		if prevHost != "" && nextHost != "" && prevHost != nextHost {
+			return errors.New("cross-host redirect forbidden")
 		}
 	}
 
@@ -220,7 +233,7 @@ func redactErr(err error, rawURL string, o *domain.MirrorOptions) error {
 
 	msg := err.Error()
 	if rawURL != "" {
-		msg = strings.ReplaceAll(msg, rawURL, domain.RedactURL(rawURL))
+		msg = strings.ReplaceAll(msg, rawURL, urlredact.URL(rawURL))
 	}
 
 	if o != nil && o.Auth != nil && o.Auth.Password != "" {

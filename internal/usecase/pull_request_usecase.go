@@ -372,19 +372,6 @@ func (uc *PullRequestUseCase) Diff(ctx context.Context, in ResolveRepositoryInpu
 	}, nil
 }
 
-func (uc *PullRequestUseCase) Commits(ctx context.Context, in ResolveRepositoryInput, number int) ([]domain.CommitInfo, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	cmp, err := uc.Diff(ctx, in, number)
-	if err != nil {
-		return nil, err
-	}
-
-	return cmp.Commits, nil
-}
-
 func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInput, number int, strategy string) (*PullItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -453,7 +440,9 @@ func (uc *PullRequestUseCase) Merge(ctx context.Context, in ResolveRepositoryInp
 	}
 
 	if updateErr != nil {
-		return nil, fmt.Errorf("merge succeeded but failed to update pull state: %w", updateErr)
+		if markErr := uc.pulls.MarkMerged(pr.ID, viewer, now); markErr != nil {
+			return nil, fmt.Errorf("merge succeeded but failed to update pull state: %w", errors.Join(updateErr, markErr))
+		}
 	}
 
 	_ = uc.repos.TouchLastActivity(repo.ID, now)
@@ -734,29 +723,30 @@ func (uc *PullRequestUseCase) mapComment(c *domain.PullRequestComment, usersByID
 }
 
 func mapGitCompareErr(err error) error {
-	if errors.Is(err, domain.ErrBusy) {
-		return ErrBusy
-	}
-
-	if errors.Is(err, gitadapter.ErrRefNotFound) {
-		return ErrBranchNotFound
-	}
-
-	if errors.Is(err, gitadapter.ErrHistoryTooLarge) {
-		return ErrHistoryTooLarge
+	if mapped, ok := mapCommonGitErr(err); ok {
+		if errors.Is(mapped, ErrRefNotFound) {
+			return ErrBranchNotFound
+		}
+		return mapped
 	}
 
 	return err
 }
 
 func mapGitMergeErr(err error) error {
+	if mapped, ok := mapCommonGitErr(err); ok {
+		if errors.Is(mapped, ErrRefNotFound) {
+			return ErrBranchNotFound
+		}
+
+		return mapped
+	}
+
 	switch {
 	case errors.Is(err, gitadapter.ErrMergeConflict):
 		return ErrMergeConflict
 	case errors.Is(err, gitadapter.ErrNotFastForward):
 		return ErrNotFastForward
-	case errors.Is(err, gitadapter.ErrRefNotFound):
-		return ErrBranchNotFound
 	case errors.Is(err, domain.ErrBranchProtected):
 		return ErrBranchProtected
 	default:

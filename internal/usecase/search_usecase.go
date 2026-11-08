@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -16,9 +17,67 @@ const (
 	codeSearchTimeout     = 5 * time.Second
 	codeSearchQueueWait   = 2 * time.Second
 	maxConcurrentSearches = 2
+	maxSearchesPerUser    = 1
 )
 
-var codeSearchSem = make(chan struct{}, maxConcurrentSearches)
+type codeSearchLimiter struct {
+	global chan struct{}
+	mu     sync.Mutex
+	users  map[uint]chan struct{}
+}
+
+func newCodeSearchLimiter() *codeSearchLimiter {
+	return &codeSearchLimiter{
+		global: make(chan struct{}, maxConcurrentSearches),
+		users:  make(map[uint]chan struct{}),
+	}
+}
+
+func (l *codeSearchLimiter) userSlot(userID uint) chan struct{} {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if ch, ok := l.users[userID]; ok {
+		return ch
+	}
+
+	ch := make(chan struct{}, maxSearchesPerUser)
+	l.users[userID] = ch
+	return ch
+}
+
+func (l *codeSearchLimiter) acquire(ctx context.Context, userID uint) error {
+	userSem := l.userSlot(userID)
+	waitCtx, cancel := context.WithTimeout(ctx, codeSearchQueueWait)
+	defer cancel()
+
+	select {
+	case userSem <- struct{}{}:
+	case <-waitCtx.Done():
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return ErrBusy
+	}
+
+	select {
+	case l.global <- struct{}{}:
+		return nil
+	case <-waitCtx.Done():
+		<-userSem
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return ErrBusy
+	}
+}
+
+func (l *codeSearchLimiter) release(userID uint) {
+	<-l.global
+	<-l.userSlot(userID)
+}
+
+var codeSearchLimit = newCodeSearchLimiter()
 
 type CodeSearchResult struct {
 	RepoName string `json:"repo_name"`
@@ -56,6 +115,10 @@ func (uc *RepositoryUseCase) SearchAccessibleRepos(ctx context.Context, query st
 		return nil, err
 	}
 
+	if viewerID == 0 && uc.authz != nil && uc.authz.AnonymousReadDenied() {
+		return nil, ErrUnauthorized
+	}
+
 	q, err := normalizeSearchQuery(query)
 	if err != nil {
 		return nil, err
@@ -77,6 +140,10 @@ func (uc *RepositoryUseCase) SearchAccessibleRepos(ctx context.Context, query st
 func (uc *RepositoryUseCase) SearchCode(ctx context.Context, query string, viewerID uint, cursor string) (*CodeSearchPage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+
+	if viewerID == 0 && uc.authz != nil && uc.authz.AnonymousReadDenied() {
+		return nil, ErrUnauthorized
 	}
 
 	q, err := normalizeSearchQuery(query)
@@ -101,17 +168,10 @@ func (uc *RepositoryUseCase) SearchCode(ctx context.Context, query string, viewe
 		return nil, err
 	}
 
-	wait := time.NewTimer(codeSearchQueueWait)
-	select {
-	case codeSearchSem <- struct{}{}:
-		wait.Stop()
-		defer func() { <-codeSearchSem }()
-	case <-wait.C:
-		return nil, ErrBusy
-	case <-ctx.Done():
-		wait.Stop()
-		return nil, ctx.Err()
+	if err := codeSearchLimit.acquire(ctx, viewerID); err != nil {
+		return nil, err
 	}
+	defer codeSearchLimit.release(viewerID)
 
 	ctx, cancelSearch := context.WithTimeout(ctx, codeSearchTimeout)
 	defer cancelSearch()

@@ -14,8 +14,6 @@ import (
 
 type adminBulkMirrorRequest struct {
 	RepoIDs []uint `json:"repo_ids"`
-	IDs     []uint `json:"ids"`
-	Pause   *bool  `json:"pause"`
 	Paused  *bool  `json:"paused"`
 }
 
@@ -35,21 +33,8 @@ type adminImportMirrorsRequest struct {
 	Interval string   `json:"interval"`
 }
 
-func (h *AdminHandler) ListMirrors(c *httpx.Context) error {
-	if h.mirrors == nil {
-		return c.Error(http.StatusNotFound, "not_found")
-	}
-
-	user, ok := middleware.UserFromContext(c.Ctx())
-	if !ok {
-		return c.Error(http.StatusUnauthorized, "unauthorized")
-	}
-
-	offset, limit := usecase.ParseOffsetLimit(c.Query("offset"), c.Query("limit"))
-	offset, limit = usecase.NormalizePagination(offset, limit)
-
+func mirrorListFilterFromQuery(c *httpx.Context, limit, offset int) domain.MirrorListFilter {
 	errFlag := c.Query("errors")
-
 	filter := domain.MirrorListFilter{
 		Direction: c.Query("direction"),
 		Status:    c.Query("status"),
@@ -65,7 +50,32 @@ func (h *AdminHandler) ListMirrors(c *httpx.Context) error {
 		}
 	}
 
-	out, err := h.mirrors.List(c.Ctx(), user.ID, filter)
+	return filter
+}
+
+func (h *AdminHandler) requireAdminMirrors(c *httpx.Context) (*domain.User, error) {
+	if h.mirrors == nil {
+		return nil, c.Error(http.StatusNotFound, "not_found")
+	}
+
+	user, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return nil, c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	return user, nil
+}
+
+func (h *AdminHandler) ListMirrors(c *httpx.Context) error {
+	user, err := h.requireAdminMirrors(c)
+	if err != nil {
+		return err
+	}
+
+	offset, limit := usecase.ParseOffsetLimit(c.Query("offset"), c.Query("limit"))
+	offset, limit = usecase.NormalizePagination(offset, limit)
+
+	out, err := h.mirrors.List(c.Ctx(), user.ID, mirrorListFilterFromQuery(c, limit, offset))
 	if err != nil {
 		return mapError(c, err)
 	}
@@ -74,21 +84,13 @@ func (h *AdminHandler) ListMirrors(c *httpx.Context) error {
 }
 
 func (h *AdminHandler) VerifyMirrors(c *httpx.Context) error {
-	if h.mirrors == nil {
-		return c.Error(http.StatusNotFound, "not_found")
+	user, err := h.requireAdminMirrors(c)
+	if err != nil {
+		return err
 	}
 
-	user, ok := middleware.UserFromContext(c.Ctx())
-	if !ok {
-		return c.Error(http.StatusUnauthorized, "unauthorized")
-	}
-
-	filter := domain.MirrorListFilter{
-		Direction: c.Query("direction"),
-		Status:    c.Query("status"),
-		Query:     strings.TrimSpace(c.Query("q")),
-		Limit:     100,
-	}
+	filter := mirrorListFilterFromQuery(c, 100, 0)
+	filter.OnlyError = false
 
 	out, err := h.mirrors.Verify(c.Ctx(), user.ID, filter)
 	if err != nil {
@@ -121,26 +123,16 @@ func (h *AdminHandler) BulkMirrors(c *httpx.Context) error {
 	}
 
 	ids := req.RepoIDs
-	if len(ids) == 0 {
-		ids = req.IDs
-	}
 
 	var n int
 
 	switch c.Param("action") {
 	case "pause":
-		pause := true
-		if req.Pause != nil {
-			pause = *req.Pause
-		} else if req.Paused != nil {
-			pause = *req.Paused
-		}
-
-		if len(ids) == 0 {
+		if req.Paused == nil || len(ids) == 0 {
 			return c.Error(http.StatusBadRequest, "invalid_json")
 		}
 
-		n, err = h.mirrors.BulkPause(c.Ctx(), user.ID, ids, pause)
+		n, err = h.mirrors.BulkPause(c.Ctx(), user.ID, ids, *req.Paused)
 	case "sync":
 		if len(ids) == 0 {
 			n, err = h.mirrors.BulkSync(c.Ctx(), user.ID, nil)

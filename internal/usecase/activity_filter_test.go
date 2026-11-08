@@ -115,7 +115,7 @@ func (s *memRepos) CountByOwnerID(ownerID uint) (int64, error) {
 	return n, nil
 }
 
-func (s *memRepos) ListPublicIDsByOwner(_ context.Context, ownerID uint) ([]uint, error) {
+func (s *memRepos) ListIDsByOwner(_ context.Context, ownerID uint) ([]uint, error) {
 	var out []uint
 	for _, r := range s.items {
 		if r.OwnerID == ownerID && !r.IsPrivate {
@@ -183,16 +183,12 @@ func (s *memRepos) SearchAccessible(context.Context, string, uint, int, int, dom
 	return nil, nil
 }
 
-func (s *memRepos) ListAccessible(context.Context, uint, int, int, domain.RepoOrder) ([]domain.Repository, error) {
-	return nil, nil
-}
-
 func (s *memRepos) ExistsByName(string) (bool, error) {
 	return false, nil
 }
 
-func (s *memRepos) PurgeSoftDeleted(context.Context, time.Time) ([]uint, error) {
-	return nil, nil
+func (s *memRepos) PurgeSoftDeleted(context.Context, time.Time) ([]string, []uint, error) {
+	return nil, nil, nil
 }
 
 func (s *memRepos) TouchLastActivity(uint, time.Time) error {

@@ -48,11 +48,16 @@ func runServe() {
 		os.Exit(1)
 	}
 
-	for _, w := range cfg.WarnInsecure() {
-		slog.Warn("insecure configuration", "detail", w)
+	if err := cfg.ValidateListen(); err != nil {
+		slog.Error("config", "err", err)
+		os.Exit(1)
 	}
 
-	db, err := sqlite.NewDB(cfg.DataDir)
+	for _, w := range cfg.WarnInsecure() {
+		slog.Warn("config", "detail", w)
+	}
+
+	db, err := sqlite.NewDB(cfg.Server.DataDir)
 	if err != nil {
 		slog.Error("database", "err", err)
 		os.Exit(1)
@@ -77,24 +82,31 @@ func runServe() {
 	teamMemberStore := sqlite.NewTeamMemberRepo(db)
 	teamRepoGrantStore := sqlite.NewTeamRepoGrantRepo(db)
 	collabStore := sqlite.NewRepoCollaboratorRepo(db)
+	nameHoldStore := sqlite.NewRepoNameHoldRepo(db)
 	accessLog := audit.New(accessStore)
 
-	gitRepo := git.NewRepository(cfg.DataDir)
-	trust, err := git.LoadTrustFiles(
-		git.ResolveTrustPath(cfg.DataDir, cfg.MirrorVerifyOpenPGPKeyring),
-		git.ResolveTrustPath(cfg.DataDir, cfg.MirrorVerifyAllowedSigners),
-	)
-
+	gitRepo := git.NewRepository(cfg.Server.DataDir)
+	openpgpPath, err := git.ResolveTrustPath(cfg.Server.DataDir, cfg.Mirror.Verify.OpenPGPKeyring)
 	if err != nil {
-		slog.Error("mirror verify trust", "err", err)
+		slog.Error("mirror trust", "err", err)
 		os.Exit(1)
 	}
+
+	signersPath, err := git.ResolveTrustPath(cfg.Server.DataDir, cfg.Mirror.Verify.AllowedSigners)
+	if err != nil {
+		slog.Error("mirror trust", "err", err)
+		os.Exit(1)
+	}
+
+	trust, err := git.LoadTrustFiles(openpgpPath, signersPath)
+	if err != nil {
+		slog.Error("mirror trust", "err", err)
+		os.Exit(1)
+	}
+
 	gitRepo.SetTrust(trust)
 	if trust.Empty() {
-		slog.Warn("mirror verify trust material is empty: mirror_verify_signed cannot be enabled until a non-empty OpenPGP keyring or allowed_signers file is configured",
-			"openpgp_keyring", cfg.MirrorVerifyOpenPGPKeyring,
-			"allowed_signers", cfg.MirrorVerifyAllowedSigners,
-		)
+		slog.Warn("mirror trust empty")
 	}
 
 	hasher := argon2id.NewHasher()
@@ -103,15 +115,25 @@ func runServe() {
 	middleware.SetTrustedProxies(cfg.TrustedProxyNets)
 
 	authz := usecase.NewAuthz(teamRepoGrantStore, collabStore)
-	authz.SetAllowPublicContribute(cfg.AllowPublicContribute)
+	authz.SetAllowPublicContribute(cfg.Auth.AllowPublicContribute)
+	authz.SetRequireAuthRead(cfg.RequireAuthRead())
 	authUC := usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
-	authUC.SetSessionSecret(cfg.SessionSecret)
-	authUC.SetAllowRegistration(cfg.AllowRegistration)
+	authUC.SetSessionSecret(cfg.Secrets.SessionSecret)
+	authUC.SetAllowRegistration(cfg.Auth.AllowRegistration)
+	authUC.SetSessionTTL(cfg.Auth.SessionAbsoluteDur, cfg.Auth.SessionIdleDur)
 	repoUC := usecase.NewRepositoryUseCase(repoStore, userStore, gitRepo, activityStore, authz)
 	repoUC.SetPasswordHasher(hasher)
+	stepUp := authUC.PasswordGate()
+	stepUp.SetOnLock(func(userID uint) {
+		if err := sessionStore.DeleteByUserID(userID); err != nil {
+			slog.Warn("revoke sessions", "user_id", userID, "err", err)
+		}
+	})
+	repoUC.SetPasswordGate(stepUp)
+	repoUC.SetNameHolds(nameHoldStore)
 	repoUC.SetCodeIndex(sqlite.NewCodeIndex(db))
 	if key, err := secretbox.DeriveKey(cfg.MirrorSecretsMaterial()); err != nil {
-		slog.Error("mirror secrets key", "err", err)
+		slog.Error("mirror secrets", "err", err)
 		os.Exit(1)
 	} else {
 		repoUC.SetMirrorSecretsKey(key)
@@ -125,28 +147,35 @@ func runServe() {
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
 	tokenUC.SetPepper(cfg.TokenPepperMaterial())
 	tokenUC.SetStepUp(userStore, hasher)
+	tokenUC.SetPasswordGate(stepUp)
+	tokenUC.SetRepoScope(repoStore, authz)
 	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
 	gitUC.SetTokenPepper(cfg.TokenPepperMaterial())
-	gitUC.SetRequireAuthForGitRead(cfg.RequireAuthForGitRead)
-	gitUC.SetUserAttempts(authUC.UserAttempts())
+	gitUC.SetLoginGuard(authUC.LoginGuard())
+	gitUC.SetPasswordAuth(cfg.Auth.GitPasswordAuth)
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, userStore, activityStore, authz)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, userStore, gitRepo, activityStore, authz)
 	membershipUC := usecase.NewAccessUseCase(repoStore, userStore, collabStore, authz)
 	membershipUC.SetTeamRepos(teamRepoGrantStore)
 	teamUC := usecase.NewTeamUseCase(teamStore, teamMemberStore, teamRepoGrantStore, repoStore, userStore, authz)
-	profileUC := usecase.NewProfileUseCase(userStore, hasher, cfg.DataDir)
+	profileUC := usecase.NewProfileUseCase(userStore, hasher, cfg.Server.DataDir)
 	profileUC.SetSessionStores(sessionStore, tokenStore)
+	profileUC.SetPasswordGate(stepUp)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
+	activityUC.SetAuthz(authz)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 	adminUC.SetDataStores(repoStore, accessStore)
+	adminUC.SetPasswordGate(stepUp)
+	adminUC.SetRepoFiles(gitRepo)
+	adminUC.SetNameHolds(nameHoldStore)
 	adminUC.SetAccessCleanup(collabStore, teamStore, teamMemberStore, teamRepoGrantStore)
 	accessUC := usecase.NewAccessLogUseCase(accessStore, userStore)
 	adminMirrorUC := usecase.NewAdminMirrorUseCase(repoUC)
 
 	authHandler := handler.NewAuthHandler(authUC)
-	authHandler.SetCookiePolicy(cfg.CookieSecure, http.SameSiteLaxMode)
+	authHandler.SetCookiePolicy(cfg.HTTP.CookieSecure, http.SameSiteLaxMode)
 	authHandler.SetCSRFSecret(cfg.CSRFSecretMaterial())
-	authHandler.SetAllowRegistration(cfg.AllowRegistration)
+	authHandler.SetAllowRegistration(cfg.Auth.AllowRegistration)
 	authHandler.SetAccessLogger(accessLog)
 	membershipHandler := handler.NewMembershipHandler(membershipUC)
 	teamHandler := handler.NewTeamHandler(teamUC)
@@ -155,26 +184,26 @@ func runServe() {
 	tokenHandler := handler.NewTokenHandler(tokenUC)
 	tokenHandler.SetAccessLogger(accessLog)
 	gitHandler := handler.NewGitHandler(gitUC)
-	gitHandler.SetReceiveMaxBytes(cfg.ReceiveMaxBytes)
+	gitHandler.SetReceiveMaxBytes(cfg.HTTP.ReceiveMaxBytes)
 	gitHandler.SetAccessLogger(accessLog)
 	gitHandler.SetMirrorScheduler(repoUC)
 	pullUC.SetPushMirrorScheduler(repoUC)
 	issueHandler := handler.NewIssueHandler(issueUC)
 	pullHandler := handler.NewPullRequestHandler(pullUC)
 	profileHandler := handler.NewProfileHandler(profileUC)
-	profileHandler.SetCookieSecure(cfg.CookieSecure)
+	profileHandler.SetCookieSecure(cfg.HTTP.CookieSecure)
 	activityHandler := handler.NewActivityHandler(activityUC)
-	siteHandler := handler.NewSiteHandler(cfg.SiteName)
+	siteHandler := handler.NewSiteHandler(cfg.Server.SiteName)
 	adminHandler := handler.NewAdminHandler(adminUC, accessUC)
 	adminHandler.SetAccessLogger(accessLog)
 	adminHandler.SetMirrors(adminMirrorUC)
 	accessHandler := handler.NewAccessHandler(accessLog)
 
-	router := deliveryhttp.NewRouter(authHandler, repoHandler, membershipHandler, teamHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.CookieSecure, cfg.CSRFSecretMaterial())
+	router := deliveryhttp.NewRouter(authHandler, repoHandler, membershipHandler, teamHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.HTTP.CookieSecure, cfg.CSRFSecretMaterial())
 
 	srv := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           withStatic(cfg.DataDir, router, accessLog, authUC, cfg.CookieSecure),
+		Addr:              cfg.HTTP.Addr,
+		Handler:           withStatic(router, accessLog, authUC, cfg.HTTP.CookieSecure),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Minute,
 		WriteTimeout:      15 * time.Minute,
@@ -185,7 +214,7 @@ func runServe() {
 	defer stop()
 
 	repoUC.SetMirrorRootContext(ctx)
-	go repoUC.RunPullMirrorLoop(ctx, cfg.MirrorPullEvery)
+	go repoUC.RunPullMirrorLoop(ctx, cfg.Mirror.PullEvery)
 	go repoUC.RunCodeIndexBackfill(ctx)
 	authUC.StartAttemptsSweep(ctx, attemptsSweepEvery)
 	gitUC.StartAttemptsSweep(ctx, attemptsSweepEvery)
@@ -197,14 +226,15 @@ func runServe() {
 			db:                   db,
 			sessions:             sessionStore,
 			tokens:               tokenStore,
+			nameHolds:            nameHoldStore,
 			activity:             activityStore,
 			repos:                repoUC,
-			softDeletedRetention: cfg.SoftDeletedRetentionDur,
+			softDeletedRetention: cfg.Server.SoftDeletedRetentionDur,
 		})
 	}()
 
 	go func() {
-		slog.Info("listening", "addr", cfg.HTTPAddr)
+		slog.Info("listening", "addr", cfg.HTTP.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("server", "err", err)
 			os.Exit(1)
@@ -212,7 +242,7 @@ func runServe() {
 	}()
 
 	<-ctx.Done()
-	slog.Info("shutting down")
+	slog.Info("shutdown")
 	repoUC.StopMirrorDebouncers()
 	idle := make(chan struct{})
 	go func() {
@@ -222,7 +252,7 @@ func runServe() {
 	select {
 	case <-idle:
 	case <-time.After(30 * time.Second):
-		slog.Warn("shutdown: mirror work still running")
+		slog.Warn("shutdown mirrors")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -234,7 +264,7 @@ func runServe() {
 	select {
 	case <-maintenanceDone:
 	case <-time.After(5 * time.Second):
-		slog.Warn("shutdown: maintenance still running")
+		slog.Warn("shutdown maintenance")
 	}
 
 	accessLog.Close()
@@ -255,6 +285,7 @@ type maintenanceDeps struct {
 	db                   *gorm.DB
 	sessions             domain.SessionStore
 	tokens               domain.AccessTokenStore
+	nameHolds            domain.RepoNameHoldStore
 	activity             domain.ActivityStore
 	repos                repoPurger
 	softDeletedRetention time.Duration
@@ -279,25 +310,33 @@ func runMaintenance(ctx context.Context, d maintenanceDeps) {
 func maintenanceOnce(ctx context.Context, d maintenanceDeps, now time.Time) {
 	if d.sessions != nil {
 		if n, err := d.sessions.DeleteExpired(ctx, now); err != nil {
-			slog.Warn("maintenance: sessions", "err", err)
+			slog.Warn("maintenance sessions", "err", err)
 		} else if n > 0 {
-			slog.Info("maintenance: expired sessions removed", "rows", n)
+			slog.Info("maintenance sessions", "rows", n)
 		}
 	}
 
 	if d.tokens != nil {
 		if n, err := d.tokens.DeleteExpired(ctx, now); err != nil {
-			slog.Warn("maintenance: access tokens", "err", err)
+			slog.Warn("maintenance tokens", "err", err)
 		} else if n > 0 {
-			slog.Info("maintenance: expired access tokens removed", "rows", n)
+			slog.Info("maintenance tokens", "rows", n)
+		}
+	}
+
+	if d.nameHolds != nil {
+		if n, err := d.nameHolds.DeleteExpired(ctx, now); err != nil {
+			slog.Warn("maintenance holds", "err", err)
+		} else if n > 0 {
+			slog.Info("maintenance holds", "rows", n)
 		}
 	}
 
 	if d.activity != nil {
 		if n, err := d.activity.DeleteOlderThan(ctx, now.Add(-activityRetention)); err != nil {
-			slog.Warn("maintenance: activity", "err", err)
+			slog.Warn("maintenance activity", "err", err)
 		} else if n > 0 {
-			slog.Info("maintenance: old activity events removed", "rows", n)
+			slog.Info("maintenance activity", "rows", n)
 		}
 	}
 
@@ -307,22 +346,21 @@ func maintenanceOnce(ctx context.Context, d maintenanceDeps, now time.Time) {
 			retention = config.DefaultSoftDeletedRetention
 		}
 
-		slog.Debug("maintenance: soft-deleted purge", "retention", retention.String())
 		if n, err := d.repos.PurgeSoftDeletedRepos(ctx, retention); err != nil {
-			slog.Warn("maintenance: soft-deleted repositories", "err", err)
+			slog.Warn("maintenance purge", "err", err)
 		} else if n > 0 {
-			slog.Info("maintenance: soft-deleted repositories purged", "repos", n, "retention", retention.String())
+			slog.Info("maintenance purge", "repos", n)
 		}
 	}
 
 	if d.db != nil {
 		if err := sqlite.CheckpointWAL(d.db); err != nil {
-			slog.Warn("maintenance: wal checkpoint", "err", err)
+			slog.Warn("maintenance wal", "err", err)
 		}
 	}
 }
 
-func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth middleware.Authenticator, cookieSecure bool) http.Handler {
+func withStatic(api http.Handler, access *audit.Logger, auth middleware.Authenticator, cookieSecure bool) http.Handler {
 	frontend, err := repo.WebHandler()
 	if err != nil {
 		slog.Error("web", "err", err)
@@ -351,7 +389,6 @@ func withStatic(dataDir string, api http.Handler, access *audit.Logger, auth mid
 			return
 		}
 
-		_ = dataDir
 		spa.ServeHTTP(w, r)
 	})
 }

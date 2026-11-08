@@ -57,8 +57,6 @@ type IssueStore interface {
 
 	CreateLabel(label *Label) error
 
-	UpdateLabel(label *Label) error
-
 	DeleteLabel(id uint) error
 
 	FindLabel(id uint) (*Label, error)

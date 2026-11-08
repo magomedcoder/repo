@@ -1,8 +1,7 @@
 import { encodeRepoPath } from '@/lib/repoPath'
 import { api } from './client'
-import type { BlameResult, BlobContent, CommitDiff, CommitInfo, MirrorCheckResult, MirrorDryRun, MirrorStatus, MirrorSyncEvent, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, RepoTeamGrant, Repository, TreeEntry } from './types'
-import type { MirrorConfigureBody } from './mirror'
-export type { MirrorConfigureBody } from './mirror'
+import type { BlameResult, BlobContent, CommitDiff, CommitInfo, MirrorCheckResult, MirrorConfigureBody, MirrorDryRun, MirrorStatus, MirrorSyncEvent, RefInfo, RepoBrowseSummary, RepoCollaborator, RepoCollabRole, RepoTeamGrant, Repository, TreeEntry } from './types'
+export type { MirrorConfigureBody } from './types'
 
 type ListParams = {
   sort?: string
@@ -60,27 +59,6 @@ export const reposApi = {
 
     return api<{ repos: Repository[] }>(`/api/repos?${params}`)
   },
-  search(
-    q: string,
-    scope?: 'public',
-    paging?: Pick<ListParams, 'offset' | 'limit'>,
-    init?: RequestInit,
-  ) {
-    const params = new URLSearchParams({ q })
-    if (scope) {
-      params.set('scope', scope)
-    }
-    
-    if (paging?.offset != null) {
-      params.set('offset', String(paging.offset))
-    }
-
-    if (paging?.limit != null) {
-      params.set('limit', String(paging.limit))
-    }
-
-    return api<{ repos: Repository[] }>(`/api/repos?${params}`, init)
-  },
   get(path: string) {
     return api<Repository>(`/api/repos/${encodeRepoPath(path)}`)
   },
@@ -95,7 +73,6 @@ export const reposApi = {
     mirror_username?: string
     mirror_password?: string
     mirror_interval?: string
-    mirror_lfs?: boolean
   }) {
     return api<Repository>('/api/repos', {
       method: 'POST',

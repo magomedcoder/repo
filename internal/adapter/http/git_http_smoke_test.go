@@ -15,14 +15,11 @@ func TestGitHTTPSmoke(t *testing.T) {
 	}
 	env := newLoopbackTestServer(t)
 	srv, dir := env.Server, env.Dir
-	cookies := loginUser(t, env, "utest2", "utest2@example.com", "password1")
+	cookies := loginUser(t, env, "utest2", "utest2@example.com", "test-pass-1")
 
-	created := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"hello","private":false}`, cookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create repo %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, srv, "hello", false, cookies)
 
-	bares, _ := filepath.Glob(filepath.Join(dir, "data", "repos", "hello.git"))
+	bares, _ := filepath.Glob(filepath.Join(dir, "data", "repos", pid+".git"))
 	if len(bares) == 0 {
 		t.Fatal("bare missing")
 	}
@@ -38,7 +35,7 @@ func TestGitHTTPSmoke(t *testing.T) {
 	runGit(t, seed, "git", "-c", "user.email=c@d.e", "-c", "user.name=C", "commit", "-m", "init")
 	runGit(t, seed, "git", "push", "origin", "HEAD:main")
 
-	cloneURL := strings.TrimRight(srv.URL, "/") + "/hello.git"
+	cloneURL := strings.TrimRight(srv.URL, "/") + "/" + pid + ".git"
 	dest := filepath.Join(dir, "clone-http")
 	cmd := exec.Command("git", "clone", cloneURL, dest)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
@@ -51,7 +48,7 @@ func TestGitHTTPSmoke(t *testing.T) {
 		t.Fatalf("cloned file missing: %v", err)
 	}
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/hello.git/info/refs?service=git-upload-pack", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/"+pid+".git/info/refs?service=git-upload-pack", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

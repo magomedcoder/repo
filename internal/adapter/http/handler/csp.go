@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"magomedcoder.ru/repo/internal/adapter/http/middleware"
+	"magomedcoder.ru/repo/pkg/httpware"
 	"magomedcoder.ru/repo/pkg/httpx"
 )
 
@@ -14,16 +16,14 @@ const (
 	maxCSPFieldLen    = 256
 )
 
-var cspReportFields = []string{
-	"document-uri",
-	"violated-directive",
-	"effective-directive",
-	"blocked-uri",
-	"status-code",
-	"disposition",
-}
+var cspReportLimiter = httpware.NewRateLimiter(30, 10)
 
 func CSPReport(c *httpx.Context) error {
+	if !cspReportLimiter.Allow(middleware.ClientIPKey(c.R)) {
+		httpware.WriteRateLimited(c.W)
+		return nil
+	}
+
 	body, err := io.ReadAll(io.LimitReader(c.R.Body, maxCSPReportBytes+1))
 	if err != nil {
 		return c.NoContent()
@@ -39,69 +39,23 @@ func CSPReport(c *httpx.Context) error {
 
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		slog.Debug("csp report: invalid json", "err", err)
+		slog.Debug("csp", "err", err)
 		return c.NoContent()
 	}
 
-	fields := sanitizeCSPReport(payload)
+	fields := httpware.SanitizeCSPReport(payload, maxCSPFieldLen)
 	if len(fields) == 0 {
 		return c.NoContent()
 	}
 
 	attrs := make([]any, 0, len(fields)*2)
-	for _, k := range cspReportFields {
+	for _, k := range httpware.CSPReportFields {
 		if v, ok := fields[k]; ok {
 			attrs = append(attrs, k, v)
 		}
 	}
 
-	slog.Info("csp violation", attrs...)
+	slog.Info("csp", attrs...)
 
 	return c.NoContent()
-}
-
-func sanitizeCSPReport(payload map[string]any) map[string]string {
-	src := payload
-	if inner, ok := payload["csp-report"].(map[string]any); ok {
-		src = inner
-	}
-
-	out := make(map[string]string, len(cspReportFields))
-	for _, k := range cspReportFields {
-		v, ok := src[k]
-		if !ok {
-			continue
-		}
-
-		var s string
-		switch t := v.(type) {
-		case string:
-			s = t
-		case float64:
-			b, _ := json.Marshal(t)
-			s = string(b)
-		default:
-			continue
-		}
-
-		out[k] = truncateLogField(s, maxCSPFieldLen)
-	}
-
-	return out
-}
-
-func truncateLogField(s string, n int) string {
-	clean := make([]rune, 0, len(s))
-	for _, r := range s {
-		if r < 0x20 || r == 0x7f {
-			r = ' '
-		}
-
-		clean = append(clean, r)
-		if len(clean) >= n {
-			break
-		}
-	}
-
-	return string(clean)
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"magomedcoder.ru/repo/internal/domain"
+	"magomedcoder.ru/repo/pkg/urlredact"
 )
 
 var (
@@ -79,7 +80,7 @@ func (uc *RepositoryUseCase) ListAdminMirrors(ctx context.Context, viewerID uint
 			RepoPath:   r.RepoPath,
 			Owner:      owner,
 			Direction:  r.MirrorDirection,
-			URL:        domain.RedactURL(r.MirrorURL),
+			URL:        urlredact.URL(r.MirrorURL),
 			Enabled:    r.MirrorEnabled,
 			Paused:     !r.MirrorEnabled,
 			Status:     effectiveMirrorStatus(r),
@@ -342,7 +343,7 @@ func (uc *RepositoryUseCase) ImportOrgMirrors(ctx context.Context, in ImportMirr
 	for _, raw := range in.URLs {
 		raw = strings.TrimSpace(raw)
 		res := ImportMirrorResult{
-			URL:  domain.RedactURL(raw),
+			URL:  urlredact.URL(raw),
 			Name: repoNameFromURL(raw),
 		}
 

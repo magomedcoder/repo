@@ -116,22 +116,19 @@ func TestPullRequestFlow(t *testing.T) {
 	if _, err := authUC.CreateUser(t.Context(), usecase.RegisterInput{
 		Username: "ada",
 		Email:    "ada@example.com",
-		Password: "password1",
+		Password: "test-pass-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	login := doJSON(t, srv, http.MethodPost, "/api/auth/login", `{"login":"ada","password":"password1"}`, nil)
+	login := doJSON(t, srv, http.MethodPost, "/api/auth/login", `{"login":"ada","password":"test-pass-1"}`, nil)
 	if login.StatusCode != http.StatusOK {
 		t.Fatalf("login %d %s", login.StatusCode, login.Body)
 	}
 	cookies := login.Cookies
 
-	created := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"hello","private":false}`, cookies)
-	if created.StatusCode != http.StatusCreated && created.StatusCode != http.StatusOK {
-		t.Fatalf("create repo %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, srv, "hello", false, cookies)
 
-	bares, _ := filepath.Glob(filepath.Join(dir, "data", "repos", "hello.git"))
+	bares, _ := filepath.Glob(filepath.Join(dir, "data", "repos", pid+".git"))
 	if len(bares) == 0 {
 		t.Fatal("bare missing")
 	}
@@ -155,22 +152,22 @@ func TestPullRequestFlow(t *testing.T) {
 	runGit(t, seed, "git", "-c", "user.email=a@b.c", "-c", "user.name=A", "commit", "-m", "feat")
 	runGit(t, seed, "git", "push", "-u", "origin", "feature")
 
-	pr := doJSON(t, srv, http.MethodPost, "/api/repos/hello/pulls", `{"title":"Feature","body":"adds b","base_branch":"main","head_branch":"feature"}`, cookies)
+	pr := doJSON(t, srv, http.MethodPost, "/api/repos/"+pid+"/pulls", `{"title":"Feature","body":"adds b","base_branch":"main","head_branch":"feature"}`, cookies)
 	if pr.StatusCode != http.StatusCreated {
 		t.Fatalf("create pull %d %s", pr.StatusCode, pr.Body)
 	}
 
-	diff := doJSON(t, srv, http.MethodGet, "/api/repos/hello/pulls/1/diff", "", nil)
+	diff := doJSON(t, srv, http.MethodGet, "/api/repos/"+pid+"/pulls/1/diff", "", nil)
 	if diff.StatusCode != http.StatusOK || !strings.Contains(diff.Body, `"can_fast_forward":true`) {
 		t.Fatalf("diff %d %s", diff.StatusCode, diff.Body)
 	}
 
-	comment := doJSON(t, srv, http.MethodPost, "/api/repos/hello/pulls/1/comments", `{"body":"lgtm"}`, cookies)
+	comment := doJSON(t, srv, http.MethodPost, "/api/repos/"+pid+"/pulls/1/comments", `{"body":"lgtm"}`, cookies)
 	if comment.StatusCode != http.StatusCreated {
 		t.Fatalf("comment %d %s", comment.StatusCode, comment.Body)
 	}
 
-	merged := doJSON(t, srv, http.MethodPost, "/api/repos/hello/pulls/1/merge", `{"strategy":"ff-only"}`, cookies)
+	merged := doJSON(t, srv, http.MethodPost, "/api/repos/"+pid+"/pulls/1/merge", `{"strategy":"ff-only"}`, cookies)
 	if merged.StatusCode != http.StatusOK {
 		t.Fatalf("merge %d %s", merged.StatusCode, merged.Body)
 	}

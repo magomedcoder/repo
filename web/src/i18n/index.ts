@@ -103,12 +103,18 @@ setLocale(detectLocale())
 
 export function localizeError(err: unknown, fallbackKey: Parameters<typeof i18n.global.t>[0]): string {
   if (err instanceof ApiError) {
+    if (err.code === 'too_many_attempts' && err.retryAfterSec && err.retryAfterSec > 0) {
+      const mins = Math.max(1, Math.ceil(err.retryAfterSec / 60))
+      return i18n.global.t('errors.codes.too_many_attempts_wait', { n: mins })
+    }
+
     if (err.code) {
       const codeKey = `errors.codes.${err.code}` as `errors.codes.${string}`
       if (i18n.global.te(codeKey)) {
         return i18n.global.t(codeKey)
       }
     }
+    
     return err.message
   }
 

@@ -15,7 +15,11 @@ import (
 	"magomedcoder.ru/repo/internal/config"
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/ssrf"
+	"magomedcoder.ru/repo/pkg/syncutil"
+	"magomedcoder.ru/repo/pkg/urlredact"
 )
+
+var repoNameLocks syncutil.KeyedMutex
 
 var (
 	ErrNameRequired      = NewError(KindValidation, "repository_name_required")
@@ -23,13 +27,16 @@ var (
 	ErrInvalidName       = NewError(KindValidation, "invalid_repository_name")
 	ErrRepoNotFound      = NewError(KindNotFound, "repository_not_found")
 	ErrRepoForbidden     = NewError(KindForbidden, "repository_access_denied")
+	ErrRepoOwnerOnly     = NewError(KindForbidden, "repository_owner_only")
 	ErrInvalidBranchName = NewError(KindValidation, "invalid_default_branch")
 	ErrRepoQuota         = NewError(KindForbidden, "repository_quota_exceeded")
 	ErrInvalidMirrorURL  = NewError(KindValidation, "invalid_mirror_url")
-	ErrMirrorFailed      = NewError(KindValidation, "mirror_failed")
+	ErrMirrorFailed      = NewError(KindUnavailable, "mirror_failed")
 )
 
 const maxReposPerOwner = 100
+
+const nameHoldTTL = 30 * 24 * time.Hour
 
 var repoNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
@@ -60,7 +67,6 @@ type CreateRepositoryInput struct {
 	MirrorSSHPassphrase string
 	MirrorInterval      string
 	MirrorRefspecs      string
-	MirrorLFS           bool
 	MirrorMaxBytes      int64
 	MirrorGroupID       uint
 }
@@ -114,8 +120,6 @@ type RepositoryItem struct {
 	MirrorHasSSHKey      bool       `json:"mirror_has_ssh_key,omitzero"`
 	MirrorInsecureTLS    bool       `json:"mirror_insecure_tls,omitzero"`
 	MirrorPinnedHosts    string     `json:"mirror_pinned_hosts,omitzero"`
-	MirrorLFS            bool       `json:"mirror_lfs,omitzero"`
-	MirrorPartial        bool       `json:"mirror_partial,omitzero"`
 	MirrorVerifySigned   bool       `json:"mirror_verify_signed,omitzero"`
 	MirrorMaxBytes       int64      `json:"mirror_max_bytes,omitzero"`
 	MirrorConflictPolicy string     `json:"mirror_conflict_policy,omitzero"`
@@ -126,6 +130,7 @@ type RepositoryItem struct {
 	CanRead              bool       `json:"can_read"`
 	CanWrite             bool       `json:"can_write"`
 	CanAdmin             bool       `json:"can_admin"`
+	CanOwn               bool       `json:"can_own"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
@@ -137,11 +142,13 @@ type RepositoryUseCase struct {
 	activity         domain.ActivityStore
 	authz            *Authz
 	hasher           domain.PasswordHasher
+	gate             *PasswordGate
 	mirror           *mirrorRuntime
 	mirrorSecretsKey []byte
 	mirrorLookup     ssrf.LookupIPFunc
 	codeIndex        domain.CodeIndexStore
 	codeIdxRT        *codeIndexRuntime
+	nameHolds        domain.RepoNameHoldStore
 }
 
 func NewRepositoryUseCase(
@@ -158,6 +165,22 @@ func NewRepositoryUseCase(
 		activity: activity,
 		authz:    authz,
 		mirror:   newMirrorRuntime(),
+	}
+}
+
+func (uc *RepositoryUseCase) SetNameHolds(h domain.RepoNameHoldStore) {
+	if uc != nil {
+		uc.nameHolds = h
+	}
+}
+
+func (uc *RepositoryUseCase) holdName(ctx context.Context, name string) {
+	if uc.nameHolds == nil || name == "" {
+		return
+	}
+
+	if err := uc.nameHolds.Hold(ctx, name, time.Now().UTC().Add(nameHoldTTL)); err != nil {
+		slog.Warn("name hold", "name", name, "err", err)
 	}
 }
 
@@ -180,6 +203,9 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		return nil, err
 	}
 
+	unlock := repoNameLocks.Lock(strings.ToLower(name))
+	defer unlock()
+
 	ownerID := viewerID
 
 	owner, err := uc.users.FindByID(ctx, ownerID)
@@ -199,16 +225,11 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		}
 	}
 
-	logical := name + ".git"
-	if _, err := domain.ParseRepoPath(logical); err != nil {
-		return nil, ErrInvalidName
-	}
-
 	if IsReservedSlug(name) {
 		return nil, ErrReservedSlug
 	}
 
-	if err := uc.nameCollisionForViewer(ctx, name, logical, viewerID, 0); err != nil {
+	if err := uc.nameCollision(ctx, name); err != nil {
 		return nil, err
 	}
 
@@ -226,8 +247,12 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		return nil, err
 	}
 
-	repoPath := buildRepoDiskPath(uc.git.GetReposRoot(), name)
+	logical := name + ".git"
+	if _, err := domain.ParseRepoPath(logical); err != nil {
+		return nil, ErrInvalidName
+	}
 
+	repoPath := buildRepoDiskPath(uc.git.GetReposRoot(), name)
 	repo := &domain.Repository{
 		Name:                 name,
 		OwnerID:              ownerID,
@@ -241,12 +266,10 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		Path:                 repoPath,
 	}
 	applyCreateMirror(repo, mspec)
+
 	if err := uc.store.Create(repo); err != nil {
 		if isUniqueViolation(err) {
-			if cerr := uc.nameCollisionForViewer(ctx, name, logical, viewerID, 0); cerr != nil {
-				return nil, cerr
-			}
-			return nil, ErrInvalidName
+			return nil, ErrAlreadyExists
 		}
 
 		return nil, fmt.Errorf("save repository metadata: %w", err)
@@ -259,6 +282,7 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 	} else {
 		if err := uc.git.InitBare(repoPath, domain.BareInitOptions{DefaultBranch: branch}); err != nil {
 			_ = uc.store.Delete(repo.ID)
+			_ = uc.git.Remove(repoPath)
 			return nil, fmt.Errorf("init bare repository: %w", err)
 		}
 	}
@@ -296,6 +320,10 @@ func (uc *RepositoryUseCase) ListOwn(ctx context.Context, ownerID uint, limit, o
 		return nil, fmt.Errorf("list repositories: %w", err)
 	}
 	return uc.mapRepos(repos, owner.Username)
+}
+
+func (uc *RepositoryUseCase) AnonymousReadDenied() bool {
+	return uc != nil && uc.authz.AnonymousReadDenied()
 }
 
 func (uc *RepositoryUseCase) ListPublic(ctx context.Context, limit, offset int, order domain.RepoOrder) ([]RepositoryItem, error) {
@@ -411,6 +439,10 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 		return nil, ErrRepoNotFound
 	}
 
+	if updateNeedsOwner(repo, in) && !uc.authz.CanOwnRepo(repo, in.ViewerID) {
+		return nil, ErrRepoOwnerOnly
+	}
+
 	if err := uc.requireUpdateStepUp(ctx, repo, in); err != nil {
 		return nil, err
 	}
@@ -469,8 +501,8 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 		repo.IssuesEnabled = *in.IssuesEnabled
 	}
 
-	oldDisk := repo.Path
-	renamed := false
+	oldName := ""
+	oldDisk := ""
 	if in.NewName != nil {
 		newName, nerr := normalizeRepoName(*in.NewName)
 		if nerr != nil {
@@ -478,42 +510,68 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 		}
 
 		if newName != repo.Name {
+			unlock := repoNameLocks.LockAll(strings.ToLower(repo.Name), strings.ToLower(newName))
+			defer unlock()
+
 			if IsReservedSlug(newName) {
 				return nil, ErrReservedSlug
 			}
 
-			newLogical := newName + ".git"
-			if err := uc.nameCollisionForViewer(ctx, newName, newLogical, in.ViewerID, repo.ID); err != nil {
+			if err := uc.nameCollision(ctx, newName); err != nil {
 				return nil, err
 			}
 
-			newDisk := buildRepoDiskPath(uc.git.GetReposRoot(), newName)
-			if err := uc.git.Move(oldDisk, newDisk); err != nil {
-				return nil, fmt.Errorf("rename repository files: %w", err)
-			}
-
+			oldName = repo.Name
+			oldDisk = repo.Path
 			repo.Name = newName
-			repo.Path = newDisk
-			repo.RepoPath = newLogical
-			renamed = true
+			repo.RepoPath = newName + ".git"
+			repo.Path = buildRepoDiskPath(uc.git.GetReposRoot(), newName)
+		}
+	}
+
+	if oldName != "" {
+		if err := uc.git.Move(oldDisk, repo.Path); err != nil {
+			return nil, fmt.Errorf("move repository: %w", err)
 		}
 	}
 
 	if err := uc.store.Update(repo); err != nil {
-		if renamed {
+		if oldName != "" {
 			_ = uc.git.Move(repo.Path, oldDisk)
 		}
+
+		if isUniqueViolation(err) && oldName != "" {
+			return nil, ErrAlreadyExists
+		}
+
 		return nil, fmt.Errorf("update repository: %w", err)
+	}
+
+	if oldName != "" {
+		uc.holdName(ctx, oldName)
 	}
 
 	if wasPrivate && !repo.IsPrivate && uc.activity != nil {
 		if err := uc.activity.DeleteByRepo(ctx, repo.ID); err != nil {
-			slog.Warn("clear activity after making repo public", "repo_id", repo.ID, "err", err)
+			slog.Warn("clear activity", "repo_id", repo.ID, "err", err)
 		}
 	}
 
 	item := uc.toRepositoryItem(repo, ownerSlug, in.ViewerID)
 	return &item, nil
+}
+
+func updateNeedsOwner(repo *domain.Repository, in UpdateRepositoryInput) bool {
+	if in.Private != nil && *in.Private != repo.IsPrivate {
+		return true
+	}
+
+	if in.NewName != nil {
+		newName, err := normalizeRepoName(*in.NewName)
+		return err != nil || newName != repo.Name
+	}
+
+	return false
 }
 
 func (uc *RepositoryUseCase) requireUpdateStepUp(ctx context.Context, repo *domain.Repository, in UpdateRepositoryInput) error {
@@ -559,6 +617,10 @@ func (uc *RepositoryUseCase) Delete(ctx context.Context, in DeleteRepositoryInpu
 		return ErrRepoNotFound
 	}
 
+	if !uc.authz.CanOwnRepo(repo, in.ViewerID) {
+		return ErrRepoOwnerOnly
+	}
+
 	if strings.TrimSpace(in.Confirm) == "" {
 		return ErrConfirmRequired
 	}
@@ -572,20 +634,21 @@ func (uc *RepositoryUseCase) Delete(ctx context.Context, in DeleteRepositoryInpu
 	}
 
 	diskPath := repo.Path
+	if err := uc.git.Remove(diskPath); err != nil {
+		return fmt.Errorf("delete repository files: %w", err)
+	}
+
 	if err := uc.store.Delete(repo.ID); err != nil {
 		return fmt.Errorf("delete repository metadata: %w", err)
 	}
 
+	uc.holdName(ctx, repo.Name)
 	uc.releaseMirrorRuntime(repo.ID)
 	uc.DropCodeIndex(ctx, repo.ID)
 	if uc.mirror.events != nil {
 		if err := uc.mirror.events.DeleteByRepo(ctx, repo.ID); err != nil {
-			slog.Warn("delete mirror events", "repo_id", repo.ID, "err", err)
+			slog.Warn("mirror events", "repo_id", repo.ID, "err", err)
 		}
-	}
-
-	if err := uc.git.Remove(diskPath); err != nil {
-		return fmt.Errorf("delete repository files: %w", err)
 	}
 
 	return nil
@@ -594,11 +657,18 @@ func (uc *RepositoryUseCase) Delete(ctx context.Context, in DeleteRepositoryInpu
 func (uc *RepositoryUseCase) SetPasswordHasher(h domain.PasswordHasher) {
 	if uc != nil {
 		uc.hasher = h
+		uc.gate = NewPasswordGate(h)
+	}
+}
+
+func (uc *RepositoryUseCase) SetPasswordGate(g *PasswordGate) {
+	if uc != nil && g != nil {
+		uc.gate = g
 	}
 }
 
 func (uc *RepositoryUseCase) requireViewerPassword(ctx context.Context, viewerID uint, password string) error {
-	if uc == nil || uc.hasher == nil || uc.users == nil {
+	if uc == nil || uc.gate == nil || uc.users == nil {
 		return ErrPasswordRequired
 	}
 
@@ -612,20 +682,22 @@ func (uc *RepositoryUseCase) requireViewerPassword(ctx context.Context, viewerID
 		return ErrUnauthorized
 	}
 
-	if err := uc.hasher.Compare(user.PasswordHash, password); err != nil {
-		return ErrCurrentPasswordWrong
-	}
-
-	return nil
+	return uc.gate.Verify(user.ID, user.PasswordHash, password, ErrCurrentPasswordWrong)
 }
 
 func (uc *RepositoryUseCase) PurgeSoftDeletedRepos(ctx context.Context, olderThan time.Duration) (int, error) {
-	ids, err := uc.store.PurgeSoftDeleted(ctx, time.Now().UTC().Add(-olderThan))
+	paths, ids, err := uc.store.PurgeSoftDeleted(ctx, time.Now().UTC().Add(-olderThan))
 	if err != nil {
 		return 0, fmt.Errorf("purge soft-deleted repositories: %w", err)
 	}
 
 	var errs []error
+	for _, path := range paths {
+		if err := uc.git.Remove(path); err != nil {
+			errs = append(errs, fmt.Errorf("remove purged repository %q: %w", path, err))
+		}
+	}
+
 	for _, id := range ids {
 		uc.releaseMirrorRuntime(id)
 		uc.DropCodeIndex(ctx, id)
@@ -652,6 +724,10 @@ func (uc *RepositoryUseCase) resolve(ctx context.Context, in ResolveRepositoryIn
 
 	repo, err := uc.store.FindByRepoPath(ctx, logical)
 	if err != nil {
+		if in.ViewerID == 0 && uc.authz.AnonymousReadDenied() {
+			return nil, "", ErrUnauthorized
+		}
+
 		return nil, "", ErrRepoNotFound
 	}
 
@@ -730,21 +806,28 @@ func validateBranchName(name string) error {
 	return nil
 }
 
-func (uc *RepositoryUseCase) nameCollisionForViewer(ctx context.Context, name, logical string, viewerID, exceptID uint) error {
+func (uc *RepositoryUseCase) nameCollision(ctx context.Context, name string) error {
 	exists, err := uc.store.ExistsByName(name)
 	if err != nil {
 		return fmt.Errorf("check repository existence: %w", err)
 	}
 
-	other, ferr := uc.store.FindByRepoPath(ctx, logical)
-	visible := ferr == nil && other != nil && (exceptID == 0 || other.ID != exceptID)
-
-	if !exists && !visible {
-		return nil
+	if exists {
+		return ErrAlreadyExists
 	}
 
-	_ = visible
-	return ErrAlreadyExists
+	if uc.nameHolds != nil {
+		held, herr := uc.nameHolds.IsHeld(ctx, name, time.Now().UTC())
+		if herr != nil {
+			return fmt.Errorf("check repository name hold: %w", herr)
+		}
+
+		if held {
+			return ErrAlreadyExists
+		}
+	}
+
+	return nil
 }
 
 func (uc *RepositoryUseCase) toRepositoryItem(repo *domain.Repository, ownerUsername string, viewerID uint) RepositoryItem {
@@ -767,6 +850,7 @@ func (uc *RepositoryUseCase) toRepositoryItem(repo *domain.Repository, ownerUser
 		item.CanRead = uc.authz.CanReadRepo(repo, viewerID) == nil
 		item.CanWrite = uc.authz.CanWriteRepo(repo, viewerID)
 		item.CanAdmin = uc.authz.CanAdminRepo(repo, viewerID)
+		item.CanOwn = uc.authz.CanOwnRepo(repo, viewerID)
 	} else if !repo.IsPrivate {
 		item.CanRead = true
 	}
@@ -790,7 +874,7 @@ func fillMirrorItem(item *RepositoryItem, repo *domain.Repository) {
 	}
 
 	force, prune := repo.MirrorForce, repo.MirrorPrune
-	item.MirrorURL = domain.RedactURL(repo.MirrorURL)
+	item.MirrorURL = urlredact.URL(repo.MirrorURL)
 	item.MirrorLastSyncAt = repo.MirrorLastSyncAt
 	item.MirrorRemoteHEAD = repo.MirrorRemoteHEAD
 	item.MirrorLastProgress = repo.MirrorLastProgress
@@ -804,8 +888,6 @@ func fillMirrorItem(item *RepositoryItem, repo *domain.Repository) {
 	item.MirrorHasSSHKey = repo.MirrorSSHPrivateKey != ""
 	item.MirrorInsecureTLS = repo.MirrorInsecureTLS
 	item.MirrorPinnedHosts = repo.MirrorPinnedHosts
-	item.MirrorLFS = repo.MirrorLFS
-	item.MirrorPartial = repo.MirrorPartial
 	item.MirrorVerifySigned = repo.MirrorVerifySigned
 	item.MirrorMaxBytes = repo.MirrorMaxBytes
 	item.MirrorConflictPolicy = repo.MirrorConflictPolicy

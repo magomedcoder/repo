@@ -19,20 +19,6 @@ const (
 	maxIndexTotalBytes = 32 << 20
 )
 
-func (r *Repository) TipSHA(repoPath string) (string, error) {
-	repo, err := r.open(repoPath)
-	if err != nil {
-		return "", err
-	}
-
-	ref, err := repo.Head()
-	if err != nil {
-		return "", nil
-	}
-
-	return ref.Hash().String(), nil
-}
-
 func (r *Repository) WalkTextFiles(ctx context.Context, repoPath string) (tipSHA string, files []domain.IndexedTextFile, err error) {
 	if err := checkCtx(ctx); err != nil {
 		return "", nil, err

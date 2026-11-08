@@ -450,48 +450,6 @@ func (uc *IssueUseCase) CreateLabel(ctx context.Context, in ResolveRepositoryInp
 	return &item, nil
 }
 
-func (uc *IssueUseCase) UpdateLabel(ctx context.Context, in ResolveRepositoryInput, id uint, name, color *string) (*LabelItem, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	repo, err := uc.ownerRepo(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-
-	label, err := uc.issues.FindLabel(id)
-	if err != nil {
-		if isNotFound(err) {
-			return nil, ErrLabelNotFound
-		}
-		return nil, err
-	}
-
-	if label.RepositoryID != repo.ID {
-		return nil, ErrLabelNotFound
-	}
-
-	if name != nil {
-		next := strings.TrimSpace(*name)
-		if next == "" {
-			return nil, ErrLabelNameRequired
-		}
-		label.Name = next
-	}
-
-	if color != nil {
-		label.Color = normalizeColor(*color)
-	}
-
-	if err := uc.issues.UpdateLabel(label); err != nil {
-		return nil, fmt.Errorf("update label: %w", err)
-	}
-
-	item := toLabelItem(*label)
-	return &item, nil
-}
-
 func (uc *IssueUseCase) DeleteLabel(ctx context.Context, in ResolveRepositoryInput, id uint) error {
 	if err := ctx.Err(); err != nil {
 		return err

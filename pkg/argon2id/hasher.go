@@ -4,20 +4,81 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"golang.org/x/crypto/argon2"
 )
 
 const (
-	timeCost = 2
+	timeCost = 3
 	memory   = 64 * 1024
 	threads  = 4
 	keyLen   = 32
 	saltLen  = 16
 )
+
+var ErrBusy = errors.New("argon2id: too many concurrent hash operations")
+
+const MaxPasswordLen = 1024
+const defaultAcquireTimeout = 3 * time.Second
+
+var (
+	semMu          sync.RWMutex
+	sem            = make(chan struct{}, defaultConcurrency())
+	acquireTimeout = defaultAcquireTimeout
+)
+
+func defaultConcurrency() int {
+	return max(2, 2*runtime.GOMAXPROCS(0))
+}
+
+func SetConcurrency(n int) {
+	if n < 1 {
+		n = 1
+	}
+
+	semMu.Lock()
+	sem = make(chan struct{}, n)
+	semMu.Unlock()
+}
+
+func SetAcquireTimeout(d time.Duration) {
+	if d <= 0 {
+		d = defaultAcquireTimeout
+	}
+
+	semMu.Lock()
+	acquireTimeout = d
+	semMu.Unlock()
+}
+
+func acquire() (func(), error) {
+	semMu.RLock()
+	ch, timeout := sem, acquireTimeout
+	semMu.RUnlock()
+
+	select {
+	case ch <- struct{}{}:
+		return func() { <-ch }, nil
+	default:
+	}
+
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+
+	select {
+	case ch <- struct{}{}:
+		return func() { <-ch }, nil
+	case <-t.C:
+		return nil, ErrBusy
+	}
+}
 
 type Hasher struct{}
 
@@ -26,6 +87,16 @@ func NewHasher() *Hasher {
 }
 
 func (h *Hasher) Hash(password string) (string, error) {
+	if len(password) > MaxPasswordLen {
+		return "", fmt.Errorf("password too long")
+	}
+
+	release, err := acquire()
+	if err != nil {
+		return "", err
+	}
+	defer release()
+
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
@@ -36,6 +107,10 @@ func (h *Hasher) Hash(password string) (string, error) {
 }
 
 func (h *Hasher) Compare(hash, password string) error {
+	if len(password) > MaxPasswordLen {
+		return fmt.Errorf("password too long")
+	}
+
 	parts := strings.Split(hash, "$")
 	if len(parts) != 5 || parts[0] != "argon2id" {
 		return fmt.Errorf("unknown hash")
@@ -55,6 +130,12 @@ func (h *Hasher) Compare(hash, password string) error {
 	if err != nil {
 		return err
 	}
+
+	release, err := acquire()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	sum := argon2.IDKey([]byte(password), salt, params.time, params.memory, params.threads, uint32(len(want)))
 	if subtle.ConstantTimeCompare(sum, want) != 1 {

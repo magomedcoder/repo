@@ -1,8 +1,6 @@
 import { api } from './client'
 import type { Repository } from './types'
 
-export type SearchType = 'repositories' | 'code'
-
 export interface CodeSearchHit {
   repo_name: string
   repo_path: string

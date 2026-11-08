@@ -28,6 +28,7 @@ func (h *TokenHandler) SetAccessLogger(log *audit.Logger) {
 type createTokenRequest struct {
 	Name            string  `json:"name"`
 	Scope           string  `json:"scope"`
+	RepoIDs         []uint  `json:"repo_ids"`
 	ExpiresIn       *int    `json:"expires_in"`
 	ExpiresAt       *string `json:"expires_at"`
 	CurrentPassword string  `json:"current_password"`
@@ -48,6 +49,7 @@ func (h *TokenHandler) Create(c *httpx.Context) error {
 		UserID:          user.ID,
 		Name:            req.Name,
 		Scope:           req.Scope,
+		RepoIDs:         req.RepoIDs,
 		ExpiresIn:       req.ExpiresIn,
 		CurrentPassword: req.CurrentPassword,
 	}

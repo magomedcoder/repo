@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { tokensApi } from '@/api'
+import { reposApi, tokensApi } from '@/api'
 import type { AccessToken } from '@/api/types'
 import PageState from '@/components/ui/PageState.vue'
 import { formatDate, i18n, localizeError } from '@/i18n'
@@ -10,6 +10,7 @@ import Surface from '@/components/ui/Surface.vue'
 import SurfaceHeader from '@/components/ui/SurfaceHeader.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import { promptStepUpPassword } from '@/lib/stepUp'
+import { repositoryPath } from '@/lib/repoPath'
 
 const tokens = ref<AccessToken[]>([])
 const name = ref('')
@@ -20,6 +21,12 @@ const loading = ref(true)
 const creating = ref(false)
 const showForm = ref(false)
 const createdToken = ref('')
+const ownRepos = ref<{
+  id: number
+  label: string
+}[]>([])
+const selectedRepoIds = ref<number[]>([])
+const repoLabels = ref<Record<number, string>>({})
 
 async function load() {
   loading.value = true
@@ -27,11 +34,31 @@ async function load() {
   try {
     const res = await tokensApi.list()
     tokens.value = res.tokens ?? []
+    await loadRepos()
   } catch (err) {
     error.value = localizeError(err, 'errors.loadTokens')
   } finally {
     loading.value = false
   }
+}
+
+async function loadRepos() {
+  try {
+    const res = await reposApi.listOwn()
+    const repos = (res.repos ?? []).slice().sort((a, b) => a.name.localeCompare(b.name))
+    ownRepos.value = repos.map((r) => ({ id: r.id, label: r.name }))
+    repoLabels.value = Object.fromEntries(repos.map((r) => [r.id, `${r.name} (${repositoryPath(r)})`]))
+  } catch {
+    ownRepos.value = []
+  }
+}
+
+function repoScopeLabel(ids?: number[]) {
+  if (!ids?.length) {
+    return i18n.global.t('tokens.reposAll')
+  }
+
+  return ids.map((id) => repoLabels.value[id] ?? `#${id}`).join(', ')
 }
 
 async function create() {
@@ -47,12 +74,17 @@ async function create() {
     const body: {
       name: string
       scope: string
+      repo_ids?: number[]
       expires_in?: number
       current_password: string
     } = {
       name: name.value.trim(),
       scope: scope.value,
       current_password: password,
+    }
+
+    if (selectedRepoIds.value.length) {
+      body.repo_ids = selectedRepoIds.value
     }
 
     if (expiresInDays.value != null && expiresInDays.value > 0) {
@@ -64,6 +96,7 @@ async function create() {
     name.value = ''
     expiresInDays.value = 90
     scope.value = 'git:write'
+    selectedRepoIds.value = []
     showForm.value = false
     await load()
   } catch (err) {
@@ -156,6 +189,13 @@ onMounted(load)
           </select>
         </label>
         <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{{ $t('tokens.repos') }}</span>
+          <select v-model="selectedRepoIds" class="field" multiple size="5">
+            <option v-for="r in ownRepos" :key="r.id" :value="r.id">{{ r.label }}</option>
+          </select>
+          <span class="mt-1 block text-xs text-ink-muted">{{ $t('tokens.reposHint') }}</span>
+        </label>
+        <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ $t('tokens.expiresIn') }}</span>
           <input
             v-model.number="expiresInDays"
@@ -187,6 +227,7 @@ onMounted(load)
               {{ $t('tokens.prefix') }}: {{ token.prefix }}...
             </p>
             <p class="mt-1 text-xs text-ink-muted">{{ token.scope || 'git:write' }}</p>
+            <p class="mt-1 text-xs text-ink-muted">{{ $t('tokens.repos') }}: {{ repoScopeLabel(token.repo_ids) }}</p>
             <p class="mt-1 text-xs text-ink-muted">{{ formatDate(token.created_at) }}</p>
             <p v-if="token.expires_at" class="mt-0.5 text-xs text-ink-muted">
               {{ $t('tokens.expiresAt') }}: {{ formatDate(token.expires_at) }}

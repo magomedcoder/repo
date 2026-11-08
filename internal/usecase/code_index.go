@@ -81,7 +81,7 @@ func (uc *RepositoryUseCase) DropCodeIndex(ctx context.Context, repoID uint) {
 	}
 
 	if err := uc.codeIndex.DeleteRepoIndex(ctx, repoID); err != nil {
-		slog.Warn("code index delete", "repo_id", repoID, "err", err)
+		slog.Warn("code index", "repo_id", repoID, "err", err)
 	}
 }
 
@@ -107,7 +107,7 @@ func (uc *RepositoryUseCase) RunCodeIndexBackfill(ctx context.Context) {
 func (uc *RepositoryUseCase) backfillCodeIndexOnce(ctx context.Context) {
 	ids, err := uc.codeIndex.ListStaleOrMissing(ctx, codeIndexBackfillBatch)
 	if err != nil {
-		slog.Warn("code index backfill list", "err", err)
+		slog.Warn("code index", "err", err)
 		return
 	}
 
@@ -152,7 +152,7 @@ func (uc *RepositoryUseCase) runCodeIndex(parent context.Context, repoID uint) {
 
 	tipSHA, walkFiles, err := uc.git.WalkTextFiles(ctx, repo.Path)
 	if err != nil {
-		slog.Warn("code index walk", "repo_id", repoID, "err", err)
+		slog.Warn("code index", "repo_id", repoID, "err", err)
 		return
 	}
 
@@ -165,19 +165,17 @@ func (uc *RepositoryUseCase) runCodeIndex(parent context.Context, repoID uint) {
 	files := make([]domain.CodeIndexFile, 0, len(walkFiles))
 	for _, f := range walkFiles {
 		files = append(files, domain.CodeIndexFile{
-			RepoID: repoID,
-			Path:   f.Path,
-			TipSHA: tipSHA,
-			Body:   f.Body,
+			Path: f.Path,
+			Body: f.Body,
 		})
 	}
 
 	if err := uc.codeIndex.ReplaceRepoIndex(ctx, repoID, tipSHA, files); err != nil {
-		slog.Warn("code index replace", "repo_id", repoID, "err", err)
+		slog.Warn("code index", "repo_id", repoID, "err", err)
 		return
 	}
 
-	slog.Debug("code index updated", "repo_id", repoID, "tip", tipSHA, "files", len(files))
+	slog.Debug("code index", "repo_id", repoID, "files", len(files))
 }
 
 func tokenizeCodeQuery(raw string) []string {

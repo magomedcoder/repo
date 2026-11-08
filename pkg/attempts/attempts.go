@@ -34,6 +34,7 @@ type Counter interface {
 	Fail(key string) bool
 	Reset(key string)
 	Locked(key string) bool
+	RetryAfter(key string) time.Duration
 	Sweep()
 }
 
@@ -73,6 +74,31 @@ type state struct {
 	lockedUntil time.Time
 	lockLevel   int
 	lastUsed    time.Time
+	lastFail    time.Time
+}
+
+func (st *state) quietSince() time.Time {
+	if st.lockedUntil.After(st.lastFail) {
+		return st.lockedUntil
+	}
+
+	return st.lastFail
+}
+
+func (st *state) locked(now time.Time) bool {
+	return !st.lockedUntil.IsZero() && now.Before(st.lockedUntil)
+}
+
+func (st *state) decay(now time.Time) {
+	if st.locked(now) {
+		return
+	}
+
+	if q := st.quietSince(); !q.IsZero() && now.Sub(q) > idleTTL {
+		st.fails = 0
+		st.lockLevel = 0
+		st.lockedUntil = time.Time{}
+	}
 }
 
 type memory struct {
@@ -126,6 +152,8 @@ func (m *memory) Fail(key string) bool {
 	defer m.mu.Unlock()
 
 	now := m.now()
+	m.maybeSweep(now)
+
 	st := m.fails[key]
 	if st == nil {
 		if len(m.fails) >= m.maxKeys {
@@ -144,17 +172,18 @@ func (m *memory) Fail(key string) bool {
 		m.fails[key] = st
 	}
 	st.lastUsed = now
-	m.maybeSweep(now)
 
-	if !st.lockedUntil.IsZero() && now.Before(st.lockedUntil) {
+	if st.locked(now) {
 		return true
 	}
 
-	if !st.lockedUntil.IsZero() && !now.Before(st.lockedUntil) {
+	st.decay(now)
+	if !st.lockedUntil.IsZero() {
 		st.fails = 0
 		st.lockedUntil = time.Time{}
 	}
 
+	st.lastFail = now
 	st.fails++
 	if st.fails < m.maxFail {
 		return false
@@ -168,28 +197,28 @@ func (m *memory) Fail(key string) bool {
 }
 
 func (m *memory) Locked(key string) bool {
+	return m.RetryAfter(key) > 0
+}
+
+func (m *memory) RetryAfter(key string) time.Duration {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	st := m.fails[key]
-	if st == nil {
-		return false
-	}
-
 	now := m.now()
-	st.lastUsed = now
 	m.maybeSweep(now)
 
-	if st.lockedUntil.IsZero() {
-		return false
+	st := m.fails[key]
+	if st == nil {
+		return 0
 	}
 
-	if now.Before(st.lockedUntil) {
-		return true
+	st.lastUsed = now
+
+	if st.lockedUntil.IsZero() || !now.Before(st.lockedUntil) {
+		return 0
 	}
 
-	st.lockedUntil = time.Time{}
-	return false
+	return st.lockedUntil.Sub(now)
 }
 
 func (m *memory) Reset(key string) {
@@ -224,7 +253,7 @@ func (m *memory) evictOldestInScope(scope string, now time.Time) bool {
 			continue
 		}
 
-		if !st.lockedUntil.IsZero() && now.Before(st.lockedUntil) {
+		if st.locked(now) {
 			continue
 		}
 
@@ -263,9 +292,17 @@ func (m *memory) maybeSweep(now time.Time) {
 
 func (m *memory) sweep(now time.Time) {
 	for k, st := range m.fails {
-		lockExpired := !st.lockedUntil.IsZero() && !now.Before(st.lockedUntil) && st.fails == 0
-		idle := !st.lastUsed.IsZero() && now.Sub(st.lastUsed) > idleTTL
-		if lockExpired || idle {
+		if st.locked(now) {
+			continue
+		}
+
+		st.decay(now)
+		q := st.quietSince()
+		if q.IsZero() {
+			q = st.lastUsed
+		}
+
+		if !q.IsZero() && now.Sub(q) > idleTTL {
 			m.deleteKey(k)
 		}
 	}
@@ -282,7 +319,7 @@ func (m *memory) evictOldest(now time.Time) {
 		found     bool
 	)
 	for k, st := range m.fails {
-		if !st.lockedUntil.IsZero() && now.Before(st.lockedUntil) {
+		if st.locked(now) {
 			continue
 		}
 

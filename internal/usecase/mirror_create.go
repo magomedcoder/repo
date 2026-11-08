@@ -19,7 +19,6 @@ type createMirrorSpec struct {
 	SSHPass   string
 	Interval  string
 	Refspecs  string
-	LFS       bool
 	MaxBytes  int64
 	GroupID   uint
 }
@@ -56,7 +55,6 @@ func (uc *RepositoryUseCase) prepareCreateMirror(in CreateRepositoryInput) (*cre
 		SSHPass:   in.MirrorSSHPassphrase,
 		Interval:  in.MirrorInterval,
 		Refspecs:  in.MirrorRefspecs,
-		LFS:       in.MirrorLFS,
 		MaxBytes:  in.MirrorMaxBytes,
 		GroupID:   in.MirrorGroupID,
 	})
@@ -75,10 +73,6 @@ func (uc *RepositoryUseCase) sealCreateMirror(m *createMirrorSpec) (*createMirro
 
 	if m.Refspecs, err = normalizeRefspecs(m.Refspecs); err != nil {
 		return nil, err
-	}
-
-	if m.LFS {
-		return nil, ErrMirrorLFSUnavailable
 	}
 
 	if isSSHMirrorURL(m.URL) && strings.TrimSpace(m.SSHKey) == "" {
@@ -117,7 +111,6 @@ func applyCreateMirror(repo *domain.Repository, m *createMirrorSpec) {
 	repo.MirrorSSHPassphrase = m.SSHPass
 	repo.MirrorInterval = m.Interval
 	repo.MirrorRefspecs = m.Refspecs
-	repo.MirrorLFS = m.LFS
 	repo.MirrorMaxBytes = m.MaxBytes
 	repo.MirrorGroupID = m.GroupID
 	repo.MirrorEnabled = true
@@ -166,7 +159,7 @@ func (uc *RepositoryUseCase) cloneNewMirror(ctx context.Context, repo *domain.Re
 	}
 
 	if err := uc.store.UpdateMirrorState(ctx, repo); err != nil {
-		slog.Warn("mirror create: save state", "repo_id", repo.ID, "err", err)
+		slog.Warn("mirror state", "repo_id", repo.ID, "err", err)
 	}
 
 	uc.recordCreateSync(repo, started, actorID, nil)
@@ -203,24 +196,19 @@ func (uc *RepositoryUseCase) recordCreateSync(repo *domain.Repository, started t
 func (uc *RepositoryUseCase) cleanupFailedClone(repo *domain.Repository, actorID uint, cause error) {
 	if uc.mirror.events != nil {
 		if err := uc.mirror.events.DeleteByRepo(context.Background(), repo.ID); err != nil {
-			slog.Warn("mirror create cleanup: delete events", "repo_id", repo.ID, "err", err)
+			slog.Warn("mirror cleanup", "repo_id", repo.ID, "err", err)
 		}
 	}
 
 	if err := uc.git.Remove(repo.Path); err != nil {
-		slog.Error("mirror create cleanup: remove files", "repo_id", repo.ID, "err", err)
+		slog.Error("mirror cleanup", "repo_id", repo.ID, "err", err)
 	}
 
 	if err := uc.store.Delete(repo.ID); err != nil {
-		slog.Error("mirror create cleanup: delete row", "repo_id", repo.ID, "err", err)
+		slog.Error("mirror cleanup", "repo_id", repo.ID, "err", err)
 	}
 
-	slog.Warn("mirror create failed, cleaned up",
-		"repo", repo.RepoPath,
-		"remote_host", mirrorHost(repo.MirrorURL),
-		"error_class", classifyMirrorErr(cause),
-		"err", truncateErr(uc.sanitizeMirrorErr(repo, repo.MirrorURL, cause), 300),
-	)
+	slog.Warn("mirror create failed", "repo_id", repo.ID, "err", truncateErr(uc.sanitizeMirrorErr(repo, repo.MirrorURL, cause), 300))
 
 	recordActivity(uc.activity, &domain.ActivityEvent{
 		ActorID: actorID,

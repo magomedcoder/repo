@@ -18,6 +18,7 @@ type AccessToken struct {
 	TokenHash  string
 	Prefix     string
 	Scope      string
+	RepoIDs    []uint
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
 	ExpiresAt  *time.Time

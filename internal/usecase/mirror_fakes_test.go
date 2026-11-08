@@ -411,16 +411,8 @@ func (g *fakeGit) EnsureDefaultBranch(string, string) error {
 	return nil
 }
 
-func (g *fakeGit) TipSHA(string) (string, error) {
-	return "", nil
-}
-
 func (g *fakeGit) WalkTextFiles(context.Context, string) (string, []domain.IndexedTextFile, error) {
 	return "", nil, nil
-}
-
-func (g *fakeGit) Grep(context.Context, string, string, int) ([]domain.CodeSearchHit, error) {
-	return nil, nil
 }
 
 func (g *fakeGit) DetectHEADBranch(string) (string, error) {
@@ -533,9 +525,9 @@ func (e *mirrorEnv) addMirror(dir string) *domain.Repository {
 	})
 }
 
-func (s *fakeStore) PurgeSoftDeleted(context.Context, time.Time) ([]uint, error) {
+func (s *fakeStore) PurgeSoftDeleted(context.Context, time.Time) ([]string, []uint, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return append([]uint(nil), s.purged...), nil
+	return nil, append([]uint(nil), s.purged...), nil
 }

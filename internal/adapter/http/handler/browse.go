@@ -113,12 +113,7 @@ func (h *RepositoryHandler) serveBrowseGet(c *httpx.Context, in usecase.ResolveR
 		ctype := rawContentType(filePath, item.IsBinary)
 		c.W.Header().Set("Content-Type", ctype)
 
-		name := path.Base(strings.TrimSpace(filePath))
-		if name == "" || name == "." || name == "/" {
-			name = "download"
-		}
-
-		name = strings.ReplaceAll(name, `"`, "")
+		name := safeDownloadFilename(path.Base(strings.TrimSpace(filePath)))
 		disposition := "attachment"
 		if strings.HasPrefix(ctype, "image/") && !strings.EqualFold(ctype, "image/svg+xml") {
 			disposition = "inline"
@@ -179,6 +174,23 @@ func repoNameFromParts(parts []string) (string, error) {
 	}
 
 	return parts[0], nil
+}
+
+func safeDownloadFilename(name string) string {
+	name = strings.Map(func(r rune) rune {
+		switch {
+		case r < 32 || r == 127 || r == '"' || r == '\\' || r == '/' || r == ':':
+			return '_'
+		default:
+			return r
+		}
+	}, name)
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." {
+		return "download"
+	}
+
+	return name
 }
 
 func rawContentType(filePath string, isBinary bool) string {

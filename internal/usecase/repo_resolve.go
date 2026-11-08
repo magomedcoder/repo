@@ -18,13 +18,17 @@ func ResolveReadable(ctx context.Context, repos domain.RepositoryStore, authz *A
 		return nil, ErrRepoNotFound
 	}
 
-	repo, err := repos.FindByRepoPath(ctx, logical)
-	if err != nil {
-		return nil, ErrRepoNotFound
-	}
-
 	if authz == nil {
 		authz = &Authz{}
+	}
+
+	repo, err := repos.FindByRepoPath(ctx, logical)
+	if err != nil {
+		if in.ViewerID == 0 && authz.AnonymousReadDenied() {
+			return nil, ErrUnauthorized
+		}
+
+		return nil, ErrRepoNotFound
 	}
 
 	if err := authz.CanReadRepo(repo, in.ViewerID); err != nil {

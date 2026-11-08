@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v6/config"
-	gossh "golang.org/x/crypto/ssh"
 
 	appconfig "magomedcoder.ru/repo/internal/config"
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/metrics"
 	"magomedcoder.ru/repo/pkg/secretbox"
+	"magomedcoder.ru/repo/pkg/sshkey"
 	"magomedcoder.ru/repo/pkg/ssrf"
 )
 
@@ -37,6 +37,7 @@ type MirrorConfig struct {
 	CloneTimeout    time.Duration
 	FetchTimeout    time.Duration
 	PushTimeout     time.Duration
+	DefaultMaxBytes int64
 	ManualSyncEvery time.Duration
 	PushDebounce    time.Duration
 	SyncOnConfigure bool
@@ -49,6 +50,7 @@ func DefaultMirrorConfig() MirrorConfig {
 		CloneTimeout:    appconfig.DefaultMirrorCloneTimeout,
 		FetchTimeout:    appconfig.DefaultMirrorFetchTimeout,
 		PushTimeout:     appconfig.DefaultMirrorPushTimeout,
+		DefaultMaxBytes: appconfig.DefaultMirrorMaxBytes,
 		ManualSyncEvery: 15 * time.Second,
 		PushDebounce:    3 * time.Second,
 		SyncOnConfigure: true,
@@ -57,19 +59,23 @@ func DefaultMirrorConfig() MirrorConfig {
 
 func MirrorConfigFromApp(cfg appconfig.Config) MirrorConfig {
 	mc := DefaultMirrorConfig()
-	mc.Workers = cfg.MirrorWorkers
-	mc.PullInterval = cfg.MirrorPullEvery
+	mc.Workers = cfg.Mirror.Workers
+	mc.PullInterval = cfg.Mirror.PullEvery
 
-	if cfg.MirrorCloneTimeoutDur > 0 {
-		mc.CloneTimeout = cfg.MirrorCloneTimeoutDur
+	if cfg.Mirror.CloneTimeoutDur > 0 {
+		mc.CloneTimeout = cfg.Mirror.CloneTimeoutDur
 	}
 
-	if cfg.MirrorFetchTimeoutDur > 0 {
-		mc.FetchTimeout = cfg.MirrorFetchTimeoutDur
+	if cfg.Mirror.FetchTimeoutDur > 0 {
+		mc.FetchTimeout = cfg.Mirror.FetchTimeoutDur
 	}
 
-	if cfg.MirrorPushTimeoutDur > 0 {
-		mc.PushTimeout = cfg.MirrorPushTimeoutDur
+	if cfg.Mirror.PushTimeoutDur > 0 {
+		mc.PushTimeout = cfg.Mirror.PushTimeoutDur
+	}
+
+	if cfg.Mirror.DefaultMaxBytes > 0 {
+		mc.DefaultMaxBytes = cfg.Mirror.DefaultMaxBytes
 	}
 
 	return mc.normalized()
@@ -551,16 +557,7 @@ func mirrorBackoff(fails int) time.Duration {
 }
 
 func validateSSHKey(key, passphrase string) error {
-	if strings.TrimSpace(key) == "" {
-		return nil
-	}
-
-	_, err := gossh.ParsePrivateKey([]byte(key))
-	if _, missing := err.(*gossh.PassphraseMissingError); missing {
-		_, err = gossh.ParsePrivateKeyWithPassphrase([]byte(key), []byte(passphrase))
-	}
-
-	if err != nil {
+	if err := sshkey.ValidatePrivateKey(key, passphrase); err != nil {
 		return ErrInvalidSSHKey
 	}
 

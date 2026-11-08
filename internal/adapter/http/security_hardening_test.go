@@ -12,19 +12,16 @@ import (
 
 func TestGitHTTPPrivateRepoNotFoundForOutsider(t *testing.T) {
 	env := newTestServer(t)
-	ownerCookies := loginUser(t, env, "ownpriv", "ownpriv@example.com", "password1")
-	outsiderCookies := loginUser(t, env, "outpriv", "outpriv@example.com", "password1")
+	ownerCookies := loginUser(t, env, "ownpriv", "ownpriv@example.com", "test-pass-1")
+	outsiderCookies := loginUser(t, env, "outpriv", "outpriv@example.com", "test-pass-1")
 
-	created := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"secret","private":true}`, ownerCookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, env.Server, "secret", true, ownerCookies)
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, env.Server.URL+"/secret.git/info/refs?service=git-upload-pack", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, env.Server.URL+"/"+pid+".git/info/refs?service=git-upload-pack", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.SetBasicAuth("outpriv", "password1")
+	req.SetBasicAuth("outpriv", "test-pass-1")
 	_ = outsiderCookies
 
 	res, err := env.Server.Client().Do(req)
@@ -42,20 +39,17 @@ func TestGitHTTPPrivateRepoNotFoundForOutsider(t *testing.T) {
 
 func TestReadCollaboratorCannotCreatePrivateIssue(t *testing.T) {
 	env := newTestServer(t)
-	ownerCookies := loginUser(t, env, "owncollab", "owncollab@example.com", "password1")
-	readerCookies := loginUser(t, env, "readcollab", "readcollab@example.com", "password1")
+	ownerCookies := loginUser(t, env, "owncollab", "owncollab@example.com", "test-pass-1")
+	readerCookies := loginUser(t, env, "readcollab", "readcollab@example.com", "test-pass-1")
 
-	created := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"privissues","private":true}`, ownerCookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, env.Server, "privissues", true, ownerCookies)
 
-	add := doJSON(t, env.Server, http.MethodPost, "/api/repos/privissues/collaborators", `{"username":"readcollab","role":"read"}`, ownerCookies)
+	add := doJSON(t, env.Server, http.MethodPost, "/api/repos/"+pid+"/collaborators", `{"username":"readcollab","role":"read"}`, ownerCookies)
 	if add.StatusCode != http.StatusCreated && add.StatusCode != http.StatusOK {
 		t.Fatalf("add collab %d %s", add.StatusCode, add.Body)
 	}
 
-	issue := doJSON(t, env.Server, http.MethodPost, "/api/repos/privissues/issues", `{"title":"nope","body":"x"}`, readerCookies)
+	issue := doJSON(t, env.Server, http.MethodPost, "/api/repos/"+pid+"/issues", `{"title":"nope","body":"x"}`, readerCookies)
 	if issue.StatusCode != http.StatusForbidden {
 		t.Fatalf("read collab create issue status=%d body=%s", issue.StatusCode, issue.Body)
 	}
@@ -63,15 +57,12 @@ func TestReadCollaboratorCannotCreatePrivateIssue(t *testing.T) {
 
 func TestMirrorURLRejectsNipIO(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "ssrfuser", "ssrfuser@example.com", "password1")
+	cookies := loginUser(t, env, "ssrfuser", "ssrfuser@example.com", "test-pass-1")
 
-	created := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"ssrfapp","private":false}`, cookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, env.Server, "ssrfapp", false, cookies)
 
-	cfg := doJSON(t, env.Server, http.MethodPut, "/api/repos/ssrfapp/mirror", `{
-		"current_password": "password1",
+	cfg := doJSON(t, env.Server, http.MethodPut, "/api/repos/"+pid+"/mirror", `{
+		"current_password": "test-pass-1",
 		"enabled": true,
 		"direction": "push",
 		"url": "https://127.0.0.1.nip.io/evil.git"
@@ -83,15 +74,12 @@ func TestMirrorURLRejectsNipIO(t *testing.T) {
 
 func TestMirrorPasswordStoredSealed(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "sealuser", "sealuser@example.com", "password1")
+	cookies := loginUser(t, env, "sealuser", "sealuser@example.com", "test-pass-1")
 
-	created := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"sealapp","private":false}`, cookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, env.Server, "sealapp", false, cookies)
 
-	cfg := doJSON(t, env.Server, http.MethodPut, "/api/repos/sealapp/mirror", `{
-		"current_password": "password1",
+	cfg := doJSON(t, env.Server, http.MethodPut, "/api/repos/"+pid+"/mirror", `{
+		"current_password": "test-pass-1",
 		"enabled": true,
 		"direction": "push",
 		"url": "https://example.com/org/sealapp.git",
@@ -123,17 +111,14 @@ func TestMirrorPasswordStoredSealed(t *testing.T) {
 
 func TestCreateNameCollisionUniformResponse(t *testing.T) {
 	env := newTestServer(t)
-	ownerCookies := loginUser(t, env, "ownerpriv", "ownerpriv@example.com", "password1")
-	otherCookies := loginUser(t, env, "otherpriv", "otherpriv@example.com", "password1")
+	ownerCookies := loginUser(t, env, "ownerpriv", "ownerpriv@example.com", "test-pass-1")
+	otherCookies := loginUser(t, env, "otherpriv", "otherpriv@example.com", "test-pass-1")
 
-	created := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"secret-name","private":true}`, ownerCookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create private %d %s", created.StatusCode, created.Body)
-	}
+	_ = createRepo(t, env.Server, "secret-name", true, ownerCookies)
 
 	probe := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"secret-name","private":false}`, otherCookies)
 	if probe.StatusCode != http.StatusConflict || !strings.Contains(probe.Body, "repository_already_exists") {
-		t.Fatalf("foreign private collision must be already_exists: %d %s", probe.StatusCode, probe.Body)
+		t.Fatalf("names are global; foreign create of taken name must be already_exists: %d %s", probe.StatusCode, probe.Body)
 	}
 
 	dup := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"secret-name","private":true}`, ownerCookies)
@@ -144,19 +129,16 @@ func TestCreateNameCollisionUniformResponse(t *testing.T) {
 
 func TestDeleteConfirmIgnoresQuery(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "delquery", "delquery@example.com", "password1")
+	cookies := loginUser(t, env, "delquery", "delquery@example.com", "test-pass-1")
 
-	created := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"delme","private":false}`, cookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", created.StatusCode, created.Body)
-	}
+	pid := createRepo(t, env.Server, "delme", false, cookies)
 
-	res := doJSON(t, env.Server, http.MethodDelete, "/api/repos/delme?confirm=delme", `{"current_password":"password1"}`, cookies)
+	res := doJSON(t, env.Server, http.MethodDelete, "/api/repos/"+pid+"?confirm=delme", `{"current_password":"test-pass-1"}`, cookies)
 	if res.StatusCode == http.StatusNoContent {
 		t.Fatalf("delete must not succeed with confirm only in query: %d %s", res.StatusCode, res.Body)
 	}
 
-	ok := doJSON(t, env.Server, http.MethodDelete, "/api/repos/delme", `{"confirm":"delme","current_password":"password1"}`, cookies)
+	ok := doJSON(t, env.Server, http.MethodDelete, "/api/repos/"+pid, `{"confirm":"delme","current_password":"test-pass-1"}`, cookies)
 	if ok.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete with body confirm: %d %s", ok.StatusCode, ok.Body)
 	}
@@ -164,8 +146,8 @@ func TestDeleteConfirmIgnoresQuery(t *testing.T) {
 
 func TestPublicProfileHidesRole(t *testing.T) {
 	env := newTestServer(t)
-	ownerCookies := loginUser(t, env, "profilerole", "profilerole@example.com", "password1")
-	viewerCookies := loginUser(t, env, "roleviewer", "roleviewer@example.com", "password1")
+	ownerCookies := loginUser(t, env, "profilerole", "profilerole@example.com", "test-pass-1")
+	viewerCookies := loginUser(t, env, "roleviewer", "roleviewer@example.com", "test-pass-1")
 
 	self := doJSON(t, env.Server, http.MethodGet, "/api/users/profilerole", "", ownerCookies)
 	if self.StatusCode != http.StatusOK || !strings.Contains(self.Body, `"role"`) {

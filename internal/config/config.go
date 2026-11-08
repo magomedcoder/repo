@@ -1,19 +1,22 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"magomedcoder.ru/repo/pkg/netutil"
 )
 
 const (
 	MinSessionSecretLen         = 32
 	MinSecretLen                = MinSessionSecretLen
-	DefaultReceiveMax           = 512 << 20
+	DefaultReceiveMax           = 256 << 20 // 256 MiB
 	DefaultPath                 = "config.yaml"
 	DefaultSiteName             = "Repo"
 	DefaultBranch               = "main"
@@ -23,61 +26,105 @@ const (
 	DefaultMirrorFetchTimeout   = 10 * time.Minute
 	DefaultMirrorPushTimeout    = 10 * time.Minute
 	DefaultSoftDeletedRetention = 7 * 24 * time.Hour
+	DefaultMirrorMaxBytes       = 5 << 30 // 5 GiB
+	DefaultSessionAbsolute      = 30 * 24 * time.Hour
+	DefaultSessionIdle          = 14 * 24 * time.Hour
+	DefaultHTTPAddr             = "127.0.0.1:8080"
 )
 
 type Config struct {
-	HTTPAddr              string `yaml:"http_addr"`
-	DataDir               string `yaml:"data_dir"`
-	SiteName              string `yaml:"site_name"`
-	CookieSecure          bool   `yaml:"cookie_secure"`
-	SessionSecret         string `yaml:"session_secret"`
-	TokenPepper           string `yaml:"token_pepper"`
-	CSRFSecret            string `yaml:"csrf_secret"`
-	MirrorSecretsKey      string `yaml:"mirror_secrets_key"`
+	HTTP             HTTPConfig    `yaml:"http"`
+	Server           ServerConfig  `yaml:"server"`
+	Secrets          SecretsConfig `yaml:"secrets"`
+	Auth             AuthConfig    `yaml:"auth"`
+	Mirror           MirrorConfig  `yaml:"mirror"`
+	TrustedProxyNets []*net.IPNet  `yaml:"-"`
+}
+
+type HTTPConfig struct {
+	Addr            string   `yaml:"addr"`
+	CookieSecure    bool     `yaml:"cookie_secure"`
+	TrustedProxies  []string `yaml:"trusted_proxies"`
+	ReceiveMaxBytes int64    `yaml:"receive_max_bytes"`
+}
+
+type ServerConfig struct {
+	DataDir                 string        `yaml:"data_dir"`
+	SiteName                string        `yaml:"site_name"`
+	SoftDeletedRetention    string        `yaml:"soft_deleted_retention"`
+	SoftDeletedRetentionDur time.Duration `yaml:"-"`
+}
+
+type SecretsConfig struct {
+	SessionSecret    string `yaml:"session_secret"`
+	TokenPepper      string `yaml:"token_pepper"`
+	CSRFSecret       string `yaml:"csrf_secret"`
+	MirrorSecretsKey string `yaml:"mirror_secrets_key"`
+}
+
+type AuthConfig struct {
 	AllowRegistration     bool   `yaml:"allow_registration"`
 	AllowPublicContribute bool   `yaml:"allow_public_contribute"`
-	RequireAuthForGitRead bool   `yaml:"require_auth_for_git_read"`
+	RequireAuthForRead    bool   `yaml:"require_auth_for_read"`
+	GitPasswordAuth       bool   `yaml:"git_password_auth"`
+	SessionAbsolute       string `yaml:"session_absolute"`
+	SessionIdle           string `yaml:"session_idle"`
 
-	TrustedProxies     []string `yaml:"trusted_proxies"`
-	ReceiveMaxBytes    int64    `yaml:"receive_max_bytes"`
-	MirrorPullInterval string   `yaml:"mirror_pull_interval"`
-	TrustedProxyNets   []*net.IPNet
-	MirrorPullEvery    time.Duration `yaml:"-"`
+	SessionAbsoluteDur time.Duration `yaml:"-"`
+	SessionIdleDur     time.Duration `yaml:"-"`
+}
 
-	MirrorWorkers      int    `yaml:"mirror_workers"`
-	MirrorCloneTimeout string `yaml:"mirror_clone_timeout"`
-	MirrorFetchTimeout string `yaml:"mirror_fetch_timeout"`
-	MirrorPushTimeout  string `yaml:"mirror_push_timeout"`
+type MirrorConfig struct {
+	PullInterval    string             `yaml:"pull_interval"`
+	Workers         int                `yaml:"workers"`
+	CloneTimeout    string             `yaml:"clone_timeout"`
+	FetchTimeout    string             `yaml:"fetch_timeout"`
+	PushTimeout     string             `yaml:"push_timeout"`
+	DefaultMaxBytes int64              `yaml:"default_max_bytes"`
+	Verify          MirrorVerifyConfig `yaml:"verify"`
 
-	SoftDeletedRetention string `yaml:"soft_deleted_retention"`
+	PullEvery       time.Duration `yaml:"-"`
+	CloneTimeoutDur time.Duration `yaml:"-"`
+	FetchTimeoutDur time.Duration `yaml:"-"`
+	PushTimeoutDur  time.Duration `yaml:"-"`
+}
 
-	MirrorVerifyOpenPGPKeyring string `yaml:"mirror_verify_openpgp_keyring"`
-	MirrorVerifyAllowedSigners string `yaml:"mirror_verify_allowed_signers"`
-
-	MirrorCloneTimeoutDur   time.Duration `yaml:"-"`
-	MirrorFetchTimeoutDur   time.Duration `yaml:"-"`
-	MirrorPushTimeoutDur    time.Duration `yaml:"-"`
-	SoftDeletedRetentionDur time.Duration `yaml:"-"`
+type MirrorVerifyConfig struct {
+	OpenPGPKeyring string `yaml:"openpgp_keyring"`
+	AllowedSigners string `yaml:"allowed_signers"`
 }
 
 func Default() Config {
 	return Config{
-		HTTPAddr:           ":8080",
-		DataDir:            "data",
-		SiteName:           DefaultSiteName,
-		ReceiveMaxBytes:    DefaultReceiveMax,
-		MirrorPullInterval: "5m",
-		MirrorPullEvery:    DefaultMirrorPullInterval,
-
-		MirrorWorkers:           DefaultMirrorWorkers,
-		MirrorCloneTimeout:      "15m",
-		MirrorFetchTimeout:      "10m",
-		MirrorPushTimeout:       "10m",
-		MirrorCloneTimeoutDur:   DefaultMirrorCloneTimeout,
-		MirrorFetchTimeoutDur:   DefaultMirrorFetchTimeout,
-		MirrorPushTimeoutDur:    DefaultMirrorPushTimeout,
-		SoftDeletedRetention:    "168h",
-		SoftDeletedRetentionDur: DefaultSoftDeletedRetention,
+		HTTP: HTTPConfig{
+			Addr:            DefaultHTTPAddr,
+			ReceiveMaxBytes: DefaultReceiveMax,
+		},
+		Server: ServerConfig{
+			DataDir:                 "data",
+			SiteName:                DefaultSiteName,
+			SoftDeletedRetention:    "168h",
+			SoftDeletedRetentionDur: DefaultSoftDeletedRetention,
+		},
+		Auth: AuthConfig{
+			GitPasswordAuth:    true,
+			SessionAbsolute:    "720h",
+			SessionIdle:        "336h",
+			SessionAbsoluteDur: DefaultSessionAbsolute,
+			SessionIdleDur:     DefaultSessionIdle,
+		},
+		Mirror: MirrorConfig{
+			PullInterval:    "5m",
+			PullEvery:       DefaultMirrorPullInterval,
+			Workers:         DefaultMirrorWorkers,
+			CloneTimeout:    "15m",
+			FetchTimeout:    "10m",
+			PushTimeout:     "10m",
+			DefaultMaxBytes: DefaultMirrorMaxBytes,
+			CloneTimeoutDur: DefaultMirrorCloneTimeout,
+			FetchTimeoutDur: DefaultMirrorFetchTimeout,
+			PushTimeoutDur:  DefaultMirrorPushTimeout,
+		},
 	}
 }
 
@@ -86,51 +133,66 @@ func Load(path string) (Config, error) {
 		path = DefaultPath
 	}
 
+	info, err := os.Stat(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("read config %s: %w", path, err)
+	}
+
+	if mode := info.Mode().Perm(); mode&0o044 != 0 {
+		return Config{}, fmt.Errorf("config %s has mode %04o: it holds secrets and must not be group/world-readable; run chmod 600 %s", path, mode, path)
+	}
+
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("read config %s: %w", path, err)
 	}
 
 	cfg := Default()
-	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
 
-	if cfg.HTTPAddr == "" {
-		cfg.HTTPAddr = ":8080"
+	if cfg.HTTP.Addr == "" {
+		cfg.HTTP.Addr = DefaultHTTPAddr
 	}
 
-	if cfg.DataDir == "" {
-		cfg.DataDir = "data"
+	if cfg.Server.DataDir == "" {
+		cfg.Server.DataDir = "data"
 	}
 
-	cfg.SiteName = strings.TrimSpace(cfg.SiteName)
-	if cfg.SiteName == "" {
-		cfg.SiteName = DefaultSiteName
+	cfg.Server.SiteName = strings.TrimSpace(cfg.Server.SiteName)
+	if cfg.Server.SiteName == "" {
+		cfg.Server.SiteName = DefaultSiteName
 	}
 
-	if cfg.ReceiveMaxBytes <= 0 {
-		cfg.ReceiveMaxBytes = DefaultReceiveMax
+	if cfg.HTTP.ReceiveMaxBytes <= 0 {
+		cfg.HTTP.ReceiveMaxBytes = DefaultReceiveMax
 	}
 
-	if strings.TrimSpace(cfg.MirrorPullInterval) == "" {
-		cfg.MirrorPullInterval = "5m"
+	if strings.TrimSpace(cfg.Mirror.PullInterval) == "" {
+		cfg.Mirror.PullInterval = "5m"
 	}
 
-	every, err := time.ParseDuration(cfg.MirrorPullInterval)
+	every, err := time.ParseDuration(cfg.Mirror.PullInterval)
 	if err != nil {
-		return Config{}, fmt.Errorf("mirror_pull_interval: %w", err)
+		return Config{}, fmt.Errorf("mirror.pull_interval: %w", err)
 	}
 
-	cfg.MirrorPullEvery = every
+	cfg.Mirror.PullEvery = every
 
 	if err := cfg.normalizeMirror(); err != nil {
 		return Config{}, err
 	}
 
-	nets, err := parseCIDRs(cfg.TrustedProxies)
-	if err != nil {
+	if err := cfg.normalizeAuthSessions(); err != nil {
 		return Config{}, err
+	}
+
+	nets, err := netutil.ParseCIDRs(cfg.HTTP.TrustedProxies)
+	if err != nil {
+		return Config{}, fmt.Errorf("http.trusted_proxies: %w", err)
 	}
 	cfg.TrustedProxyNets = nets
 
@@ -138,24 +200,45 @@ func Load(path string) (Config, error) {
 }
 
 func (c *Config) normalizeMirror() error {
-	if c.MirrorWorkers <= 0 {
-		c.MirrorWorkers = DefaultMirrorWorkers
+	if c.Mirror.Workers <= 0 {
+		c.Mirror.Workers = DefaultMirrorWorkers
+	}
+
+	if c.Mirror.DefaultMaxBytes < 0 {
+		return fmt.Errorf("mirror.default_max_bytes: must be >= 0")
+	}
+
+	if c.Mirror.DefaultMaxBytes == 0 {
+		c.Mirror.DefaultMaxBytes = DefaultMirrorMaxBytes
 	}
 
 	var err error
-	if c.MirrorCloneTimeoutDur, err = parseDurationDefault("mirror_clone_timeout", c.MirrorCloneTimeout, DefaultMirrorCloneTimeout); err != nil {
+	if c.Mirror.CloneTimeoutDur, err = parseDurationDefault("mirror.clone_timeout", c.Mirror.CloneTimeout, DefaultMirrorCloneTimeout); err != nil {
 		return err
 	}
 
-	if c.MirrorFetchTimeoutDur, err = parseDurationDefault("mirror_fetch_timeout", c.MirrorFetchTimeout, DefaultMirrorFetchTimeout); err != nil {
+	if c.Mirror.FetchTimeoutDur, err = parseDurationDefault("mirror.fetch_timeout", c.Mirror.FetchTimeout, DefaultMirrorFetchTimeout); err != nil {
 		return err
 	}
 
-	if c.MirrorPushTimeoutDur, err = parseDurationDefault("mirror_push_timeout", c.MirrorPushTimeout, DefaultMirrorPushTimeout); err != nil {
+	if c.Mirror.PushTimeoutDur, err = parseDurationDefault("mirror.push_timeout", c.Mirror.PushTimeout, DefaultMirrorPushTimeout); err != nil {
 		return err
 	}
 
-	if c.SoftDeletedRetentionDur, err = parseDurationDefault("soft_deleted_retention", c.SoftDeletedRetention, DefaultSoftDeletedRetention); err != nil {
+	if c.Server.SoftDeletedRetentionDur, err = parseDurationDefault("server.soft_deleted_retention", c.Server.SoftDeletedRetention, DefaultSoftDeletedRetention); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Config) normalizeAuthSessions() error {
+	var err error
+	if c.Auth.SessionAbsoluteDur, err = parseDurationDefault("auth.session_absolute", c.Auth.SessionAbsolute, DefaultSessionAbsolute); err != nil {
+		return err
+	}
+
+	if c.Auth.SessionIdleDur, err = parseDurationDefault("auth.session_idle", c.Auth.SessionIdle, DefaultSessionIdle); err != nil {
 		return err
 	}
 
@@ -178,10 +261,10 @@ func parseDurationDefault(field, raw string, def time.Duration) (time.Duration, 
 
 func (c Config) ValidateSecrets() error {
 	secrets := []struct{ name, val string }{
-		{"session_secret", c.SessionSecret},
-		{"token_pepper", c.TokenPepper},
-		{"csrf_secret", c.CSRFSecret},
-		{"mirror_secrets_key", c.MirrorSecretsKey},
+		{"secrets.session_secret", c.Secrets.SessionSecret},
+		{"secrets.token_pepper", c.Secrets.TokenPepper},
+		{"secrets.csrf_secret", c.Secrets.CSRFSecret},
+		{"secrets.mirror_secrets_key", c.Secrets.MirrorSecretsKey},
 	}
 	for _, s := range secrets {
 		if len(strings.TrimSpace(s.val)) < MinSecretLen {
@@ -200,32 +283,73 @@ func (c Config) ValidateSecrets() error {
 	return nil
 }
 
+func (c Config) RequireAuthRead() bool {
+	return c.Auth.RequireAuthForRead
+}
+
+func (c Config) ValidateListen() error {
+	if !c.HTTP.CookieSecure && !c.listensLoopbackOnly() {
+		return fmt.Errorf("http.cookie_secure must be true when http.addr %q is not loopback-only (serve over HTTPS, or bind 127.0.0.1 for local development)", c.HTTP.Addr)
+	}
+
+	return nil
+}
+
 func (c Config) WarnInsecure() []string {
 	var out []string
 
-	if c.AllowRegistration {
-		out = append(out, "allow_registration is true: anyone who can reach the server can create an account")
+	if c.Auth.AllowRegistration {
+		out = append(out, "auth.allow_registration is true: anyone who can reach the server can create an account")
 	}
 
-	if c.AllowPublicContribute {
-		out = append(out, "allow_public_contribute is true: any logged-in user can open issues/PRs/comments on public repos")
+	if c.Auth.AllowPublicContribute {
+		out = append(out, "auth.allow_public_contribute is true: any logged-in user can open issues/PRs/comments on public repos")
 	}
 
-	if !c.CookieSecure && !c.listensLoopbackOnly() {
-		out = append(out, "cookie_secure is false while http_addr "+c.HTTPAddr+" is not loopback-only: session cookies may be sent over plain HTTP; set cookie_secure: true behind HTTPS")
+	if !c.HTTP.CookieSecure && !c.listensLoopbackOnly() {
+		out = append(out, "http.cookie_secure is false while http.addr "+c.HTTP.Addr+" is not loopback-only: session cookies may be sent over plain HTTP; set http.cookie_secure: true behind HTTPS")
 	}
 
-	if c.CookieSecure && len(c.TrustedProxies) == 0 && !c.listensLoopbackOnly() {
-		out = append(out, "cookie_secure is true but trusted_proxies is empty: behind a reverse proxy all clients share the proxy IP (rate limits/lockouts/audit) and X-Forwarded-Proto is ignored; set trusted_proxies to the proxy address")
+	if len(c.HTTP.TrustedProxies) > 0 && !c.HTTP.CookieSecure {
+		out = append(out, "http.trusted_proxies is set but http.cookie_secure is false: a reverse proxy normally terminates HTTPS, so session cookies would be issued without the Secure/__Host- protections; set http.cookie_secure: true")
+	}
+
+	if !c.RequireAuthRead() && !c.listensLoopbackOnly() {
+		out = append(out, "auth.require_auth_for_read is false while http.addr "+c.HTTP.Addr+" is not loopback-only: anyone who can reach the server can read public repositories (REST and Git) anonymously; set auth.require_auth_for_read: true for a private instance")
+	}
+
+	if len(c.HTTP.TrustedProxies) == 0 && !c.listensLoopbackOnly() {
+		out = append(out, "http.trusted_proxies is empty while http.addr "+c.HTTP.Addr+" is not loopback-only: X-Forwarded-For/Proto are ignored, so behind a reverse proxy every client shares the proxy IP (shared rate limits and lockouts, useless audit IPs); set http.trusted_proxies to the proxy address, or bind http.addr to 127.0.0.1")
+	}
+
+	for _, cidr := range c.HTTP.TrustedProxies {
+		if ones, bits := proxyCIDRMaskSize(cidr); bits > 0 && ones < 8 {
+			out = append(out, "http.trusted_proxies entry "+cidr+" is unusually broad (/"+strconv.Itoa(ones)+"): a client that can reach you may spoof X-Forwarded-For/Proto and bypass rate limits or Secure cookie checks; prefer the reverse-proxy address alone")
+			break
+		}
+	}
+
+	if c.Auth.GitPasswordAuth && !c.listensLoopbackOnly() {
+		out = append(out, "auth.git_password_auth is true on a non-loopback listener: account passwords work on Git HTTP and ignore PAT repo_ids scopes; set auth.git_password_auth: false to require PATs only")
 	}
 
 	return out
 }
 
+func proxyCIDRMaskSize(cidr string) (ones, bits int) {
+	_, n, err := net.ParseCIDR(strings.TrimSpace(cidr))
+	if err != nil || n == nil {
+		return 0, 0
+	}
+
+	ones, bits = n.Mask.Size()
+	return ones, bits
+}
+
 func (c Config) listensLoopbackOnly() bool {
-	host, _, err := net.SplitHostPort(strings.TrimSpace(c.HTTPAddr))
+	host, _, err := net.SplitHostPort(strings.TrimSpace(c.HTTP.Addr))
 	if err != nil {
-		host = strings.TrimSpace(c.HTTPAddr)
+		host = strings.TrimSpace(c.HTTP.Addr)
 	}
 
 	host = strings.Trim(host, "[]")
@@ -242,48 +366,13 @@ func (c Config) listensLoopbackOnly() bool {
 }
 
 func (c Config) TokenPepperMaterial() string {
-	return strings.TrimSpace(c.TokenPepper)
+	return strings.TrimSpace(c.Secrets.TokenPepper)
 }
 
 func (c Config) CSRFSecretMaterial() string {
-	return strings.TrimSpace(c.CSRFSecret)
+	return strings.TrimSpace(c.Secrets.CSRFSecret)
 }
 
 func (c Config) MirrorSecretsMaterial() string {
-	return strings.TrimSpace(c.MirrorSecretsKey)
-}
-
-func parseCIDRs(cidrs []string) ([]*net.IPNet, error) {
-	if len(cidrs) == 0 {
-		return nil, nil
-	}
-
-	out := make([]*net.IPNet, 0, len(cidrs))
-	for _, raw := range cidrs {
-		if !strings.Contains(raw, "/") {
-			ip := net.ParseIP(raw)
-			if ip == nil {
-				return nil, fmt.Errorf("trusted_proxies: invalid IP %q", raw)
-			}
-
-			if ip.To4() != nil {
-				raw = ip.String() + "/32"
-			} else {
-				raw = ip.String() + "/128"
-			}
-		}
-
-		_, network, err := net.ParseCIDR(raw)
-		if err != nil {
-			return nil, fmt.Errorf("trusted_proxies: %w", err)
-		}
-
-		if ones, _ := network.Mask.Size(); ones == 0 {
-			return nil, fmt.Errorf("trusted_proxies: %q covers all addresses; list real reverse-proxy CIDRs only", raw)
-		}
-
-		out = append(out, network)
-	}
-
-	return out, nil
+	return strings.TrimSpace(c.Secrets.MirrorSecretsKey)
 }

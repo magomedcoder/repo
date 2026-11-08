@@ -3,11 +3,13 @@ import { getLocale } from '@/i18n'
 export class ApiError extends Error {
   status: number
   code?: string
+  retryAfterSec?: number
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, retryAfterSec?: number) {
     super(message)
     this.status = status
     this.code = code
+    this.retryAfterSec = retryAfterSec
   }
 }
 
@@ -104,7 +106,16 @@ export async function api<T>(path: string, init: RequestInit = {}, retried = fal
       }
     }
 
-    throw new ApiError(res.status, message, code)
+    let retryAfterSec: number | undefined
+    const ra = res.headers.get('Retry-After')
+    if (ra) {
+      const n = Number.parseInt(ra, 10)
+      if (Number.isFinite(n) && n > 0) {
+        retryAfterSec = n
+      }
+    }
+
+    throw new ApiError(res.status, message, code, retryAfterSec)
   }
 
   return data as T

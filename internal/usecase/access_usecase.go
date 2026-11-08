@@ -12,6 +12,7 @@ import (
 var (
 	ErrInvalidCollabRole    = NewError(KindValidation, "invalid_collaborator_role")
 	ErrCollaboratorNotFound = NewError(KindNotFound, "collaborator_not_found")
+	ErrAccessNotFound       = NewError(KindNotFound, "not_found")
 	ErrCannotCollabSelf     = NewError(KindValidation, "cannot_collaborator_self")
 )
 
@@ -130,7 +131,7 @@ func (uc *AccessUseCase) AddCollaborator(ctx context.Context, in UpsertCollabora
 
 	user, err := uc.users.FindByUsername(ctx, strings.ToLower(strings.TrimSpace(in.Username)))
 	if err != nil {
-		return nil, ErrUserNotFound
+		return nil, ErrAccessNotFound
 	}
 
 	if isPersonalOwner(repo, user.ID) || user.ID == in.ViewerID {
@@ -191,7 +192,7 @@ func (uc *AccessUseCase) RemoveCollaborator(ctx context.Context, in ResolveRepos
 
 	user, err := uc.users.FindByUsername(ctx, strings.ToLower(strings.TrimSpace(username)))
 	if err != nil {
-		return ErrUserNotFound
+		return ErrAccessNotFound
 	}
 
 	existing, err := uc.collabs.Find(repo.ID, user.ID)

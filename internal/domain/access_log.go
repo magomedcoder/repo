@@ -4,6 +4,7 @@ import "time"
 
 const (
 	AccessVisit           = "visit"
+	AccessVisitClient     = "visit_client"
 	AccessClone           = "clone"
 	AccessDownload        = "download"
 	AccessPush            = "push"
@@ -15,7 +16,6 @@ const (
 	AccessTokenRevoke     = "token_revoke"
 	AccessRepoCreate      = "repo_create"
 	AccessRepoDelete      = "repo_delete"
-	AccessRepoMove        = "repo_move"
 	AccessAdminUserCreate = "admin_user_create"
 	AccessAdminUserUpdate = "admin_user_update"
 	AccessAdminUserDelete = "admin_user_delete"

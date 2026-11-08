@@ -12,6 +12,7 @@ import (
 
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/metrics"
+	"magomedcoder.ru/repo/pkg/urlredact"
 )
 
 var (
@@ -29,23 +30,6 @@ type syncRequest struct {
 }
 
 const maxMirrorDebounceEntries = 10000
-
-type MirrorRuntimeStats struct {
-	Locks    int
-	Debounce int
-	Pending  int
-}
-
-func (uc *RepositoryUseCase) MirrorRuntimeStats() MirrorRuntimeStats {
-	uc.mirror.mu.Lock()
-	defer uc.mirror.mu.Unlock()
-
-	return MirrorRuntimeStats{
-		Locks:    len(uc.mirror.locks),
-		Debounce: len(uc.mirror.debounce),
-		Pending:  len(uc.mirror.pending),
-	}
-}
 
 func (uc *RepositoryUseCase) SchedulePushMirror(repoID uint) {
 	if repoID == 0 {
@@ -65,7 +49,7 @@ func (uc *RepositoryUseCase) SchedulePushMirror(repoID uint) {
 	}
 
 	if len(m.debounce) >= maxMirrorDebounceEntries {
-		slog.Warn("mirror push debounce map full, dropping schedule", "repo_id", repoID, "entries", len(m.debounce))
+		slog.Warn("mirror debounce full", "repo_id", repoID)
 
 		return
 	}
@@ -89,7 +73,7 @@ func (uc *RepositoryUseCase) runDebouncedPush(repoID uint) {
 
 	_, err := uc.syncMirrorByID(ctx, syncRequest{RepoID: repoID, WantDir: domain.MirrorPush, Trigger: domain.MirrorTriggerPush})
 	if err != nil && !isBenignMirrorErr(err) {
-		slog.Warn("mirror push sync", "repo_id", repoID, "err", err)
+		slog.Warn("mirror push", "repo_id", repoID, "err", err)
 	}
 }
 
@@ -119,10 +103,10 @@ func (uc *RepositoryUseCase) RunPullMirrorLoop(ctx context.Context, interval tim
 	}
 
 	if interval <= 0 {
-		slog.Info("mirror scheduler: global interval disabled, per-repo intervals still apply")
+		slog.Info("mirror scheduler off")
 	}
 
-	slog.Info("mirror scheduler started", "tick", tick.String(), "global_interval", interval.String(), "workers", uc.mirrorConfig().Workers)
+	slog.Info("mirror scheduler start", "workers", uc.mirrorConfig().Workers)
 	uc.resetStaleSyncing(ctx)
 
 	ticker := time.NewTicker(tick)
@@ -133,7 +117,7 @@ func (uc *RepositoryUseCase) RunPullMirrorLoop(ctx context.Context, interval tim
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("mirror scheduler stopped")
+			slog.Info("mirror scheduler stop")
 
 			return
 		case <-ticker.C:
@@ -144,7 +128,7 @@ func (uc *RepositoryUseCase) RunPullMirrorLoop(ctx context.Context, interval tim
 
 func (uc *RepositoryUseCase) resetStaleSyncing(ctx context.Context) {
 	if _, err := uc.store.ResetStaleMirrorSyncing(ctx); err != nil {
-		slog.Warn("reset stale mirror syncing", "err", err)
+		slog.Warn("mirror reset", "err", err)
 	}
 }
 
@@ -212,7 +196,7 @@ func (uc *RepositoryUseCase) syncAllPullMirrors(ctx context.Context) {
 			DueBefore: &now,
 		})
 		if err != nil {
-			slog.Error("list mirror schedules", "err", err)
+			slog.Error("mirror schedules", "err", err)
 
 			return
 		}
@@ -352,7 +336,7 @@ func (uc *RepositoryUseCase) markPaused(ctx context.Context, repo *domain.Reposi
 func (uc *RepositoryUseCase) recordSkipped(ctx context.Context, repo *domain.Repository, req syncRequest, reason string) {
 	_ = ctx
 	uc.mirror.metrics.ObserveSync(repo.MirrorDirection, metrics.ResultSkipped, 0)
-	slog.Info("mirror sync skipped", "repo_id", repo.ID, "direction", repo.MirrorDirection, "trigger", req.Trigger, "reason", reason)
+	slog.Info("mirror skipped", "repo_id", repo.ID, "reason", reason)
 }
 
 func (uc *RepositoryUseCase) createEvent(ctx context.Context, ev *domain.MirrorSyncEvent) {
@@ -361,13 +345,13 @@ func (uc *RepositoryUseCase) createEvent(ctx context.Context, ev *domain.MirrorS
 	}
 
 	if err := uc.mirror.events.Create(ctx, ev); err != nil {
-		slog.Warn("mirror history create", "repo_id", ev.RepoID, "err", err)
+		slog.Warn("mirror history", "repo_id", ev.RepoID, "err", err)
 
 		return
 	}
 
 	if err := uc.mirror.events.Prune(ctx, ev.RepoID, mirrorHistoryKeep); err != nil {
-		slog.Warn("mirror history prune", "repo_id", ev.RepoID, "err", err)
+		slog.Warn("mirror history", "repo_id", ev.RepoID, "err", err)
 	}
 }
 
@@ -407,14 +391,6 @@ func mirrorAuth(username, password string) *domain.MirrorAuth {
 }
 
 func (uc *RepositoryUseCase) mirrorOptions(repo *domain.Repository) (*domain.MirrorOptions, error) {
-	if repo.MirrorLFS {
-		return nil, ErrMirrorLFSUnavailable
-	}
-
-	if repo.MirrorPartial {
-		return nil, ErrMirrorPartialUnavailable
-	}
-
 	pw, err := uc.openSecret(repo.MirrorPassword)
 	if err != nil {
 		return nil, err
@@ -436,6 +412,10 @@ func (uc *RepositoryUseCase) mirrorOptions(repo *domain.Repository) (*domain.Mir
 	}
 
 	force, prune := repo.MirrorForce, repo.MirrorPrune
+	maxBytes := repo.MirrorMaxBytes
+	if maxBytes <= 0 {
+		maxBytes = uc.mirror.cfg.DefaultMaxBytes
+	}
 
 	return &domain.MirrorOptions{
 		Auth:          mirrorAuth(repo.MirrorUsername, pw),
@@ -445,9 +425,7 @@ func (uc *RepositoryUseCase) mirrorOptions(repo *domain.Repository) (*domain.Mir
 		Force:         &force,
 		Prune:         &prune,
 		RefSpecs:      parseRefspecs(repo.MirrorRefspecs),
-		LFS:           false,
-		MaxBytes:      repo.MirrorMaxBytes,
-		Partial:       false,
+		MaxBytes:      maxBytes,
 		PinnedHosts:   pins,
 	}, nil
 }
@@ -506,10 +484,13 @@ func (uc *RepositoryUseCase) afterPull(ctx context.Context, repo *domain.Reposit
 	repo.MirrorRemoteHEAD = after.branches[repo.DefaultBranch]
 
 	if repo.MirrorVerifySigned {
-		if tip := repo.MirrorRemoteHEAD; tip != "" {
-			if err := uc.git.VerifyCommitSignature(ctx, repo.Path, tip); err != nil {
-				return fmt.Errorf("%w: %v", domain.ErrMirrorUnsigned, err)
-			}
+		tip := repo.MirrorRemoteHEAD
+		if tip == "" {
+			return fmt.Errorf("%w: empty remote HEAD after fetch", domain.ErrMirrorUnsigned)
+		}
+
+		if err := uc.git.VerifyCommitSignature(ctx, repo.Path, tip); err != nil {
+			return fmt.Errorf("%w: %v", domain.ErrMirrorUnsigned, err)
 		}
 	}
 
@@ -582,7 +563,7 @@ func (uc *RepositoryUseCase) sanitizeMirrorErr(repo *domain.Repository, rawURL s
 
 	for _, u := range []string{rawURL, repo.MirrorURL} {
 		if u != "" {
-			msg = strings.ReplaceAll(msg, u, domain.RedactURL(u))
+			msg = strings.ReplaceAll(msg, u, urlredact.URL(u))
 		}
 	}
 
@@ -656,7 +637,7 @@ func (uc *RepositoryUseCase) finishSync(ctx context.Context, repo *domain.Reposi
 	}
 
 	if err := uc.store.UpdateMirrorState(pctx, repo); err != nil {
-		slog.Error("mirror save state", "repo_id", repo.ID, "err", err)
+		slog.Error("mirror state", "repo_id", repo.ID, "err", err)
 	}
 
 	ev.FinishedAt = &now
@@ -702,31 +683,26 @@ func (uc *RepositoryUseCase) saveEvent(ctx context.Context, ev *domain.MirrorSyn
 	}
 
 	if err := uc.mirror.events.Update(ctx, ev); err != nil {
-		slog.Warn("mirror history update", "repo_id", ev.RepoID, "err", err)
+		slog.Warn("mirror history", "repo_id", ev.RepoID, "err", err)
 	}
 
 	_ = uc.mirror.events.Prune(ctx, ev.RepoID, mirrorHistoryKeep)
 }
 
-func (uc *RepositoryUseCase) logSync(repo *domain.Repository, ev *domain.MirrorSyncEvent, class, msg string) {
+func (uc *RepositoryUseCase) logSync(repo *domain.Repository, ev *domain.MirrorSyncEvent, _, msg string) {
 	attrs := []any{
 		"repo_id", repo.ID,
-		"repo", repo.RepoPath,
-		"direction", ev.Direction,
 		"trigger", ev.Trigger,
-		"status", ev.Status,
-		"duration_ms", ev.DurationMs,
-		"remote_host", mirrorHost(repo.MirrorURL),
 	}
 
 	if ev.Status == domain.MirrorEventFailed {
-		attrs = append(attrs, "error_class", class, "err", msg, "fail_count", repo.MirrorFailCount)
-		slog.Warn("mirror sync failed", attrs...)
+		attrs = append(attrs, "err", msg)
+		slog.Warn("mirror failed", attrs...)
 
 		return
 	}
 
-	slog.Info("mirror sync ok", attrs...)
+	slog.Info("mirror ok", attrs...)
 }
 
 func mirrorHost(raw string) string {
@@ -751,9 +727,9 @@ func classifyMirrorErr(err error) string {
 		return "diverged"
 	case errors.Is(err, domain.ErrMirrorTooLarge):
 		return "too_large"
-	case errors.Is(err, domain.ErrMirrorLFSMissing), errors.Is(err, domain.ErrMirrorLFSUnavailable), errors.Is(err, ErrMirrorLFSUnavailable):
+	case errors.Is(err, domain.ErrMirrorLFSUnavailable):
 		return "lfs"
-	case errors.Is(err, domain.ErrMirrorPartialUnavailable), errors.Is(err, ErrMirrorPartialUnavailable):
+	case errors.Is(err, domain.ErrMirrorPartialUnavailable):
 		return "partial"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"

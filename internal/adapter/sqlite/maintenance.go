@@ -1,7 +1,10 @@
 package sqlite
 
-import "gorm.io/gorm"
+import (
+	"gorm.io/gorm"
+	"magomedcoder.ru/repo/pkg/sqliteutil"
+)
 
 func CheckpointWAL(db *gorm.DB) error {
-	return db.Exec("PRAGMA wal_checkpoint(PASSIVE)").Error
+	return sqliteutil.CheckpointWAL(db)
 }

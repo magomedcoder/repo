@@ -18,7 +18,8 @@
 - Mirroring: pull and push over http(s) and SSH; schedule, pause, manual sync; Import vs Mirror create; admin Mirrors page with bulk sync, groups, and verify
 - Search repositories by name; public home listing
 - Activity feed for push, issues, pull requests, and repository creation
-- YAML configuration for server, storage, site name, cookies, sessions, registration, proxies, receive limits, and mirror options
+- YAML configuration (nested `http` / `server` / `secrets` / `auth` / `mirror`) for listen address, storage, site name, cookies, sessions, registration, proxies, receive limits, and mirror options
+- Git HTTP push: anonymous receive-pack returns `401` Basic challenge (including private repos); write requires owner or collaborator/team with write
 - UI in English and Russian
-- Security: rate limiting, CSRF, CSP, HSTS; Argon2id; step-up password for sensitive admin and delete actions
+- Security: rate limiting, CSRF, CSP (+ CSP-report IP limit), HSTS; Argon2id; step-up password for sensitive admin, delete, and revoke-other-sessions; admin user-delete holds repo names; `git:write` PAT needs write ACL; mirror `insecure_tls` requires host pins and same-host redirects; trust paths under `data_dir`; default receive 256 MiB / mirror max 5 GiB; configurable session TTL
 - Maintenance: prune expired sessions/tokens, old activity, and soft-deleted repositories; SQLite schema bootstrap on empty database; CLI to serve the app and create users

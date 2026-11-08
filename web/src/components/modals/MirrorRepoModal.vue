@@ -175,7 +175,6 @@ async function submit() {
       >
     </label>
     <p class="text-[85%] text-ink-muted">{{ $t('modal.tokenHint') }}</p>
-    <p class="text-[85%] text-ink-muted">{{ $t('modal.mirrorLfsUnavailable') }}</p>
     <label v-if="mirrorDirection === 'push'" class="block text-sm">
       <span class="mb-1 block font-medium">{{ $t('modal.defaultBranch') }}</span>
       <input

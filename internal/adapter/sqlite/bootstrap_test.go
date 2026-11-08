@@ -2,13 +2,13 @@ package sqlite
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/migrate"
 )
 
 func TestBootstrapFreshDatabase(t *testing.T) {
@@ -25,14 +25,12 @@ func TestBootstrapFreshDatabase(t *testing.T) {
 	}
 	defer sqlDB.Close()
 
-	ok, err := migrate.ColumnExists(db, "users", "role")
-	if err != nil || !ok {
-		t.Fatalf("users.role missing: %v", err)
+	if !db.Migrator().HasColumn(&model.User{}, "role") {
+		t.Fatal("users.role missing")
 	}
 
-	ok, err = migrate.ColumnExists(db, "repositories", "issues_enabled")
-	if err != nil || !ok {
-		t.Fatalf("repositories.issues_enabled missing: %v", err)
+	if !db.Migrator().HasColumn(&model.Repository{}, "issues_enabled") {
+		t.Fatal("repositories.issues_enabled missing")
 	}
 
 	store := NewRepositoryRepo(db)
@@ -93,33 +91,7 @@ func TestBootstrapIdempotentOnExistingDB(t *testing.T) {
 	}
 }
 
-func TestBackupSQLite(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	src := filepath.Join(dir, "db.sqlite")
-	if err := os.WriteFile(src, []byte("sqlite-demo"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	dst, err := migrate.BackupSQLite(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if dst == "" {
-		t.Fatal("expected backup path")
-	}
-
-	body, err := os.ReadFile(dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(body) != "sqlite-demo" {
-		t.Fatalf("backup body=%q", body)
-	}
-}
-
-func TestSoftDeleteAllowsNameReuse(t *testing.T) {
+func TestGlobalNamesAndSoftDelete(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	db, err := NewDB(dir)
@@ -128,36 +100,103 @@ func TestSoftDeleteAllowsNameReuse(t *testing.T) {
 	}
 
 	users := NewUserRepo(db)
-	u := &domain.User{
+	u1 := &domain.User{
 		Username:     "utest",
 		Email:        "utest@example.com",
 		PasswordHash: "x",
 	}
-	if err := users.Create(u); err != nil {
-		t.Fatal(err)
+	u2 := &domain.User{
+		Username:     "utest2",
+		Email:        "utest2@example.com",
+		PasswordHash: "x",
+	}
+	for _, u := range []*domain.User{u1, u2} {
+		if err := users.Create(u); err != nil {
+			t.Fatal(err)
+		}
 	}
 
+	repos := NewRepositoryRepo(db)
 	first := &domain.Repository{
 		Name:          "demo",
-		OwnerID:       u.ID,
+		OwnerID:       u1.ID,
 		DefaultBranch: "main",
 		Path:          filepath.Join(dir, "demo.git"),
 		RepoPath:      "demo.git",
 	}
-	repos := NewRepositoryRepo(db)
 	if err := repos.Create(first); err != nil {
 		t.Fatal(err)
 	}
+
+	second := &domain.Repository{
+		Name:          "Demo",
+		OwnerID:       u2.ID,
+		DefaultBranch: "main",
+		Path:          filepath.Join(dir, "Demo.git"),
+		RepoPath:      "Demo.git",
+	}
+	if err := repos.Create(second); err == nil {
+		t.Fatal("same name for another owner must conflict (global, case-insensitive)")
+	}
+
+	other := &domain.Repository{
+		Name:          "other",
+		OwnerID:       u2.ID,
+		DefaultBranch: "main",
+		Path:          filepath.Join(dir, "other.git"),
+		RepoPath:      "other.git",
+	}
+	if err := repos.Create(other); err != nil {
+		t.Fatal(err)
+	}
+
+	if ok, err := repos.ExistsByName("demo"); err != nil || !ok {
+		t.Fatalf("exists=%v err=%v", ok, err)
+	}
+
+	if ok, err := repos.ExistsByName("missing"); err != nil || ok {
+		t.Fatalf("unexpected exists=%v err=%v", ok, err)
+	}
+
 	if err := repos.Delete(first.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	exists, err := repos.ExistsByName("demo")
+	if ok, err := repos.ExistsByName("demo"); err != nil || ok {
+		t.Fatalf("soft-deleted row must not collide at store level (holds do), exists=%v err=%v", ok, err)
+	}
+}
+
+func TestRepoNameHoldStore(t *testing.T) {
+	t.Parallel()
+	db, err := NewDB(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !exists {
-		t.Fatal("soft-deleted name must still be reserved until purge")
+
+	holds := NewRepoNameHoldRepo(db)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	if err := holds.Hold(ctx, "Old-Name", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := holds.Hold(ctx, "old-name", now.Add(2*time.Hour)); err != nil {
+		t.Fatalf("re-hold must upsert: %v", err)
+	}
+
+	if ok, err := holds.IsHeld(ctx, "old-name", now); err != nil || !ok {
+		t.Fatalf("held=%v err=%v", ok, err)
+	}
+
+	if ok, _ := holds.IsHeld(ctx, "old-name", now.Add(3*time.Hour)); ok {
+		t.Fatal("expired hold must not block")
+	}
+
+	n, err := holds.DeleteExpired(ctx, now.Add(3*time.Hour))
+	if err != nil || n != 1 {
+		t.Fatalf("deleted=%d err=%v", n, err)
 	}
 }
 
@@ -189,13 +228,13 @@ func TestSchemaDetectsMissingColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := db.Exec(`ALTER TABLE repositories DROP COLUMN mirror_partial`).Error; err != nil {
+	if err := db.Exec(`ALTER TABLE repositories DROP COLUMN mirror_remote_head`).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	err = VerifySchema(db)
-	if err == nil || !strings.Contains(err.Error(), "mirror_partial") {
-		t.Fatalf("want missing mirror_partial, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "mirror_remote_head") {
+		t.Fatalf("want missing mirror_remote_head, got %v", err)
 	}
 
 	sqlDB, _ := db.DB()

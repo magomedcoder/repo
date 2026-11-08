@@ -34,7 +34,7 @@ func RateLimitWithContribute(apiLimiter, authLimiter, contributeLimiter *RateLim
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := ClientIPKey(r)
-			if strings.HasPrefix(r.URL.Path, "/api/auth/") {
+			if isAuthMutation(r) {
 				if authLimiter != nil && !authLimiter.Allow(ip) {
 					httpware.WriteRateLimited(w)
 					return
@@ -56,6 +56,19 @@ func RateLimitWithContribute(apiLimiter, authLimiter, contributeLimiter *RateLim
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func isAuthMutation(r *http.Request) bool {
+	if !strings.HasPrefix(r.URL.Path, "/api/auth/") {
+		return false
+	}
+
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	}
+
+	return r.URL.Path != "/api/auth/logout"
 }
 
 func RateLimitCodeSearch(limiter *RateLimiter) func(http.Handler) http.Handler {

@@ -59,7 +59,7 @@ func runUserCreate(args []string) error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	db, err := sqlite.NewDB(cfg.DataDir)
+	db, err := sqlite.NewDB(cfg.Server.DataDir)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
@@ -71,7 +71,7 @@ func runUserCreate(args []string) error {
 		argon2id.NewHasher(),
 		token.NewGenerator(),
 	)
-	authUC.SetSessionSecret(cfg.SessionSecret)
+	authUC.SetSessionSecret(cfg.Secrets.SessionSecret)
 
 	user, err := authUC.CreateUser(context.Background(), usecase.RegisterInput{
 		Username: *username,

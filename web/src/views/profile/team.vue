@@ -9,6 +9,7 @@ import PageState from '@/components/ui/PageState.vue'
 import Surface from '@/components/ui/Surface.vue'
 import SurfaceHeader from '@/components/ui/SurfaceHeader.vue'
 import { repoLocation } from '@/lib/repoNav'
+import { repositoryPath } from '@/lib/repoPath'
 import { i18n, localizeError } from '@/i18n'
 
 const props = defineProps<{
@@ -19,7 +20,10 @@ const router = useRouter()
 const team = ref<Team | null>(null)
 const members = ref<TeamMember[]>([])
 const grants = ref<TeamRepoGrant[]>([])
-const ownRepoNames = ref<string[]>([])
+const ownRepos = ref<{
+  name: string
+  path: string
+}[]>([])
 const error = ref('')
 const loading = ref(true)
 const busy = ref(false)
@@ -45,9 +49,14 @@ async function load() {
     grants.value = grantRes.repos ?? []
     try {
       const own = await reposApi.listOwn()
-      ownRepoNames.value = (own.repos ?? []).map((r) => r.name).sort()
+      ownRepos.value = (own.repos ?? [])
+        .map((r) => ({ 
+          name: r.name, 
+          path: repositoryPath(r) 
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
     } catch {
-      ownRepoNames.value = []
+      ownRepos.value = []
     }
   } catch (err) {
     team.value = null
@@ -147,7 +156,7 @@ async function removeGrant(grant: TeamRepoGrant) {
     return
   }
 
-  const ok = await run(() => teamsApi.removeRepo(currentSlug.value, grant.repo_name), 'errors.deleteFailed')
+  const ok = await run(() => teamsApi.removeRepo(currentSlug.value, grant.repo_path), 'errors.deleteFailed')
   if (ok) {
     await load()
   }
@@ -231,15 +240,10 @@ onMounted(load)
           <form class="flex flex-wrap items-end gap-3 border-b border-line p-3 sm:p-4" @submit.prevent="addGrant">
             <label class="block min-w-48 flex-1 text-sm">
               <span class="mb-1 block font-semibold">{{ $t('teams.repoName') }}</span>
-              <input
-                v-model="grantRepo"
-                class="field"
-                list="team-own-repos"
-                required
-              >
-              <datalist id="team-own-repos">
-                <option v-for="name in ownRepoNames" :key="name" :value="name" />
-              </datalist>
+              <select v-model="grantRepo" class="field" required>
+                <option value="" disabled></option>
+                <option v-for="r in ownRepos" :key="r.path" :value="r.path">{{ r.name }}</option>
+              </select>
             </label>
             <label class="block text-sm">
               <span class="mb-1 block font-semibold">{{ $t('collaborators.role') }}</span>
@@ -260,7 +264,7 @@ onMounted(load)
               class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4"
             >
               <div class="min-w-0">
-                <RouterLink :to="repoLocation('repo', g.repo_path || g.repo_name)" class="font-semibold">
+                <RouterLink :to="repoLocation('repo', g.repo_path)" class="font-semibold">
                   {{ g.repo_name }}
                 </RouterLink>
                 <p class="text-xs text-ink-muted">{{ $t(`collaborators.roles.${g.role}`) }}</p>

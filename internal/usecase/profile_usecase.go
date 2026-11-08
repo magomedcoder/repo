@@ -35,6 +35,7 @@ type ProfileItem struct {
 type ProfileUseCase struct {
 	users        domain.UserStore
 	hasher       domain.PasswordHasher
+	gate         *PasswordGate
 	sessions     domain.SessionStore
 	accessTokens domain.AccessTokenStore
 	avatarDir    string
@@ -44,7 +45,14 @@ func NewProfileUseCase(users domain.UserStore, hasher domain.PasswordHasher, dat
 	return &ProfileUseCase{
 		users:     users,
 		hasher:    hasher,
+		gate:      NewPasswordGate(hasher),
 		avatarDir: filepath.Join(dataDir, "avatars"),
+	}
+}
+
+func (uc *ProfileUseCase) SetPasswordGate(g *PasswordGate) {
+	if uc != nil && g != nil {
+		uc.gate = g
 	}
 }
 
@@ -97,12 +105,13 @@ func (uc *ProfileUseCase) UpdateEmail(ctx context.Context, userID uint, email, c
 		return toProfileItem(user, true, true), nil
 	}
 
-	if strings.TrimSpace(currentPassword) == "" {
+	currentPassword = strings.TrimSpace(currentPassword)
+	if currentPassword == "" {
 		return nil, ErrPasswordRequired
 	}
 
-	if uc.hasher == nil || uc.hasher.Compare(user.PasswordHash, currentPassword) != nil {
-		return nil, ErrCurrentPasswordWrong
+	if err := uc.gate.Verify(user.ID, user.PasswordHash, currentPassword, ErrCurrentPasswordWrong); err != nil {
+		return nil, err
 	}
 
 	taken, err := uc.users.ExistsByEmail(email)

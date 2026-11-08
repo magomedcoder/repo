@@ -159,13 +159,16 @@ func TestPurgeSoftDeleted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ids, err := repos.PurgeSoftDeleted(ctx, time.Now().Add(-7*24*time.Hour))
+	paths, ids, err := repos.PurgeSoftDeleted(ctx, time.Now().Add(-7*24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if len(ids) != 1 || ids[0] != gone.ID {
 		t.Fatalf("purged ids=%v want [%d]", ids, gone.ID)
+	}
+	if len(paths) != 1 || paths[0] == "" {
+		t.Fatalf("purged paths=%v", paths)
 	}
 
 	var n int64

@@ -3,39 +3,16 @@ package domain
 import (
 	"context"
 	"errors"
-	"net/url"
-	"strings"
 	"time"
 )
 
 var (
 	ErrMirrorDiverged           = errors.New("mirror: remote has diverged (non-fast-forward)")
 	ErrMirrorTooLarge           = errors.New("mirror: repository exceeds configured max size")
-	ErrMirrorLFSMissing         = errors.New("mirror: git-lfs binary not found")
 	ErrMirrorLFSUnavailable     = errors.New("mirror: LFS sync over system git is unavailable")
 	ErrMirrorPartialUnavailable = errors.New("mirror: partial clone over system git is unavailable")
 	ErrMirrorUnsigned           = errors.New("mirror: upstream tip is not a verified signed commit")
 )
-
-func RedactURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-
-	if !strings.Contains(raw, "://") {
-		return raw
-	}
-
-	u, err := url.Parse(raw)
-	if err != nil || u.User == nil {
-		return raw
-	}
-
-	u.User = nil
-
-	return u.String()
-}
 
 const (
 	MirrorStatusIdle    = "idle"
@@ -43,7 +20,6 @@ const (
 	MirrorStatusOK      = "ok"
 	MirrorStatusError   = "error"
 	MirrorStatusPaused  = "paused"
-	MirrorStatusSkipped = "skipped"
 )
 
 const (
@@ -64,7 +40,6 @@ const (
 const (
 	MirrorEventOK      = "ok"
 	MirrorEventFailed  = "failed"
-	MirrorEventSkipped = "skipped"
 	MirrorEventRunning = "running"
 )
 

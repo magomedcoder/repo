@@ -195,31 +195,6 @@ func (uc *RepositoryUseCase) GetBlame(ctx context.Context, in ResolveRepositoryI
 	return blame, nil
 }
 
-func (uc *RepositoryUseCase) GetReadme(ctx context.Context, in ResolveRepositoryInput, ref string) (*domain.BlobContent, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	repo, err := uc.resolveReadable(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-
-	if strings.TrimSpace(ref) == "" {
-		ref = repo.DefaultBranch
-	}
-
-	blob, err := uc.git.FindReadme(repo.Path, ref)
-	if err != nil {
-		return nil, mapGitBrowseErr(err)
-	}
-	if blob == nil {
-		return nil, ErrPathNotFound
-	}
-
-	return blob, nil
-}
-
 func (uc *RepositoryUseCase) GetCommitDiff(ctx context.Context, in ResolveRepositoryInput, sha string) (*domain.CommitDiff, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -273,33 +248,36 @@ func (uc *RepositoryUseCase) GetStats(ctx context.Context, in ResolveRepositoryI
 }
 
 func (uc *RepositoryUseCase) resolveReadable(ctx context.Context, in ResolveRepositoryInput) (*domain.Repository, error) {
-	repo, _, err := uc.resolve(ctx, in)
-	if err != nil {
-		return nil, err
-	}
+	return ResolveReadable(ctx, uc.store, uc.authz, in)
+}
 
-	if err := uc.authz.CanReadRepo(repo, in.ViewerID); err != nil {
-		return nil, err
+func mapCommonGitErr(err error) (mapped error, ok bool) {
+	switch {
+	case errors.Is(err, domain.ErrBusy):
+		return ErrBusy, true
+	case errors.Is(err, gitadapter.ErrHistoryTooLarge):
+		return ErrHistoryTooLarge, true
+	case errors.Is(err, gitadapter.ErrRefNotFound):
+		return ErrRefNotFound, true
+	default:
+		return nil, false
 	}
-
-	return repo, nil
 }
 
 func mapGitBrowseErr(err error) error {
 	if err == nil {
 		return nil
 	}
+
+	if mapped, ok := mapCommonGitErr(err); ok {
+		return mapped
+	}
+
 	switch {
 	case errors.Is(err, gitadapter.ErrEmptyRepository):
 		return ErrEmptyRepo
-	case errors.Is(err, gitadapter.ErrRefNotFound):
-		return ErrRefNotFound
-	case errors.Is(err, domain.ErrBusy):
-		return ErrBusy
 	case errors.Is(err, gitadapter.ErrBlameTooLarge):
 		return ErrBlameTooLarge
-	case errors.Is(err, gitadapter.ErrHistoryTooLarge):
-		return ErrHistoryTooLarge
 	case errors.Is(err, gitadapter.ErrCommitNotFound),
 		errors.Is(err, gitadapter.ErrFileNotFound),
 		errors.Is(err, gitadapter.ErrPathNotFound),

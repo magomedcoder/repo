@@ -45,6 +45,10 @@ type activityResponse struct {
 	Events []usecase.ActivityItem `json:"events"`
 }
 
+type commentWriteRequest struct {
+	Body string `json:"body"`
+}
+
 type issuesResponse struct {
 	Issues []usecase.IssueItem `json:"issues"`
 }

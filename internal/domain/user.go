@@ -46,6 +46,7 @@ type User struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	TokenScope   string
+	TokenRepoIDs []uint
 }
 
 func (u *User) IsAdmin() bool {

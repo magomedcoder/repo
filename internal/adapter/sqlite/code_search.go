@@ -93,7 +93,7 @@ func (s *CodeIndex) Search(ctx context.Context, viewerID uint, tokens []string, 
 
 	args := make([]any, 0, 8+len(tokens))
 	var b strings.Builder
-	b.WriteString(`SELECT f.repo_id, f.path, f.tip_sha, f.body
+	b.WriteString(`SELECT f.repo_id, f.path, f.body
 FROM code_index_files f
 WHERE f.repo_id IN (SELECT id FROM repositories WHERE deleted_at IS NULL`)
 
@@ -132,7 +132,7 @@ WHERE f.repo_id IN (SELECT id FROM repositories WHERE deleted_at IS NULL`)
 	out := make([]domain.CodeIndexHit, 0, limit)
 	for rows.Next() {
 		var hit domain.CodeIndexHit
-		if err := rows.Scan(&hit.RepoID, &hit.Path, &hit.TipSHA, &hit.Body); err != nil {
+		if err := rows.Scan(&hit.RepoID, &hit.Path, &hit.Body); err != nil {
 			return nil, err
 		}
 		out = append(out, hit)

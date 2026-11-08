@@ -53,16 +53,12 @@ func TestCodeIndexSearchAndCursor(t *testing.T) {
 	ctx := context.Background()
 	if err := idx.ReplaceRepoIndex(ctx, pub.ID, "aaa", []domain.CodeIndexFile{
 		{
-			RepoID: pub.ID,
-			Path:   "a.go",
-			TipSHA: "aaa",
-			Body:   "package main\nfunc Hello() {}\n",
+			Path: "a.go",
+			Body: "package main\nfunc Hello() {}\n",
 		},
 		{
-			RepoID: pub.ID,
-			Path:   "b.go",
-			TipSHA: "aaa",
-			Body:   "package main\nfunc World() {}\n",
+			Path: "b.go",
+			Body: "package main\nfunc World() {}\n",
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -70,10 +66,8 @@ func TestCodeIndexSearchAndCursor(t *testing.T) {
 
 	if err := idx.ReplaceRepoIndex(ctx, priv.ID, "bbb", []domain.CodeIndexFile{
 		{
-			RepoID: priv.ID,
-			Path:   "secret.go",
-			TipSHA: "bbb",
-			Body:   "func HelloSecret() {}\n",
+			Path: "secret.go",
+			Body: "func HelloSecret() {}\n",
 		},
 	}); err != nil {
 		t.Fatal(err)

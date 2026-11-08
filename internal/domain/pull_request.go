@@ -40,6 +40,8 @@ type PullRequestStore interface {
 
 	Update(pr *PullRequest) error
 
+	MarkMerged(id, mergedBy uint, at time.Time) error
+
 	Delete(id uint) error
 
 	FindByRepoNumber(repoID uint, number int) (*PullRequest, error)

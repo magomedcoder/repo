@@ -3,6 +3,7 @@ package http_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -68,6 +69,23 @@ func newLoopbackTestServer(t *testing.T) testEnv {
 
 func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router http.Handler) {
 	t.Helper()
+	return buildTestAppWith(t, false)
+}
+
+func newRequireAuthReadServer(t *testing.T) testEnv {
+	t.Helper()
+	dir, authUC, router := buildTestAppWith(t, true)
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+	return testEnv{
+		Server: srv,
+		Dir:    dir,
+		Auth:   authUC,
+	}
+}
+
+func buildTestAppWith(t *testing.T, requireAuthRead bool) (dir string, authUC *usecase.AuthUseCase, router http.Handler) {
+	t.Helper()
 	dir = t.TempDir()
 	wd, err := os.Getwd()
 	if err != nil {
@@ -106,6 +124,7 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 	tokens := token.NewGenerator()
 
 	authz := usecase.NewAuthz(teamRepoGrantStore, collabStore)
+	authz.SetRequireAuthRead(requireAuthRead)
 	authUC = usecase.NewAuthUseCase(userStore, sessionStore, tokenStore, hasher, tokens)
 	authUC.SetSessionSecret("0123456789abcdef0123456789abcdef")
 	repoUC := usecase.NewRepositoryUseCase(repoStore, userStore, gitRepo, activityStore, authz)
@@ -114,18 +133,22 @@ func buildTestApp(t *testing.T) (dir string, authUC *usecase.AuthUseCase, router
 	}
 	repoUC.SetMirrorURLLookup(testMirrorLookup)
 	repoUC.SetPasswordHasher(hasher)
+	repoUC.SetNameHolds(sqlite.NewRepoNameHoldRepo(db))
 	tokenUC := usecase.NewTokenUseCase(tokenStore, tokens)
+	tokenUC.SetRepoScope(repoStore, authz)
 	tokenUC.SetPepper("0123456789abcdef0123456789abcdef")
 	tokenUC.SetStepUp(userStore, hasher)
 	profileUC := usecase.NewProfileUseCase(userStore, hasher, dataDir)
 	profileUC.SetSessionStores(sessionStore, tokenStore)
 	gitUC := usecase.NewGitUseCase(repoStore, userStore, tokenStore, hasher, gitRepo, activityStore, authz)
 	gitUC.SetTokenPepper("0123456789abcdef0123456789abcdef")
+	gitUC.SetLoginGuard(authUC.LoginGuard())
 	issueUC := usecase.NewIssueUseCase(issueStore, repoStore, userStore, activityStore, authz)
 	pullUC := usecase.NewPullRequestUseCase(pullStore, repoStore, userStore, gitRepo, activityStore, authz)
 	membershipUC := usecase.NewAccessUseCase(repoStore, userStore, collabStore, authz)
 	teamUC := usecase.NewTeamUseCase(teamStore, teamMemberStore, teamRepoGrantStore, repoStore, userStore, authz)
 	activityUC := usecase.NewActivityUseCase(activityStore, userStore, repoStore)
+	activityUC.SetAuthz(authz)
 	adminUC := usecase.NewAdminUseCase(userStore, sessionStore, tokenStore, authUC, hasher)
 
 	authHandler := handler.NewAuthHandler(authUC)
@@ -169,10 +192,38 @@ func loginUser(t *testing.T, env testEnv, username, email, password string) []*h
 	return res.Cookies
 }
 
+func createRepo(t *testing.T, srv *httptest.Server, name string, private bool, cookies []*http.Cookie) string {
+	t.Helper()
+	res := doJSON(t, srv, http.MethodPost, "/api/repos", fmt.Sprintf(`{"name":%q,"private":%t}`, name, private), cookies)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("create repo %q: %d %s", name, res.StatusCode, res.Body)
+	}
+
+	return repoNameOf(t, res)
+}
+
+func repoNameOf(t *testing.T, res jsonResp) string {
+	t.Helper()
+	var out struct {
+		Name     string `json:"name"`
+		RepoPath string `json:"repo_path"`
+	}
+	if err := json.Unmarshal([]byte(res.Body), &out); err != nil || out.Name == "" {
+		t.Fatalf("repo body %s err=%v", res.Body, err)
+	}
+
+	if out.RepoPath != out.Name+".git" {
+		t.Fatalf("repo_path %q must be name.git (%q)", out.RepoPath, out.Name)
+	}
+
+	return out.Name
+}
+
 type jsonResp struct {
 	StatusCode int
 	Body       string
 	Cookies    []*http.Cookie
+	Header     http.Header
 }
 
 func doJSON(t *testing.T, srv *httptest.Server, method, path, body string, cookies []*http.Cookie) jsonResp {
@@ -214,6 +265,7 @@ func doJSON(t *testing.T, srv *httptest.Server, method, path, body string, cooki
 		StatusCode: res.StatusCode,
 		Body:       string(raw),
 		Cookies:    mergeCookies(cookies, res.Cookies()),
+		Header:     res.Header.Clone(),
 	}
 }
 

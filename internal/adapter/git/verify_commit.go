@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
+	"magomedcoder.ru/repo/pkg/fsutil"
 	"magomedcoder.ru/repo/pkg/sshsig"
 )
 
@@ -63,17 +64,23 @@ func LoadTrustFiles(openpgpPath, allowedSignersPath string) (TrustMaterial, erro
 	return t, nil
 }
 
-func ResolveTrustPath(dataDir, p string) string {
+func ResolveTrustPath(dataDir, p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {
-		return ""
+		return "", nil
 	}
 
 	if filepath.IsAbs(p) {
-		return p
+		return "", fmt.Errorf("trust path %q must be relative to data_dir", p)
 	}
 
-	return filepath.Join(dataDir, p)
+	joined := filepath.Join(dataDir, filepath.Clean(p))
+	safe, err := fsutil.SafePath(dataDir, joined)
+	if err != nil {
+		return "", fmt.Errorf("trust path: %w", err)
+	}
+
+	return safe, nil
 }
 
 func (r *Repository) VerifyCommitSignature(ctx context.Context, repoPath, sha string) error {

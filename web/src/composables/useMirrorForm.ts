@@ -43,12 +43,11 @@ export function useMirrorForm(
   const force = ref(true)
   const prune = ref(false)
   const refspecs = ref('')
-  const lfs = ref(false)
-  const partial = ref(false)
   const verifySigned = ref(false)
   const maxMiB = ref('')
   const conflictPolicy = ref<MirrorConflictPolicy>('force')
   const insecureTLS = ref(false)
+  const pinnedHosts = ref('')
   const ownerOnly = ref(false)
 
   const status = ref<MirrorStatus | null>(null)
@@ -106,12 +105,11 @@ export function useMirrorForm(
     force.value = r.mirror_force !== false
     prune.value = !!r.mirror_prune
     refspecs.value = refspecsToText(r.mirror_refspecs)
-    lfs.value = !!r.mirror_lfs
-    partial.value = !!r.mirror_partial
     verifySigned.value = !!r.mirror_verify_signed
     maxMiB.value = r.mirror_max_bytes ? String(Math.round((r.mirror_max_bytes / MIB) * 100) / 100) : ''
     conflictPolicy.value = r.mirror_conflict_policy === 'reject' ? 'reject' : 'force'
     insecureTLS.value = !!r.mirror_insecure_tls
+    pinnedHosts.value = r.mirror_pinned_hosts || ''
     ownerOnly.value = !!r.mirror_owner_only
   }
 
@@ -204,8 +202,6 @@ export function useMirrorForm(
       force: force.value,
       prune: prune.value,
       refspecs: direction.value === 'pull' ? normalizeRefspecs(refspecs.value) : '',
-      lfs: false,
-      partial: false,
       verify_signed: verifySigned.value,
       max_bytes: Math.max(0, Math.round((Number(maxMiB.value) || 0) * MIB)),
       conflict_policy: conflictPolicy.value,
@@ -214,6 +210,7 @@ export function useMirrorForm(
 
     if (canEditInsecureTLS.value) {
       body.insecure_tls = insecureTLS.value
+      body.pinned_hosts = pinnedHosts.value.trim()
     }
 
     if (clearPassword.value) {
@@ -315,7 +312,24 @@ export function useMirrorForm(
     checking.value = true
     resetFeedback()
     try {
-      const res = await reposApi.checkMirror(path())
+      const body: Record<string, unknown> = {
+        url: url.value.trim(),
+        username: username.value.trim(),
+      }
+
+      if (password.value) {
+        body.password = password.value
+      }
+
+      if (sshKey.value) {
+        body.ssh_private_key = sshKey.value
+      }
+
+      if (sshPassphrase.value) {
+        body.ssh_passphrase = sshPassphrase.value
+      }
+      
+      const res = await reposApi.checkMirror(path(), body)
       checkOK.value = res.ok !== false
       if (checkOK.value) {
         const head = res.head || res.default_branch
@@ -429,12 +443,11 @@ export function useMirrorForm(
     force,
     prune,
     refspecs,
-    lfs,
-    partial,
     verifySigned,
     maxMiB,
     conflictPolicy,
     insecureTLS,
+    pinnedHosts,
     ownerOnly,
     status,
     events,
@@ -476,4 +489,3 @@ export function useMirrorForm(
   }
 }
 
-export type UseMirrorFormReturn = ReturnType<typeof useMirrorForm>

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -75,13 +76,16 @@ type AdminUseCase struct {
 	tokens   domain.AccessTokenStore
 	auth     *AuthUseCase
 	hasher   domain.PasswordHasher
+	gate     *PasswordGate
 	repos    domain.RepositoryStore
 	logs     domain.AccessLogStore
+	files    repoFileRemover
 
 	collabs     domain.RepoCollaboratorStore
 	teams       domain.TeamStore
 	teamMembers domain.TeamMemberStore
 	teamGrants  domain.TeamRepoGrantStore
+	nameHolds   domain.RepoNameHoldStore
 }
 
 func (uc *AdminUseCase) SetAccessCleanup(collabs domain.RepoCollaboratorStore, teams domain.TeamStore, members domain.TeamMemberStore, grants domain.TeamRepoGrantStore) {
@@ -133,6 +137,29 @@ func NewAdminUseCase(users domain.UserStore, sessions domain.SessionStore, token
 		tokens:   tokens,
 		auth:     auth,
 		hasher:   hasher,
+		gate:     NewPasswordGate(hasher),
+	}
+}
+
+func (uc *AdminUseCase) SetPasswordGate(g *PasswordGate) {
+	if uc != nil && g != nil {
+		uc.gate = g
+	}
+}
+
+type repoFileRemover interface {
+	Remove(path string) error
+}
+
+func (uc *AdminUseCase) SetRepoFiles(files repoFileRemover) {
+	if uc != nil {
+		uc.files = files
+	}
+}
+
+func (uc *AdminUseCase) SetNameHolds(h domain.RepoNameHoldStore) {
+	if uc != nil {
+		uc.nameHolds = h
 	}
 }
 
@@ -303,7 +330,7 @@ func (uc *AdminUseCase) ListRepos(ctx context.Context, actorID uint, filter doma
 		items = append(items, AdminRepoItem{
 			ID:              r.ID,
 			Name:            r.Name,
-			Description:     r.Description,
+			Description:     adminRepoDescription(r),
 			Owner:           owner,
 			RepoPath:        r.RepoPath,
 			IsPrivate:       r.IsPrivate,
@@ -438,16 +465,16 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 
 	if in.Password != nil {
 		password := strings.TrimSpace(*in.Password)
-		if password == "" {
-			return nil, ErrPasswordRequired
-		}
-
-		if len(password) < minPasswordLen {
-			return nil, ErrPasswordTooShort
+		if err := validateNewPassword(password); err != nil {
+			return nil, err
 		}
 
 		hash, err := uc.hasher.Hash(password)
 		if err != nil {
+			if isHasherBusy(err) {
+				return nil, ErrBusy
+			}
+
 			return nil, fmt.Errorf("hash password: %w", err)
 		}
 
@@ -455,6 +482,8 @@ func (uc *AdminUseCase) Update(ctx context.Context, actorID, id uint, in AdminUp
 		if err := uc.revokeCredentials(id); err != nil {
 			return nil, err
 		}
+
+		slog.Info("password reset", "actor_id", actorID, "user_id", id)
 	}
 
 	if err := uc.users.Update(user); err != nil {
@@ -508,11 +537,61 @@ func (uc *AdminUseCase) Delete(ctx context.Context, actorID, id uint, currentPas
 		return err
 	}
 
+	if err := uc.deleteOwnedRepos(ctx, id); err != nil {
+		return err
+	}
+
 	if err := uc.users.Delete(id); err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
 
 	return nil
+}
+
+func (uc *AdminUseCase) deleteOwnedRepos(ctx context.Context, ownerID uint) error {
+	if uc.repos == nil {
+		return nil
+	}
+
+	for range 1000 {
+		repos, err := uc.repos.ListByOwnerID(ctx, ownerID, 100, 0, domain.RepoOrderUpdated)
+		if err != nil {
+			return fmt.Errorf("list owned repositories: %w", err)
+		}
+
+		if len(repos) == 0 {
+			return nil
+		}
+
+		for i := range repos {
+			r := &repos[i]
+			if uc.files != nil && r.Path != "" {
+				if err := uc.files.Remove(r.Path); err != nil {
+					return fmt.Errorf("remove repository files repo_id=%d: %w", r.ID, err)
+				}
+			}
+
+			if err := uc.repos.Delete(r.ID); err != nil {
+				return fmt.Errorf("delete owned repository: %w", err)
+			}
+
+			if uc.nameHolds != nil && r.Name != "" {
+				if err := uc.nameHolds.Hold(ctx, r.Name, time.Now().UTC().Add(nameHoldTTL)); err != nil {
+					slog.Warn("name hold", "name", r.Name, "err", err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func adminRepoDescription(r *domain.Repository) string {
+	if r.IsPrivate {
+		return ""
+	}
+
+	return r.Description
 }
 
 func (uc *AdminUseCase) revokeCredentials(userID uint) error {
@@ -553,11 +632,7 @@ func (uc *AdminUseCase) requireStepUp(ctx context.Context, actorID uint, current
 		return ErrUnauthorized
 	}
 
-	if err := uc.hasher.Compare(actor.PasswordHash, currentPassword); err != nil {
-		return ErrCurrentPasswordWrong
-	}
-
-	return nil
+	return uc.gate.Verify(actor.ID, actor.PasswordHash, currentPassword, ErrCurrentPasswordWrong)
 }
 
 func toAdminUserItem(user *domain.User) AdminUserItem {

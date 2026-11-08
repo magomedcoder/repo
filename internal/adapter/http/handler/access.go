@@ -54,7 +54,7 @@ func (h *AccessHandler) Visit(c *httpx.Context) error {
 	}
 
 	user, _ := middleware.UserFromContext(c.Ctx())
-	h.access.VisitPath(c.R, user, path)
+	h.access.VisitClientPath(c.R, user, path)
 
 	return c.NoContent()
 }

@@ -8,6 +8,7 @@ export const tokensApi = {
   create(body: {
     name: string
     scope?: string
+    repo_ids?: number[]
     expires_in?: number
     expires_at?: string
     current_password: string

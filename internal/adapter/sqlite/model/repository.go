@@ -40,7 +40,6 @@ type Repository struct {
 	MirrorSSHPassphrase  string `gorm:"size:2048;not null;default:''"`
 	MirrorInsecureTLS    bool   `gorm:"not null;default:false"`
 	MirrorPinnedHosts    string `gorm:"size:1024;not null;default:''"`
-	MirrorLFS            bool   `gorm:"not null;default:false"`
 	MirrorMaxBytes       int64  `gorm:"not null;default:0"`
 	MirrorConflictPolicy string `gorm:"size:16;not null;default:''"`
 	MirrorStatus         string `gorm:"size:16;not null;default:''"`
@@ -50,7 +49,6 @@ type Repository struct {
 	MirrorRemoteHEAD     string `gorm:"column:mirror_remote_head;size:64;not null;default:''"`
 	MirrorOwnerOnly      bool   `gorm:"not null;default:false"`
 	MirrorGroupID        uint   `gorm:"not null;default:0"`
-	MirrorPartial        bool   `gorm:"not null;default:false"`
 	MirrorVerifySigned   bool   `gorm:"not null;default:false"`
 	LastActivityAt       *time.Time
 }
@@ -88,7 +86,6 @@ func (m Repository) ToDomain() domain.Repository {
 		MirrorSSHPassphrase:  m.MirrorSSHPassphrase,
 		MirrorInsecureTLS:    m.MirrorInsecureTLS,
 		MirrorPinnedHosts:    m.MirrorPinnedHosts,
-		MirrorLFS:            m.MirrorLFS,
 		MirrorMaxBytes:       m.MirrorMaxBytes,
 		MirrorConflictPolicy: m.MirrorConflictPolicy,
 		MirrorStatus:         m.MirrorStatus,
@@ -98,7 +95,6 @@ func (m Repository) ToDomain() domain.Repository {
 		MirrorRemoteHEAD:     m.MirrorRemoteHEAD,
 		MirrorOwnerOnly:      m.MirrorOwnerOnly,
 		MirrorGroupID:        m.MirrorGroupID,
-		MirrorPartial:        m.MirrorPartial,
 		MirrorVerifySigned:   m.MirrorVerifySigned,
 		LastActivityAt:       m.LastActivityAt,
 		CreatedAt:            m.CreatedAt,
@@ -141,7 +137,6 @@ func RepositoryFromDomain(repo *domain.Repository) *Repository {
 		MirrorSSHPassphrase:  repo.MirrorSSHPassphrase,
 		MirrorInsecureTLS:    repo.MirrorInsecureTLS,
 		MirrorPinnedHosts:    repo.MirrorPinnedHosts,
-		MirrorLFS:            repo.MirrorLFS,
 		MirrorMaxBytes:       repo.MirrorMaxBytes,
 		MirrorConflictPolicy: repo.MirrorConflictPolicy,
 		MirrorStatus:         repo.MirrorStatus,
@@ -151,7 +146,6 @@ func RepositoryFromDomain(repo *domain.Repository) *Repository {
 		MirrorRemoteHEAD:     repo.MirrorRemoteHEAD,
 		MirrorOwnerOnly:      repo.MirrorOwnerOnly,
 		MirrorGroupID:        repo.MirrorGroupID,
-		MirrorPartial:        repo.MirrorPartial,
 		MirrorVerifySigned:   repo.MirrorVerifySigned,
 		LastActivityAt:       repo.LastActivityAt,
 		CreatedAt:            repo.CreatedAt,

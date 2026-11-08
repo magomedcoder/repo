@@ -3,56 +3,29 @@ package sqlite
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/gormutil"
+	"magomedcoder.ru/repo/pkg/sqliteutil"
 )
 
 func NewDB(dataDir string) (*gorm.DB, error) {
-	dsn := filepath.Join(dataDir, "db.sqlite")
-	file, _, _ := strings.Cut(dsn, "?")
-
-	if dir := filepath.Dir(file); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return nil, fmt.Errorf("data dir: %w", err)
-		}
-	}
-
-	if !strings.Contains(dsn, "_pragma") {
-		sep := "?"
-		if strings.Contains(dsn, "?") {
-			sep = "&"
-		}
-		dsn += sep + "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)"
-	}
-
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	db, err := sqliteutil.Open(filepath.Join(dataDir, "db.sqlite"))
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return nil, err
 	}
 
-	if err := runMigrations(db, file); err != nil {
+	if err := runMigrations(db); err != nil {
 		if sqlDB, dbErr := db.DB(); dbErr == nil {
 			_ = sqlDB.Close()
 		}
 
 		return nil, fmt.Errorf("migrate: %w", err)
-	}
-
-	if sqlDB, err := db.DB(); err == nil {
-		sqlDB.SetMaxOpenConns(1)
-		sqlDB.SetMaxIdleConns(1)
-	}
-
-	if file != "" && file != ":memory:" {
-		_ = os.Chmod(file, 0o600)
 	}
 
 	return db, nil
@@ -79,39 +52,104 @@ func (s *Repository) Create(repo *domain.Repository) error {
 func (s *Repository) Update(repo *domain.Repository) error {
 	m := model.RepositoryFromDomain(repo)
 	prevUpdated := repo.UpdatedAt
-	db := s.DB(context.Background()).Omit("IssueSeq", "PullSeq")
+	db := s.DB(context.Background()).Model(&model.Repository{})
+	now := db.NowFunc()
+	m.UpdatedAt = now
+
+	db = db.Where("id = ?", m.ID)
 	if !prevUpdated.IsZero() {
-		db = db.Where("id = ? AND updated_at = ?", m.ID, prevUpdated)
+		db = db.Where("updated_at = ?", prevUpdated)
 	}
 
-	res := db.Save(m)
+	res := db.Updates(repositoryUpdateColumns(m))
 	if res.Error != nil {
 		return res.Error
 	}
 
-	if !prevUpdated.IsZero() && res.RowsAffected == 0 {
-		return domain.ErrConflict
+	if res.RowsAffected == 0 {
+		if !prevUpdated.IsZero() {
+			return domain.ErrConflict
+		}
+
+		return domain.ErrNotFound
 	}
 
 	*repo = m.ToDomain()
 	return nil
 }
 
+func repositoryUpdateColumns(m *model.Repository) map[string]any {
+	return map[string]any{
+		"name":                   m.Name,
+		"owner_id":               m.OwnerID,
+		"description":            m.Description,
+		"is_private":             m.IsPrivate,
+		"show_on_home":           m.ShowOnHome,
+		"protect_default_branch": m.ProtectDefaultBranch,
+		"issues_enabled":         m.IssuesEnabled,
+		"default_branch":         m.DefaultBranch,
+		"path":                   m.Path,
+		"repo_path":              m.RepoPath,
+		"mirror_direction":       m.MirrorDirection,
+		"mirror_url":             m.MirrorURL,
+		"mirror_username":        m.MirrorUsername,
+		"mirror_password":        m.MirrorPassword,
+		"mirror_last_sync_at":    m.MirrorLastSyncAt,
+		"mirror_last_error":      m.MirrorLastError,
+		"mirror_enabled":         m.MirrorEnabled,
+		"mirror_interval":        m.MirrorInterval,
+		"mirror_sync_window":     m.MirrorSyncWindow,
+		"mirror_force":           m.MirrorForce,
+		"mirror_prune":           m.MirrorPrune,
+		"mirror_refspecs":        m.MirrorRefspecs,
+		"mirror_ssh_private_key": m.MirrorSSHPrivateKey,
+		"mirror_ssh_passphrase":  m.MirrorSSHPassphrase,
+		"mirror_insecure_tls":    m.MirrorInsecureTLS,
+		"mirror_pinned_hosts":    m.MirrorPinnedHosts,
+		"mirror_max_bytes":       m.MirrorMaxBytes,
+		"mirror_conflict_policy": m.MirrorConflictPolicy,
+		"mirror_status":          m.MirrorStatus,
+		"mirror_fail_count":      m.MirrorFailCount,
+		"mirror_next_sync_at":    m.MirrorNextSyncAt,
+		"mirror_last_progress":   m.MirrorLastProgress,
+		"mirror_remote_head":     m.MirrorRemoteHEAD,
+		"mirror_owner_only":      m.MirrorOwnerOnly,
+		"mirror_group_id":        m.MirrorGroupID,
+		"mirror_verify_signed":   m.MirrorVerifySigned,
+		"last_activity_at":       m.LastActivityAt,
+		"updated_at":             m.UpdatedAt,
+	}
+}
+
 func (s *Repository) Delete(id uint) error {
 	return s.DeleteByID(context.Background(), id)
 }
 
-func (s *Repository) PurgeSoftDeleted(ctx context.Context, before time.Time) ([]uint, error) {
-	var ids []uint
-	err := s.Txx(ctx, func(tx *gorm.DB) error {
+func (s *Repository) PurgeSoftDeleted(ctx context.Context, before time.Time) (paths []string, ids []uint, err error) {
+	type row struct {
+		ID   uint
+		Path string
+	}
+	var rows []row
+	err = s.Txx(ctx, func(tx *gorm.DB) error {
 		if err := tx.Unscoped().Model(&model.Repository{}).
+			Select("id", "path").
 			Where("deleted_at IS NOT NULL AND deleted_at < ?", before.In(time.Local)).
-			Pluck("id", &ids).Error; err != nil {
+			Find(&rows).Error; err != nil {
 			return err
 		}
 
-		if len(ids) == 0 {
+		if len(rows) == 0 {
 			return nil
+		}
+
+		ids = make([]uint, 0, len(rows))
+		paths = make([]string, 0, len(rows))
+		for _, r := range rows {
+			ids = append(ids, r.ID)
+			if r.Path != "" {
+				paths = append(paths, r.Path)
+			}
 		}
 
 		stmts := []string{
@@ -136,10 +174,10 @@ func (s *Repository) PurgeSoftDeleted(ctx context.Context, before time.Time) ([]
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return ids, nil
+	return paths, ids, nil
 }
 
 func (s *Repository) FindByRepoPath(ctx context.Context, repoPath string) (*domain.Repository, error) {
@@ -282,21 +320,8 @@ func (s *Repository) SearchAccessible(ctx context.Context, query string, viewerI
 	return repoModelsToDomain(models), nil
 }
 
-func (s *Repository) ListAccessible(ctx context.Context, viewerID uint, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
-	limit, offset = clampListBounds(limit, offset)
-	db := accessibleRepoScope(s.Model(ctx), viewerID)
-
-	var models []model.Repository
-	if err := db.Order(repoOrderClause(order)).Limit(limit).Offset(offset).Find(&models).Error; err != nil {
-		return nil, err
-	}
-
-	return repoModelsToDomain(models), nil
-}
-
 func (s *Repository) ExistsByName(name string) (bool, error) {
 	return s.QueryExistOpts(context.Background(), "", nil,
-		gormutil.WithUnscoped(),
 		gormutil.WithWhere("lower(name) = ?", strings.ToLower(name)),
 	)
 }
@@ -431,7 +456,7 @@ func (s *Repository) ListAdmin(ctx context.Context, filter domain.AdminRepoFilte
 	q := s.Model(ctx)
 	if text := strings.TrimSpace(filter.Query); text != "" {
 		like := "%" + escapeLike(text) + "%"
-		q = q.Where(`(name LIKE ? ESCAPE '\' OR repo_path LIKE ? ESCAPE '\' OR description LIKE ? ESCAPE '\')`, like, like, like)
+		q = q.Where(`(name LIKE ? ESCAPE '\' OR repo_path LIKE ? ESCAPE '\' OR (is_private = 0 AND description LIKE ? ESCAPE '\'))`, like, like, like)
 	}
 
 	if filter.Private != nil {
@@ -498,7 +523,7 @@ func clampListBounds(limit, offset int) (int, int) {
 	return limit, offset
 }
 
-func (s *Repository) ListPublicIDsByOwner(ctx context.Context, ownerID uint) ([]uint, error) {
+func (s *Repository) ListIDsByOwner(ctx context.Context, ownerID uint) ([]uint, error) {
 	var ids []uint
 	err := s.Pluck(ctx, "id", &ids, "owner_id = ? AND is_private = ?", ownerID, false)
 	return ids, err

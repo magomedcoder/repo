@@ -12,15 +12,14 @@ import (
 )
 
 var (
-	ErrInvalidMirrorDirection   = NewError(KindValidation, "invalid_mirror_direction")
-	ErrMirrorNotConfigured      = NewError(KindValidation, "mirror_not_configured")
-	ErrMirrorReadOnly           = NewError(KindForbidden, "mirror_read_only")
-	ErrMirrorOwnerOnly          = NewError(KindForbidden, "mirror_owner_only")
-	ErrMirrorAdminOnly          = NewError(KindForbidden, "mirror_admin_only")
-	ErrMirrorLFSUnavailable     = NewError(KindValidation, "lfs_unavailable")
-	ErrMirrorPartialUnavailable = NewError(KindValidation, "partial_mirror_unavailable")
-	ErrMirrorHTTPForbidden      = NewError(KindValidation, "mirror_http_forbidden")
-	ErrMirrorVerifyNoTrust      = NewError(KindValidation, "mirror_verify_no_trust")
+	ErrInvalidMirrorDirection    = NewError(KindValidation, "invalid_mirror_direction")
+	ErrMirrorNotConfigured       = NewError(KindValidation, "mirror_not_configured")
+	ErrMirrorReadOnly            = NewError(KindForbidden, "mirror_read_only")
+	ErrMirrorOwnerOnly           = NewError(KindForbidden, "mirror_owner_only")
+	ErrMirrorAdminOnly           = NewError(KindForbidden, "mirror_admin_only")
+	ErrMirrorHTTPForbidden       = NewError(KindValidation, "mirror_http_forbidden")
+	ErrMirrorVerifyNoTrust       = NewError(KindValidation, "mirror_verify_no_trust")
+	ErrMirrorPinnedHostsRequired = NewError(KindValidation, "mirror_pinned_hosts_required")
 )
 
 type ConfigureMirrorInput struct {
@@ -43,12 +42,10 @@ type ConfigureMirrorInput struct {
 	ClearSSHKey     bool
 	InsecureTLS     *bool
 	PinnedHosts     *string
-	LFS             *bool
 	MaxBytes        *int64
 	ConflictPolicy  *string
 	OwnerOnly       *bool
 	GroupID         *uint
-	Partial         *bool
 	VerifySigned    *bool
 	CurrentPassword string
 }
@@ -82,7 +79,50 @@ func mirrorNeedsStepUp(repo *domain.Repository, in ConfigureMirrorInput) bool {
 		return true
 	}
 
-	return in.SSHPassphrase != nil
+	if in.SSHPassphrase != nil {
+		return true
+	}
+
+	return mirrorBehaviorChanges(repo, in)
+}
+
+func mirrorBehaviorChanges(repo *domain.Repository, in ConfigureMirrorInput) bool {
+	if dir := strings.ToLower(strings.TrimSpace(in.Direction)); dir != "" && dir != repo.MirrorDirection {
+		return true
+	}
+
+	if in.Refspecs != nil {
+		specs, err := normalizeRefspecs(*in.Refspecs)
+		if err != nil || specs != repo.MirrorRefspecs {
+			return true
+		}
+	}
+
+	if in.PinnedHosts != nil && strings.Join(splitList(*in.PinnedHosts), ",") != repo.MirrorPinnedHosts {
+		return true
+	}
+
+	if in.ConflictPolicy != nil {
+		policy, err := normalizeConflictPolicy(*in.ConflictPolicy)
+		current := repo.MirrorConflictPolicy
+		if current == "" {
+			current = domain.MirrorConflictForce
+		}
+
+		if err != nil || policy != current {
+			return true
+		}
+	}
+
+	if in.Force != nil && *in.Force != repo.MirrorForce {
+		return true
+	}
+
+	if in.Prune != nil && *in.Prune != repo.MirrorPrune {
+		return true
+	}
+
+	return in.InsecureTLS != nil && *in.InsecureTLS != repo.MirrorInsecureTLS
 }
 
 func (uc *RepositoryUseCase) viewerIsSiteAdmin(ctx context.Context, viewerID uint) bool {
@@ -250,8 +290,6 @@ func resetMirrorConfig(repo *domain.Repository) {
 	repo.MirrorRefspecs = ""
 	repo.MirrorInsecureTLS = false
 	repo.MirrorPinnedHosts = ""
-	repo.MirrorLFS = false
-	repo.MirrorPartial = false
 	repo.MirrorVerifySigned = false
 	repo.MirrorMaxBytes = 0
 	repo.MirrorConflictPolicy = ""
@@ -276,7 +314,7 @@ func resetMirrorState(repo *domain.Repository) {
 
 func mirrorFingerprint(r *domain.Repository) string {
 	return fmt.Sprint(r.MirrorDirection, "|", r.MirrorURL, "|", r.MirrorUsername, "|", r.MirrorPassword, "|", r.MirrorSSHPrivateKey, "|",
-		r.MirrorSSHPassphrase, "|", r.MirrorRefspecs, "|", r.MirrorForce, "|", r.MirrorPrune, "|", r.MirrorLFS, "|",
+		r.MirrorSSHPassphrase, "|", r.MirrorRefspecs, "|", r.MirrorForce, "|", r.MirrorPrune, "|",
 		r.MirrorInsecureTLS, "|", r.MirrorPinnedHosts)
 }
 
@@ -430,22 +468,6 @@ func (uc *RepositoryUseCase) applyMirrorTuning(repo *domain.Repository, in Confi
 		repo.MirrorPrune = *in.Prune
 	}
 
-	if in.LFS != nil {
-		if *in.LFS {
-			return ErrMirrorLFSUnavailable
-		}
-
-		repo.MirrorLFS = false
-	}
-
-	if in.Partial != nil {
-		if *in.Partial {
-			return ErrMirrorPartialUnavailable
-		}
-
-		repo.MirrorPartial = false
-	}
-
 	if in.VerifySigned != nil {
 		if *in.VerifySigned {
 			if err := uc.requireVerifyTrust(); err != nil {
@@ -509,6 +531,14 @@ func applyMirrorSchedule(repo *domain.Repository, in ConfigureMirrorInput) error
 }
 
 func (uc *RepositoryUseCase) applyMirrorRestricted(repo *domain.Repository, in ConfigureMirrorInput, siteAdmin, ownerOrAdmin bool) error {
+	if in.PinnedHosts != nil {
+		if _, err := uc.urlPolicy().parsePinnedHosts(*in.PinnedHosts); err != nil {
+			return err
+		}
+
+		repo.MirrorPinnedHosts = strings.Join(splitList(*in.PinnedHosts), ",")
+	}
+
 	if in.InsecureTLS != nil {
 		if *in.InsecureTLS && !siteAdmin {
 			return ErrMirrorAdminOnly
@@ -517,12 +547,8 @@ func (uc *RepositoryUseCase) applyMirrorRestricted(repo *domain.Repository, in C
 		repo.MirrorInsecureTLS = *in.InsecureTLS
 	}
 
-	if in.PinnedHosts != nil {
-		if _, err := uc.urlPolicy().parsePinnedHosts(*in.PinnedHosts); err != nil {
-			return err
-		}
-
-		repo.MirrorPinnedHosts = strings.Join(splitList(*in.PinnedHosts), ",")
+	if repo.MirrorInsecureTLS && strings.TrimSpace(repo.MirrorPinnedHosts) == "" {
+		return ErrMirrorPinnedHostsRequired
 	}
 
 	if in.OwnerOnly != nil {
@@ -571,11 +597,11 @@ func (uc *RepositoryUseCase) auditConfigure(repo, prev *domain.Repository, actor
 		what = "updated mirror settings"
 	}
 
-	slog.Info("mirror configured", "repo_id", repo.ID, "actor_id", actorID, "change", what, "remote_host", mirrorHost(repo.MirrorURL))
+	slog.Info("mirror configured", "repo_id", repo.ID, "actor_id", actorID)
 	if repo.MirrorInsecureTLS && !prev.MirrorInsecureTLS {
-		slog.Warn("mirror insecure_tls enabled: TLS verification disabled", "repo_id", repo.ID, "actor_id", actorID, "remote_host", mirrorHost(repo.MirrorURL))
+		slog.Warn("mirror insecure tls", "repo_id", repo.ID, "actor_id", actorID)
 	} else if !repo.MirrorInsecureTLS && prev.MirrorInsecureTLS {
-		slog.Info("mirror insecure_tls disabled", "repo_id", repo.ID, "actor_id", actorID)
+		slog.Info("mirror tls ok", "repo_id", repo.ID, "actor_id", actorID)
 	}
 
 	recordRepoActivity(uc.activity, repo, actorID, domain.ActivityMirrorConfigure, activitySummary("%s", what))

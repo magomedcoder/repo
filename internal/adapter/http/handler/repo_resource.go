@@ -41,7 +41,7 @@ func ParseRepoResource(rest string) (action string, repoParts, extra []string, o
 
 func isPullAction(action string) bool {
 	switch action {
-	case "pulls", "pull", "pull-diff", "pull-commits", "pull-merge", "pull-comments", "pull-comment":
+	case "pulls", "pull", "pull-diff", "pull-merge", "pull-comments", "pull-comment":
 		return true
 	default:
 		return false

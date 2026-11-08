@@ -375,7 +375,11 @@ func testAuth(users *memUsers, sessions domain.SessionStore) *AuthUseCase {
 func TestRegisterClosed(t *testing.T) {
 	t.Parallel()
 	uc := testAuth(&memUsers{}, &memSessions{})
-	_, err := uc.Register(t.Context(), RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
+	_, err := uc.Register(t.Context(), RegisterInput{
+		Username: "ada",
+		Email:    "ada@example.com",
+		Password: "test-pass-1",
+	})
 	if !errors.Is(err, ErrRegistrationClosed) {
 		t.Fatalf("got %v", err)
 	}
@@ -385,7 +389,11 @@ func TestCreateUser(t *testing.T) {
 	t.Parallel()
 	users := &memUsers{}
 	uc := testAuth(users, &memSessions{})
-	user, err := uc.CreateUser(t.Context(), RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
+	user, err := uc.CreateUser(t.Context(), RegisterInput{
+		Username: "ada",
+		Email:    "ada@example.com",
+		Password: "test-pass-1",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +402,11 @@ func TestCreateUser(t *testing.T) {
 		t.Fatalf("%+v", user)
 	}
 
-	_, err = uc.CreateUser(t.Context(), RegisterInput{Username: "ada", Email: "other@example.com", Password: "password1"})
+	_, err = uc.CreateUser(t.Context(), RegisterInput{
+		Username: "ada",
+		Email:    "other@example.com",
+		Password: "test-pass-1",
+	})
 	if !errors.Is(err, ErrUsernameTaken) {
 		t.Fatalf("got %v", err)
 	}
@@ -407,7 +419,7 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 	uc := testAuth(users, sessions)
 	at := &memAccessTokens{}
 	uc.accessTokens = at
-	user, err := uc.CreateUser(t.Context(), RegisterInput{Username: "ada", Email: "ada@example.com", Password: "password1"})
+	user, err := uc.CreateUser(t.Context(), RegisterInput{Username: "ada", Email: "ada@example.com", Password: "test-pass-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,8 +436,8 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 
 	if err := uc.ChangePassword(t.Context(), ChangePasswordInput{
 		UserID:    user.ID,
-		Current:   "password1",
-		Next:      "password2",
+		Current:   "test-pass-1",
+		Next:      "test-pass-2",
 		KeepToken: keep,
 	}); err != nil {
 		t.Fatal(err)

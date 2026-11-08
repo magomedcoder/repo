@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,17 +20,17 @@ const (
 )
 
 type GitUseCase struct {
-	repos           domain.RepositoryStore
-	users           domain.UserStore
-	tokens          domain.AccessTokenStore
-	hasher          domain.PasswordHasher
-	git             domain.GitRepository
-	activity        domain.ActivityStore
-	authz           *Authz
-	attempts        attempts.Counter
-	userAttempts    attempts.Counter
-	pepper          string
-	requireAuthRead bool
+	repos         domain.RepositoryStore
+	users         domain.UserStore
+	tokens        domain.AccessTokenStore
+	hasher        domain.PasswordHasher
+	git           domain.GitRepository
+	activity      domain.ActivityStore
+	authz         *Authz
+	guard         *LoginGuard
+	tokenAttempts attempts.Counter
+	pepper        string
+	passwordAuth  bool
 }
 
 func NewGitUseCase(
@@ -49,7 +50,11 @@ func NewGitUseCase(
 		git:      git,
 		activity: activity,
 		authz:    authz,
-		attempts: attempts.New(),
+		guard:    NewLoginGuard(),
+		tokenAttempts: attempts.New(attempts.Config{
+			MaxFails: gitTokenMaxFails,
+		}),
+		passwordAuth: true,
 	}
 }
 
@@ -60,13 +65,46 @@ func (uc *GitUseCase) SetTokenPepper(pepper string) {
 }
 
 func (uc *GitUseCase) StartAttemptsSweep(ctx context.Context, every time.Duration) {
-	attempts.StartBackgroundSweep(ctx, every, uc.attempts, uc.userAttempts)
+	attempts.StartBackgroundSweep(ctx, every, uc.tokenAttempts)
 }
 
-func (uc *GitUseCase) SetUserAttempts(c attempts.Counter) {
-	if uc != nil {
-		uc.userAttempts = c
+func (uc *GitUseCase) SetLoginGuard(g *LoginGuard) {
+	if uc != nil && g != nil {
+		uc.guard = g
 	}
+}
+
+func (uc *GitUseCase) SetPasswordAuth(v bool) {
+	if uc != nil {
+		uc.passwordAuth = v
+	}
+}
+
+func (uc *GitUseCase) AnonymousReadDenied() bool {
+	return uc != nil && uc.authz != nil && uc.authz.AnonymousReadDenied()
+}
+
+func (uc *GitUseCase) LoginRetryAfter(ctx context.Context, login, ipKey string) time.Duration {
+	if uc == nil || uc.guard == nil {
+		return 0
+	}
+
+	login = normalizeLogin(login)
+	var user *domain.User
+	if login != "" {
+		var err error
+		if strings.Contains(login, "@") {
+			user, err = uc.users.FindByEmail(ctx, login)
+		} else {
+			user, err = uc.users.FindByUsername(ctx, login)
+		}
+
+		if err != nil {
+			user = nil
+		}
+	}
+
+	return uc.guard.RetryAfter(ipKey, AccountKey(user, login))
 }
 
 func (uc *GitUseCase) ResolveClonePath(ctx context.Context, path string) (*domain.Repository, error) {
@@ -104,11 +142,11 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 		return nil, err
 	}
 
-	username = strings.ToLower(strings.TrimSpace(username))
+	username = normalizeLogin(username)
 	secret = strings.TrimSpace(secret)
 
 	if strings.HasPrefix(secret, "repo_") {
-		user, err := uc.authenticateTokenWithAttempts(ctx, secret)
+		user, err := uc.authenticateTokenWithAttempts(ctx, remoteIP, secret)
 		if err != nil {
 			return nil, err
 		}
@@ -120,51 +158,60 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 		return user, nil
 	}
 
-	if username == "" || secret == "" {
+	if !uc.passwordAuth {
 		return nil, ErrUnauthorized
 	}
 
-	attemptKey := "git\n" + remoteIP + "\n" + username
-	userKey := "login-user\n" + remoteIP + "\n" + username
-	if uc.attempts != nil && uc.attempts.Locked(attemptKey) {
+	if uc.guard.IPLocked(remoteIP) {
 		return nil, ErrTooManyAttempts
 	}
 
-	if uc.userAttempts != nil && uc.userAttempts.Locked(userKey) {
-		return nil, ErrTooManyAttempts
+	if username == "" {
+		return nil, ErrUnauthorized
 	}
 
-	user, err := uc.users.FindByUsername(ctx, username)
+	var (
+		user *domain.User
+		err  error
+	)
+	if strings.Contains(username, "@") {
+		user, err = uc.users.FindByEmail(ctx, username)
+	} else {
+		user, err = uc.users.FindByUsername(ctx, username)
+	}
+
 	if err != nil {
-		_ = uc.hasher.Compare(dummyPasswordHash, secret)
-		if uc.attempts != nil {
-			_ = uc.attempts.Fail(attemptKey)
+		user = nil
+	}
+
+	acctKey := AccountKey(user, username)
+	if uc.guard.AccountLocked(acctKey) {
+		return nil, ErrTooManyAttempts
+	}
+
+	if secret == "" || len(secret) > maxPasswordLen {
+		return nil, ErrUnauthorized
+	}
+
+	if user == nil {
+		if err := uc.hasher.Compare(dummyPasswordHash, secret); isHasherBusy(err) {
+			return nil, ErrBusy
 		}
 
-		if uc.userAttempts != nil {
-			_ = uc.userAttempts.Fail(userKey)
-		}
+		uc.guard.Fail(remoteIP, acctKey)
 		return nil, ErrUnauthorized
 	}
 
 	if err := uc.hasher.Compare(user.PasswordHash, secret); err != nil {
-		if uc.attempts != nil {
-			_ = uc.attempts.Fail(attemptKey)
+		if isHasherBusy(err) {
+			return nil, ErrBusy
 		}
 
-		if uc.userAttempts != nil {
-			_ = uc.userAttempts.Fail(userKey)
-		}
+		uc.guard.Fail(remoteIP, acctKey)
 		return nil, ErrUnauthorized
 	}
 
-	if uc.attempts != nil {
-		uc.attempts.Reset(attemptKey)
-	}
-
-	if uc.userAttempts != nil {
-		uc.userAttempts.Reset(userKey)
-	}
+	uc.guard.Success(acctKey)
 
 	out := sanitizeUser(user)
 	out.TokenScope = domain.TokenScopeGitWrite
@@ -172,22 +219,19 @@ func (uc *GitUseCase) Authenticate(ctx context.Context, remoteIP, username, secr
 	return out, nil
 }
 
-func (uc *GitUseCase) authenticateTokenWithAttempts(ctx context.Context, raw string) (*domain.User, error) {
-	attemptKey := "git-token\n" + hashAccessToken(raw, uc.pepper)
-	if uc.attempts != nil && uc.attempts.Locked(attemptKey) {
+func (uc *GitUseCase) authenticateTokenWithAttempts(ctx context.Context, remoteIP, raw string) (*domain.User, error) {
+	attemptKey := "git-token\n" + remoteIP
+	if remoteIP != "" && uc.tokenAttempts != nil && uc.tokenAttempts.Locked(attemptKey) {
 		return nil, ErrTooManyAttempts
 	}
 
 	user, err := uc.authenticateToken(ctx, raw)
 	if err != nil {
-		if uc.attempts != nil {
-			_ = uc.attempts.Fail(attemptKey)
+		if remoteIP != "" && uc.tokenAttempts != nil {
+			_ = uc.tokenAttempts.Fail(attemptKey)
 		}
-		return nil, err
-	}
 
-	if uc.attempts != nil {
-		uc.attempts.Reset(attemptKey)
+		return nil, err
 	}
 
 	return user, nil
@@ -215,14 +259,9 @@ func (uc *GitUseCase) authenticateToken(ctx context.Context, raw string) (*domai
 	_ = uc.tokens.TouchLastUsed(token.ID, time.Now())
 	out := sanitizeUser(user)
 	out.TokenScope = token.Scope
+	out.TokenRepoIDs = token.RepoIDs
 
 	return out, nil
-}
-
-func (uc *GitUseCase) SetRequireAuthForGitRead(v bool) {
-	if uc != nil {
-		uc.requireAuthRead = v
-	}
 }
 
 func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, viewer *domain.User, service GitService) error {
@@ -233,7 +272,7 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 	switch service {
 	case GitUploadPack:
 		if !repo.IsPrivate {
-			if uc.requireAuthRead && viewer == nil {
+			if uc.authz != nil && uc.authz.AnonymousReadDenied() && viewer == nil {
 				return ErrUnauthorized
 			}
 
@@ -248,6 +287,11 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 			if !uc.authz.CanReadPrivateRepo(repo, viewer.ID) {
 				return ErrRepoForbidden
 			}
+
+			if !tokenAllowsRepo(viewer, repo) {
+				return ErrRepoForbidden
+			}
+
 			return nil
 		}
 
@@ -265,6 +309,10 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 			return ErrRepoForbidden
 		}
 
+		if !tokenAllowsRepo(viewer, repo) {
+			return ErrRepoForbidden
+		}
+
 		if repo.MirrorDirection == domain.MirrorPull {
 			return ErrMirrorReadOnly
 		}
@@ -273,6 +321,14 @@ func (uc *GitUseCase) Authorize(ctx context.Context, repo *domain.Repository, vi
 	default:
 		return fmt.Errorf("unsupported git service: %s", service)
 	}
+}
+
+func tokenAllowsRepo(viewer *domain.User, repo *domain.Repository) bool {
+	if viewer == nil || len(viewer.TokenRepoIDs) == 0 {
+		return true
+	}
+
+	return slices.Contains(viewer.TokenRepoIDs, repo.ID)
 }
 
 func (uc *GitUseCase) AdvertiseRefs(ctx context.Context, repoPath string, service GitService, w io.Writer) error {

@@ -41,17 +41,15 @@ export const adminMirrorsApi = {
   sync(ids?: number[]) {
     return api<{ queued?: number; affected?: number }>('/api/admin/mirrors/sync', {
       method: 'POST',
-      body: JSON.stringify(ids?.length ? { ids, repo_ids: ids } : {}),
+      body: JSON.stringify(ids?.length ? { repo_ids: ids } : {}),
     })
   },
   pause(ids: number[], paused: boolean) {
     return api<{ affected?: number }>('/api/admin/mirrors/pause', {
       method: 'POST',
       body: JSON.stringify({
-        ids,
         repo_ids: ids,
         paused,
-        pause: paused,
       }),
     })
   },

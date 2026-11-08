@@ -28,6 +28,13 @@ type ActivityUseCase struct {
 	events domain.ActivityStore
 	users  domain.UserStore
 	repos  domain.RepositoryStore
+	authz  *Authz
+}
+
+func (uc *ActivityUseCase) SetAuthz(a *Authz) {
+	if uc != nil {
+		uc.authz = a
+	}
 }
 
 func NewActivityUseCase(
@@ -46,6 +53,11 @@ func (uc *ActivityUseCase) ListOwner(ctx context.Context, ownerSlug string, view
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	if viewerID == 0 && uc.authz.AnonymousReadDenied() {
+		return nil, ErrUnauthorized
+	}
+
 	slug := strings.ToLower(strings.TrimSpace(ownerSlug))
 	id, err := uc.resolveOwner(slug)
 	if err != nil {
@@ -80,7 +92,7 @@ func (uc *ActivityUseCase) filterVisible(events []domain.ActivityEvent, ownerID,
 		return events, nil
 	}
 
-	ids, err := uc.repos.ListPublicIDsByOwner(context.Background(), ownerID)
+	ids, err := uc.repos.ListIDsByOwner(context.Background(), ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +174,7 @@ func recordActivity(store domain.ActivityStore, ev *domain.ActivityEvent) {
 	}
 
 	if err := store.Create(ev); err != nil {
-		slog.Error("activity: create event", "err", err)
+		slog.Error("activity", "err", err)
 	}
 }
 

@@ -42,10 +42,6 @@ func SessionTokenFor(r *http.Request, forceSecure bool) string {
 	return c.Value
 }
 
-func RequireAuth(auth Authenticator) func(http.Handler) http.Handler {
-	return RequireAuthSecure(auth, false)
-}
-
 func RequireAuthSecure(auth Authenticator, forceSecure bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,10 +60,6 @@ func RequireAuthSecure(auth Authenticator, forceSecure bool) func(http.Handler) 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
-}
-
-func OptionalAuth(auth Authenticator) func(http.Handler) http.Handler {
-	return OptionalAuthSecure(auth, false)
 }
 
 func OptionalAuthSecure(auth Authenticator, forceSecure bool) func(http.Handler) http.Handler {

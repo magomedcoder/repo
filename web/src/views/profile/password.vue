@@ -58,7 +58,7 @@ async function save() {
           v-model="nextPassword"
           type="password"
           required
-          minlength="8"
+          minlength="10"
           class="field"
           autocomplete="new-password"
         >

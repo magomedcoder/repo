@@ -161,7 +161,6 @@ async function submit() {
       >
     </label>
     <p class="text-[85%] text-ink-muted">{{ $t('modal.tokenHint') }}</p>
-    <p class="text-[85%] text-ink-muted">{{ $t('modal.mirrorLfsUnavailable') }}</p>
     <label class="flex items-center gap-2 text-sm">
       <input
         v-model="isPrivate"

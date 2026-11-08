@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { reposApi } from '@/api'
 import type { MirrorStatus, Repository } from '@/api/types'
+import { useAnchoredMenu } from '@/composables/useAnchoredMenu'
 import { hasMirror, mirrorRemoteLabel, mirrorUiStatus, mirrorWebURL } from '@/lib/mirror'
 import Icon from '@/components/ui/Icon.vue'
 import { formatDate, i18n } from '@/i18n'
@@ -15,7 +16,16 @@ const props = defineProps<{
 const route = useRoute()
 const mirrorOpen = ref(false)
 const mirrorRoot = ref<HTMLElement | null>(null)
+const mirrorMenu = ref<HTMLElement | null>(null)
 const liveStatus = ref<MirrorStatus | null>(null)
+
+const { style: mirrorMenuStyle, place: placeMirrorMenu } = useAnchoredMenu({
+  open: mirrorOpen,
+  anchor: mirrorRoot,
+  menu: mirrorMenu,
+  width: '16rem',
+  align: 'start',
+})
 
 const mirrorDirection = computed(() => props.repo?.mirror_direction || '')
 const mirrorURL = computed(() => (props.repo?.mirror_url || '').trim())
@@ -81,9 +91,12 @@ function onDocPointerDown(ev: PointerEvent) {
     return
   }
 
-  if (mirrorRoot.value && !mirrorRoot.value.contains(ev.target)) {
-    closeMirrorPopover()
+  const target = ev.target
+  if (mirrorRoot.value?.contains(target) || mirrorMenu.value?.contains(target)) {
+    return
   }
+
+  closeMirrorPopover()
 }
 
 function onDocKeydown(ev: KeyboardEvent) {
@@ -155,45 +168,50 @@ onBeforeUnmount(() => {
     >
       <Icon name="mirror" size="sm" />
     </button>
-    <div
-      v-if="mirrorOpen"
-      role="dialog"
-      :aria-label="$t('repo.mirrorPopoverTitle')"
-      class="glass-menu absolute left-0 top-full z-[70] mt-1 w-64 p-3 text-[10pt] font-sans normal-case"
-    >
-      <p class="mb-2 font-semibold text-ink">{{ $t('repo.mirrorPopoverTitle') }}</p>
-      <dl class="space-y-1.5 text-ink">
-        <div>
-          <dt class="text-[85%] text-ink-muted">{{ $t('settings.mirrorDirection') }}</dt>
-          <dd>{{ mirrorDirectionLabel }}</dd>
-        </div>
-        <div v-if="mirrorStatusLabel">
-          <dt class="text-[85%] text-ink-muted">{{ $t('repo.mirrorStatus') }}</dt>
-          <dd :class="mirrorState === 'error' && 'text-warn'">{{ mirrorStatusLabel }}</dd>
-        </div>
-        <div>
-          <dt class="text-[85%] text-ink-muted">{{ $t('repo.mirrorRemote') }}</dt>
-          <dd class="break-all">
-            <a
-              v-if="mirrorHref"
-              :href="mirrorHref"
-              class="text-link underline decoration-line underline-offset-2 hover:text-ink"
-              target="_blank"
-              rel="noopener noreferrer"
-            >{{ mirrorLinkLabel || $t('repo.mirrorOpenRemote') }}</a>
-            <span v-else-if="mirrorLinkLabel">{{ mirrorLinkLabel }}</span>
-            <span v-else class="text-ink-muted">{{ $t('repo.mirrorRemoteUnknown') }}</span>
-          </dd>
-        </div>
-        <div v-if="mirrorLastSyncAt">
-          <dt class="text-[85%] text-ink-muted">{{ $t('repo.mirrorLastSyncLabel') }}</dt>
-          <dd>{{ formatDate(mirrorLastSyncAt) }}</dd>
-        </div>
-        <div v-if="mirrorLastError">
-          <dt class="text-[85%] text-ink-muted">{{ $t('mirror.status.error') }}</dt>
-          <dd class="break-words text-warn">{{ mirrorLastError }}</dd>
-        </div>
-      </dl>
-    </div>
+    <Teleport to="body">
+      <div
+        v-if="mirrorOpen"
+        ref="mirrorMenu"
+        role="dialog"
+        :aria-label="$t('repo.mirrorPopoverTitle')"
+        class="glass-menu p-3 text-[10pt] font-sans normal-case"
+        :style="mirrorMenuStyle"
+        @vue:mounted="placeMirrorMenu"
+      >
+        <p class="mb-2 font-semibold text-ink">{{ $t('repo.mirrorPopoverTitle') }}</p>
+        <dl class="space-y-1.5 text-ink">
+          <div>
+            <dt class="text-[85%] text-ink-muted">{{ $t('settings.mirrorDirection') }}</dt>
+            <dd>{{ mirrorDirectionLabel }}</dd>
+          </div>
+          <div v-if="mirrorStatusLabel">
+            <dt class="text-[85%] text-ink-muted">{{ $t('repo.mirrorStatus') }}</dt>
+            <dd :class="mirrorState === 'error' && 'text-warn'">{{ mirrorStatusLabel }}</dd>
+          </div>
+          <div>
+            <dt class="text-[85%] text-ink-muted">{{ $t('repo.mirrorRemote') }}</dt>
+            <dd class="break-all">
+              <a
+                v-if="mirrorHref"
+                :href="mirrorHref"
+                class="text-link underline decoration-line underline-offset-2 hover:text-ink"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ mirrorLinkLabel || $t('repo.mirrorOpenRemote') }}</a>
+              <span v-else-if="mirrorLinkLabel">{{ mirrorLinkLabel }}</span>
+              <span v-else class="text-ink-muted">{{ $t('repo.mirrorRemoteUnknown') }}</span>
+            </dd>
+          </div>
+          <div v-if="mirrorLastSyncAt">
+            <dt class="text-[85%] text-ink-muted">{{ $t('repo.mirrorLastSyncLabel') }}</dt>
+            <dd>{{ formatDate(mirrorLastSyncAt) }}</dd>
+          </div>
+          <div v-if="mirrorLastError">
+            <dt class="text-[85%] text-ink-muted">{{ $t('mirror.status.error') }}</dt>
+            <dd class="break-words text-warn">{{ mirrorLastError }}</dd>
+          </div>
+        </dl>
+      </div>
+    </Teleport>
   </span>
 </template>

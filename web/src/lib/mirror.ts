@@ -1,6 +1,6 @@
 import type { Repository } from '@/api/types'
 
-export type MirrorUiStatus = 'syncing' | 'ok' | 'error' | 'paused' | 'idle' | 'skipped'
+export type MirrorUiStatus = 'syncing' | 'ok' | 'error' | 'paused' | 'idle'
 
 type MirrorStateFields = Pick<Repository, 'mirror_direction' | 'mirror_enabled' | 'mirror_status' | 'mirror_last_error' | 'mirror_last_sync_at'>
 
@@ -23,7 +23,6 @@ export function mirrorUiStatus(repo: MirrorStateFields | null | undefined): Mirr
     case 'ok':
     case 'error':
     case 'idle':
-    case 'skipped':
       return repo.mirror_status
   }
 

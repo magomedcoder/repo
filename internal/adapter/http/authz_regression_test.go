@@ -11,12 +11,10 @@ import (
 
 func TestPrivateBrowseEndpointsHiddenWithoutAccess(t *testing.T) {
 	env := newTestServer(t)
-	owner := loginUser(t, env, "idorowner", "idorowner@example.com", "password1")
-	outsider := loginUser(t, env, "idorother", "idorother@example.com", "password1")
+	owner := loginUser(t, env, "idorowner", "idorowner@example.com", "test-pass-1")
+	outsider := loginUser(t, env, "idorother", "idorother@example.com", "test-pass-1")
 
-	if r := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"vault","private":true}`, owner); r.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", r.StatusCode, r.Body)
-	}
+	vault := createRepo(t, env.Server, "vault", true, owner)
 
 	actions := []string{
 		"blob?path=README.md",
@@ -38,7 +36,7 @@ func TestPrivateBrowseEndpointsHiddenWithoutAccess(t *testing.T) {
 	} {
 		for _, action := range actions {
 			t.Run(viewer.name+"/"+action, func(t *testing.T) {
-				got := doJSON(t, env.Server, http.MethodGet, "/api/repos/vault/"+action, "", viewer.cookies)
+				got := doJSON(t, env.Server, http.MethodGet, "/api/repos/"+vault+"/"+action, "", viewer.cookies)
 				missing := doJSON(t, env.Server, http.MethodGet, "/api/repos/nosuchrepo/"+action, "", viewer.cookies)
 
 				if got.StatusCode != http.StatusNotFound {
@@ -55,10 +53,10 @@ func TestPrivateBrowseEndpointsHiddenWithoutAccess(t *testing.T) {
 
 func TestRevokeForeignTokenNotFound(t *testing.T) {
 	env := newTestServer(t)
-	alice := loginUser(t, env, "tokalice", "tokalice@example.com", "password1")
-	bob := loginUser(t, env, "tokbob", "tokbob@example.com", "password1")
+	alice := loginUser(t, env, "tokalice", "tokalice@example.com", "test-pass-1")
+	bob := loginUser(t, env, "tokbob", "tokbob@example.com", "test-pass-1")
 
-	created := doJSON(t, env.Server, http.MethodPost, "/api/tokens", `{"name":"ci","current_password":"password1"}`, alice)
+	created := doJSON(t, env.Server, http.MethodPost, "/api/tokens", `{"name":"ci","current_password":"test-pass-1"}`, alice)
 	if created.StatusCode != http.StatusCreated {
 		t.Fatalf("create token %d %s", created.StatusCode, created.Body)
 	}
@@ -72,7 +70,7 @@ func TestRevokeForeignTokenNotFound(t *testing.T) {
 	end := strings.IndexAny(rest, ",}")
 	id := rest[:end]
 
-	res := doJSON(t, env.Server, http.MethodDelete, "/api/tokens/"+id, `{"current_password":"password1"}`, bob)
+	res := doJSON(t, env.Server, http.MethodDelete, "/api/tokens/"+id, `{"current_password":"test-pass-1"}`, bob)
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("bob revoke alice token: %d %s", res.StatusCode, res.Body)
 	}
@@ -85,7 +83,7 @@ func TestRevokeForeignTokenNotFound(t *testing.T) {
 
 func TestAuthMeSessionStates(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "meuser", "meuser@example.com", "password1")
+	cookies := loginUser(t, env, "meuser", "meuser@example.com", "test-pass-1")
 
 	do := func(cookie *http.Cookie) (*http.Response, string) {
 		t.Helper()
@@ -143,7 +141,7 @@ func TestAuthMeSessionStates(t *testing.T) {
 
 func TestRevokeAllSessionsRequiresPassword(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "revall", "revall@example.com", "password1")
+	cookies := loginUser(t, env, "revall", "revall@example.com", "test-pass-1")
 
 	for _, tc := range []struct {
 		name string
@@ -152,7 +150,7 @@ func TestRevokeAllSessionsRequiresPassword(t *testing.T) {
 	}{
 		{"missing password", ``, http.StatusBadRequest},
 		{"wrong password", `{"current_password":"nope-nope"}`, http.StatusBadRequest},
-		{"correct password", `{"current_password":"password1"}`, http.StatusNoContent},
+		{"correct password", `{"current_password":"test-pass-1"}`, http.StatusNoContent},
 	} {
 		res := doJSON(t, env.Server, http.MethodPost, "/api/auth/sessions/revoke-all", tc.body, cookies)
 		if res.StatusCode != tc.want {
@@ -163,23 +161,21 @@ func TestRevokeAllSessionsRequiresPassword(t *testing.T) {
 
 func TestTeamGrantRequiresRepoAdmin(t *testing.T) {
 	env := newTestServer(t)
-	owner := loginUser(t, env, "tgowner", "tgowner@example.com", "password1")
-	mallory := loginUser(t, env, "tgmallory", "tgmallory@example.com", "password1")
+	owner := loginUser(t, env, "tgowner", "tgowner@example.com", "test-pass-1")
+	mallory := loginUser(t, env, "tgmallory", "tgmallory@example.com", "test-pass-1")
 
-	if r := doJSON(t, env.Server, http.MethodPost, "/api/repos", `{"name":"tgvault","private":true}`, owner); r.StatusCode != http.StatusCreated {
-		t.Fatalf("create repo %d %s", r.StatusCode, r.Body)
-	}
+	tgvault := createRepo(t, env.Server, "tgvault", true, owner)
 
 	if r := doJSON(t, env.Server, http.MethodPost, "/api/teams", `{"name":"Mallory Crew"}`, mallory); r.StatusCode != http.StatusCreated {
 		t.Fatalf("create team %d %s", r.StatusCode, r.Body)
 	}
 
-	res := doJSON(t, env.Server, http.MethodPost, "/api/teams/mallory-crew/repos", `{"repo":"tgvault","role":"admin"}`, mallory)
+	res := doJSON(t, env.Server, http.MethodPost, "/api/teams/mallory-crew/repos", `{"repo":"`+tgvault+`","role":"admin"}`, mallory)
 	if res.StatusCode != http.StatusNotFound && res.StatusCode != http.StatusForbidden {
 		t.Fatalf("outsider team grant: %d %s", res.StatusCode, res.Body)
 	}
 
-	if r := doJSON(t, env.Server, http.MethodGet, "/api/repos/tgvault", "", mallory); r.StatusCode != http.StatusNotFound {
+	if r := doJSON(t, env.Server, http.MethodGet, "/api/repos/"+tgvault, "", mallory); r.StatusCode != http.StatusNotFound {
 		t.Fatalf("mallory must still not see repo: %d %s", r.StatusCode, r.Body)
 	}
 
@@ -191,11 +187,11 @@ func TestTeamGrantRequiresRepoAdmin(t *testing.T) {
 		t.Fatalf("add member %d %s", r.StatusCode, r.Body)
 	}
 
-	if r := doJSON(t, env.Server, http.MethodPost, "/api/teams/writers/repos", `{"repo":"tgvault","role":"write"}`, owner); r.StatusCode != http.StatusOK {
+	if r := doJSON(t, env.Server, http.MethodPost, "/api/teams/writers/repos", `{"repo":"`+tgvault+`","role":"write"}`, owner); r.StatusCode != http.StatusOK {
 		t.Fatalf("owner grant %d %s", r.StatusCode, r.Body)
 	}
 
-	res = doJSON(t, env.Server, http.MethodPost, "/api/teams/mallory-crew/repos", `{"repo":"tgvault","role":"admin"}`, mallory)
+	res = doJSON(t, env.Server, http.MethodPost, "/api/teams/mallory-crew/repos", `{"repo":"`+tgvault+`","role":"admin"}`, mallory)
 	if res.StatusCode == http.StatusOK || res.StatusCode == http.StatusCreated {
 		t.Fatalf("write collaborator granted team on repo: %d %s", res.StatusCode, res.Body)
 	}
@@ -207,7 +203,7 @@ func TestLoginLogoutRotateCSRF(t *testing.T) {
 	if _, err := env.Auth.CreateUser(t.Context(), usecase.RegisterInput{
 		Username: "csrfuser",
 		Email:    "csrfuser@example.com",
-		Password: "password1",
+		Password: "test-pass-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +214,7 @@ func TestLoginLogoutRotateCSRF(t *testing.T) {
 		t.Fatalf("no anonymous csrf cookie: %v", anon.Cookies)
 	}
 
-	login := doJSON(t, env.Server, http.MethodPost, "/api/auth/login", `{"login":"csrfuser","password":"password1"}`, anon.Cookies)
+	login := doJSON(t, env.Server, http.MethodPost, "/api/auth/login", `{"login":"csrfuser","password":"test-pass-1"}`, anon.Cookies)
 	if login.StatusCode != http.StatusOK {
 		t.Fatalf("login %d %s", login.StatusCode, login.Body)
 	}

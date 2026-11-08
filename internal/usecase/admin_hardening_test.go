@@ -87,7 +87,7 @@ func TestAdminCreateRequiresPassword(t *testing.T) {
 	if _, err := uc.Create(context.Background(), 1, AdminCreateInput{
 		Username: "newbie",
 		Email:    "newbie@example.com",
-		Password: "password1",
+		Password: "test-pass-1",
 		Role:     domain.RoleUser,
 	}); err != ErrPasswordRequired {
 		t.Fatalf("empty step-up: %v", err)
@@ -96,7 +96,7 @@ func TestAdminCreateRequiresPassword(t *testing.T) {
 	if _, err := uc.Create(context.Background(), 1, AdminCreateInput{
 		Username:        "newbie",
 		Email:           "newbie@example.com",
-		Password:        "password1",
+		Password:        "test-pass-1",
 		Role:            domain.RoleAdmin,
 		CurrentPassword: "wrong",
 	}); err != ErrCurrentPasswordWrong {
@@ -106,7 +106,7 @@ func TestAdminCreateRequiresPassword(t *testing.T) {
 	item, err := uc.Create(context.Background(), 1, AdminCreateInput{
 		Username:        "newbie",
 		Email:           "newbie@example.com",
-		Password:        "password1",
+		Password:        "test-pass-1",
 		Role:            domain.RoleAdmin,
 		CurrentPassword: "secret",
 	})

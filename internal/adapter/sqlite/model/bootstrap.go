@@ -20,5 +20,6 @@ func BootstrapModels() []any {
 		&AccessLog{},
 		&MirrorSyncEvent{},
 		&MirrorGroup{},
+		&RepoNameHold{},
 	}
 }

@@ -105,10 +105,60 @@ export interface RepoSummary {
 }
 
 export type MirrorDirection = 'pull' | 'push'
-export type MirrorStatusKind = 'idle' | 'syncing' | 'ok' | 'error' | 'paused' | 'skipped'
+export type MirrorStatusKind = 'idle' | 'syncing' | 'ok' | 'error' | 'paused'
 export type MirrorConflictPolicy = 'force' | 'reject'
 export type MirrorSyncTrigger = 'manual' | 'schedule' | 'push' | 'merge' | 'configure' | 'bulk'
-export type MirrorSyncEventStatus = 'ok' | 'failed' | 'skipped' | 'running'
+export type MirrorSyncEventStatus = 'ok' | 'failed' | 'running'
+
+export type MirrorFields = {
+  direction?: MirrorDirection | string
+  status?: MirrorStatusKind | string
+  url?: string
+  username?: string
+  interval?: string
+  sync_window?: string
+  force?: boolean
+  prune?: boolean
+  refspecs?: string
+  max_bytes?: number
+  conflict_policy?: MirrorConflictPolicy | string
+  insecure_tls?: boolean
+  fail_count?: number
+  last_sync_at?: string
+  last_error?: string
+  next_sync_at?: string
+  last_progress?: string
+  remote_head?: string
+  owner_only?: boolean
+  has_password?: boolean
+  has_ssh_key?: boolean
+  enabled?: boolean
+}
+
+export interface MirrorConfigureBody {
+  enabled?: boolean
+  clear?: boolean
+  direction?: MirrorDirection | string
+  url?: string
+  username?: string
+  password?: string
+  clear_password?: boolean
+  ssh_private_key?: string
+  ssh_passphrase?: string
+  clear_ssh_key?: boolean
+  interval?: string
+  sync_window?: string
+  force?: boolean
+  prune?: boolean
+  refspecs?: string
+  max_bytes?: number
+  conflict_policy?: MirrorConflictPolicy | string
+  insecure_tls?: boolean
+  pinned_hosts?: string
+  owner_only?: boolean
+  verify_signed?: boolean
+  current_password?: string
+}
 
 export interface Repository {
   id: number
@@ -135,12 +185,11 @@ export interface Repository {
   mirror_force?: boolean
   mirror_prune?: boolean
   mirror_refspecs?: string
-  mirror_lfs?: boolean
-  mirror_partial?: boolean
   mirror_verify_signed?: boolean
   mirror_max_bytes?: number
   mirror_conflict_policy?: MirrorConflictPolicy | string
   mirror_insecure_tls?: boolean
+  mirror_pinned_hosts?: string
   mirror_fail_count?: number
   mirror_next_sync_at?: string
   mirror_last_progress?: string
@@ -154,30 +203,9 @@ export interface Repository {
   updated_at: string
 }
 
-export interface MirrorStatus {
+export interface MirrorStatus extends MirrorFields {
   enabled: boolean
-  direction?: MirrorDirection | string
   status: MirrorStatusKind | string
-  url?: string
-  username?: string
-  has_password?: boolean
-  has_ssh_key?: boolean
-  interval?: string
-  sync_window?: string
-  force?: boolean
-  prune?: boolean
-  refspecs?: string
-  lfs?: boolean
-  max_bytes?: number
-  conflict_policy?: MirrorConflictPolicy | string
-  insecure_tls?: boolean
-  fail_count?: number
-  last_sync_at?: string
-  last_error?: string
-  next_sync_at?: string
-  last_progress?: string
-  remote_head?: string
-  owner_only?: boolean
 }
 
 export interface MirrorSyncEvent {
@@ -330,6 +358,7 @@ export interface AccessToken {
   name: string
   prefix: string
   scope: string
+  repo_ids?: number[]
   created_at: string
   last_used_at?: string
   expires_at?: string

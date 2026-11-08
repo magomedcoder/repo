@@ -93,3 +93,68 @@ func TestFailCapsKeysPerScope(t *testing.T) {
 		t.Fatalf("total keys = %d", len(c.fails))
 	}
 }
+
+func TestSweepKeepsLockedEntries(t *testing.T) {
+	t.Parallel()
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	c := New(Config{
+		MaxFails: 2,
+		BaseLock: 2 * time.Hour,
+		Now:      clk.now,
+	})
+
+	c.Fail("k")
+	if !c.Fail("k") {
+		t.Fatal("expected lock after MaxFails")
+	}
+
+	clk.advance(idleTTL + time.Minute)
+	c.Sweep()
+	if !c.Locked("k") {
+		t.Fatal("locked entry must survive sweep while lockedUntil is in the future")
+	}
+}
+
+func TestLockLevelEscalatesAndDecays(t *testing.T) {
+	t.Parallel()
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	c := New(Config{
+		MaxFails: 1,
+		BaseLock: time.Minute,
+		Now:      clk.now,
+	})
+	m := c.(*memory)
+
+	if !c.Fail("k") {
+		t.Fatal("first lock")
+	}
+
+	clk.advance(time.Minute + time.Second)
+	c.Sweep()
+	if c.Locked("k") {
+		t.Fatal("lock should have expired")
+	}
+
+	if !c.Fail("k") {
+		t.Fatal("second lock")
+	}
+
+	m.mu.Lock()
+	level := m.fails["k"].lockLevel
+	m.mu.Unlock()
+	if level != 2 {
+		t.Fatalf("lockLevel should escalate across unlock, got %d", level)
+	}
+
+	clk.advance(2*time.Minute + idleTTL + time.Minute)
+	if !c.Fail("k") {
+		t.Fatal("third lock")
+	}
+
+	m.mu.Lock()
+	level = m.fails["k"].lockLevel
+	m.mu.Unlock()
+	if level != 1 {
+		t.Fatalf("lockLevel should decay after idleTTL, got %d", level)
+	}
+}

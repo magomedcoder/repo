@@ -40,7 +40,6 @@ type Repository struct {
 	MirrorSSHPassphrase  string
 	MirrorInsecureTLS    bool
 	MirrorPinnedHosts    string
-	MirrorLFS            bool
 	MirrorMaxBytes       int64
 	MirrorConflictPolicy string
 	MirrorStatus         string
@@ -50,7 +49,6 @@ type Repository struct {
 	MirrorRemoteHEAD     string
 	MirrorOwnerOnly      bool
 	MirrorGroupID        uint
-	MirrorPartial        bool
 	MirrorVerifySigned   bool
 	LastActivityAt       *time.Time
 	CreatedAt            time.Time
@@ -86,7 +84,7 @@ type RepositoryStore interface {
 
 	CountByOwnerID(ownerID uint) (int64, error)
 
-	ListPublicIDsByOwner(ctx context.Context, ownerID uint) ([]uint, error)
+	ListIDsByOwner(ctx context.Context, ownerID uint) ([]uint, error)
 
 	ListPublic(ctx context.Context, limit, offset int, order RepoOrder) ([]Repository, error)
 
@@ -114,13 +112,19 @@ type RepositoryStore interface {
 
 	SearchAccessible(ctx context.Context, query string, viewerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
 
-	ListAccessible(ctx context.Context, viewerID uint, limit, offset int, order RepoOrder) ([]Repository, error)
-
 	ExistsByName(name string) (bool, error)
 
 	TouchLastActivity(id uint, at time.Time) error
 
-	PurgeSoftDeleted(ctx context.Context, before time.Time) ([]uint, error)
+	PurgeSoftDeleted(ctx context.Context, before time.Time) (paths []string, ids []uint, err error)
+}
+
+type RepoNameHoldStore interface {
+	Hold(ctx context.Context, name string, expiresAt time.Time) error
+
+	IsHeld(ctx context.Context, name string, now time.Time) (bool, error)
+
+	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }
 
 type BareInitOptions struct {
@@ -320,10 +324,6 @@ type GitRepository interface {
 	GetStats(repoPath, ref string) (*RepoStats, error)
 
 	FindReadme(repoPath, ref string) (*BlobContent, error)
-
-	Grep(ctx context.Context, repoPath, query string, limit int) ([]CodeSearchHit, error)
-
-	TipSHA(repoPath string) (string, error)
 
 	WalkTextFiles(ctx context.Context, repoPath string) (tipSHA string, files []IndexedTextFile, err error)
 }

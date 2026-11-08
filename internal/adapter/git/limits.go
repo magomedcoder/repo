@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
-	"sync"
 	"time"
-	"unicode"
 
 	"magomedcoder.ru/repo/internal/domain"
 	"magomedcoder.ru/repo/pkg/fsutil"
+	"magomedcoder.ru/repo/pkg/gitref"
+	"magomedcoder.ru/repo/pkg/syncutil"
 )
 
 const (
@@ -21,7 +19,6 @@ const (
 	maxBlameFileBytes    = 2 << 20
 	maxConcurrentBlames  = 4
 	maxConcurrentDiffs   = 8
-	maxRefNameLen        = 255
 )
 
 var (
@@ -35,60 +32,24 @@ var blameSem = make(chan struct{}, maxConcurrentBlames)
 
 var diffSem = make(chan struct{}, maxConcurrentDiffs)
 
+var repoLocks syncutil.KeyedMutex
+
 func acquireSem(ctx context.Context, sem chan struct{}) (func(), error) {
 	return acquireSemWithTimeout(ctx, sem, semAcquireTimeout)
 }
 
 func acquireSemWithTimeout(ctx context.Context, sem chan struct{}, wait time.Duration) (func(), error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	select {
-	case sem <- struct{}{}:
-		return func() { <-sem }, nil
-	default:
-	}
-
-	t := time.NewTimer(wait)
-	defer t.Stop()
-
-	select {
-	case sem <- struct{}{}:
-		return func() { <-sem }, nil
-	case <-t.C:
+	release, err := syncutil.Acquire(ctx, sem, wait)
+	if errors.Is(err, syncutil.ErrBusy) {
 		return nil, domain.ErrBusy
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
+
+	return release, err
 }
 
 func validateRefName(ref string) error {
-	if ref == "" {
-		return nil
-	}
-
-	if len(ref) > maxRefNameLen {
+	if err := gitref.Validate(ref); err != nil {
 		return fmt.Errorf("%w: invalid ref name", ErrRefNotFound)
-	}
-
-	if strings.Contains(ref, "..") || strings.Contains(ref, "@{") || strings.Contains(ref, "//") ||
-		strings.HasPrefix(ref, "-") || strings.HasPrefix(ref, "/") || strings.HasSuffix(ref, "/") ||
-		strings.HasSuffix(ref, ".") || strings.HasSuffix(ref, ".lock") {
-		return fmt.Errorf("%w: invalid ref name", ErrRefNotFound)
-	}
-
-	for _, c := range ref {
-		switch {
-		case unicode.IsLetter(c), unicode.IsDigit(c):
-		case strings.ContainsRune("-_./+@#=,", c):
-		default:
-			return fmt.Errorf("%w: invalid ref name", ErrRefNotFound)
-		}
 	}
 
 	return nil
@@ -102,16 +63,6 @@ func checkCtx(ctx context.Context) error {
 	return ctx.Err()
 }
 
-type repoLockEntry struct {
-	mu   sync.Mutex
-	refs int
-}
-
-var (
-	repoLocksMu sync.Mutex
-	repoLocks   = map[string]*repoLockEntry{}
-)
-
 func (r *Repository) lockKey(path string) string {
 	if safe, err := fsutil.SafePath(r.Root, path); err == nil {
 		return safe
@@ -121,53 +72,14 @@ func (r *Repository) lockKey(path string) string {
 }
 
 func (r *Repository) LockRepo(path string) func() {
-	return lockRepoKey(r.lockKey(path))
-}
-
-func lockRepoKey(key string) func() {
-	repoLocksMu.Lock()
-	e := repoLocks[key]
-	if e == nil {
-		e = &repoLockEntry{}
-		repoLocks[key] = e
-	}
-
-	e.refs++
-	repoLocksMu.Unlock()
-
-	e.mu.Lock()
-
-	return func() {
-		e.mu.Unlock()
-		repoLocksMu.Lock()
-		e.refs--
-		if e.refs == 0 {
-			delete(repoLocks, key)
-		}
-		repoLocksMu.Unlock()
-	}
+	return repoLocks.Lock(r.lockKey(path))
 }
 
 func (r *Repository) lockRepos(paths ...string) func() {
 	keys := make([]string, 0, len(paths))
-	seen := map[string]bool{}
 	for _, p := range paths {
-		k := r.lockKey(p)
-		if !seen[k] {
-			seen[k] = true
-			keys = append(keys, k)
-		}
+		keys = append(keys, r.lockKey(p))
 	}
 
-	slices.Sort(keys)
-	unlocks := make([]func(), 0, len(keys))
-	for _, k := range keys {
-		unlocks = append(unlocks, lockRepoKey(k))
-	}
-
-	return func() {
-		for _, unlock := range slices.Backward(unlocks) {
-			unlock()
-		}
-	}
+	return repoLocks.LockAll(keys...)
 }

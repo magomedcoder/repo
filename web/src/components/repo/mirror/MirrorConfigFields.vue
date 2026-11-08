@@ -27,12 +27,11 @@ const syncWindow = defineModel<string>('syncWindow', { required: true })
 const force = defineModel<boolean>('force', { required: true })
 const prune = defineModel<boolean>('prune', { required: true })
 const refspecs = defineModel<string>('refspecs', { required: true })
-const lfs = defineModel<boolean>('lfs', { required: true })
-const partial = defineModel<boolean>('partial', { required: true })
 const verifySigned = defineModel<boolean>('verifySigned', { required: true })
 const maxMiB = defineModel<string>('maxMiB', { required: true })
 const conflictPolicy = defineModel<MirrorConflictPolicy>('conflictPolicy', { required: true })
 const insecureTLS = defineModel<boolean>('insecureTLS', { required: true })
+const pinnedHosts = defineModel<string>('pinnedHosts', { required: true })
 const ownerOnly = defineModel<boolean>('ownerOnly', { required: true })
 </script>
 
@@ -159,18 +158,6 @@ const ownerOnly = defineModel<boolean>('ownerOnly', { required: true })
       <span class="mt-1 block text-xs text-ink-muted">{{ $t('mirrorForm.conflictHint') }}</span>
     </label>
 
-    <label class="flex items-center gap-2 text-sm text-ink-muted">
-      <input v-model="lfs" type="checkbox" class="accent-ink" disabled>
-      {{ $t('mirrorForm.lfs') }}
-    </label>
-    <p class="-mt-2 text-xs text-ink-muted">{{ $t('mirrorForm.lfsUnavailable') }}</p>
-
-    <label class="flex items-center gap-2 text-sm text-ink-muted">
-      <input v-model="partial" type="checkbox" class="accent-ink" disabled>
-      {{ $t('mirrorForm.partial') }}
-    </label>
-    <p class="-mt-2 text-xs text-ink-muted">{{ $t('mirrorForm.partialUnavailable') }}</p>
-
     <label class="flex items-center gap-2 text-sm">
       <input v-model="verifySigned" type="checkbox" class="accent-ink">
       {{ $t('mirrorForm.verifySigned') }}
@@ -194,6 +181,19 @@ const ownerOnly = defineModel<boolean>('ownerOnly', { required: true })
       <p v-if="insecureTLS" class="rounded-lg border border-line bg-warn-soft px-2 py-1.5 text-xs text-warn">
         {{ $t('mirrorForm.insecureTlsWarn') }}
       </p>
+      <label v-if="insecureTLS" class="block text-sm">
+        <span class="mb-1 block font-semibold">{{ $t('mirrorForm.pinnedHosts') }}</span>
+        <input
+          v-model="pinnedHosts"
+          type="text"
+          required
+          spellcheck="false"
+          :class="[inputCls, 'font-mono']"
+          :placeholder="$t('mirrorForm.pinnedHostsPlaceholder')"
+          autocomplete="off"
+        >
+        <span class="mt-1 block text-xs text-ink-muted">{{ $t('mirrorForm.pinnedHostsHint') }}</span>
+      </label>
     </template>
 
     <label class="flex items-center gap-2 text-sm">

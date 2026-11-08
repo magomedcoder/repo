@@ -30,6 +30,7 @@ func (s *AccessToken) Create(token *domain.AccessToken) error {
 		TokenHash: token.TokenHash,
 		Prefix:    token.Prefix,
 		Scope:     scope,
+		RepoIDs:   model.EncodeRepoIDs(token.RepoIDs),
 		ExpiresAt: token.ExpiresAt,
 	}
 	if err := s.Repo.Create(context.Background(), m); err != nil {

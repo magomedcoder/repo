@@ -1,7 +1,7 @@
 package sqlite
 
-import "strings"
+import "magomedcoder.ru/repo/pkg/sqlutil"
 
 func escapeLike(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+	return sqlutil.EscapeLike(s)
 }

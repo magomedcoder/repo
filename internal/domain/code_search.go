@@ -3,16 +3,13 @@ package domain
 import "context"
 
 type CodeIndexFile struct {
-	RepoID uint
-	Path   string
-	TipSHA string
-	Body   string
+	Path string
+	Body string
 }
 
 type CodeIndexHit struct {
 	RepoID uint
 	Path   string
-	TipSHA string
 	Body   string
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,7 +33,7 @@ type GitHandler struct {
 }
 
 func NewGitHandler(git *usecase.GitUseCase) *GitHandler {
-	return &GitHandler{git: git, receiveMaxBytes: 512 << 20}
+	return &GitHandler{git: git, receiveMaxBytes: 256 << 20}
 }
 
 func (h *GitHandler) SetAccessLogger(log *audit.Logger) {
@@ -117,7 +118,7 @@ func (h *GitHandler) servePack(w http.ResponseWriter, r *http.Request, repoPath 
 
 		limit = h.receiveMaxBytes
 		if limit <= 0 {
-			limit = 512 << 20
+			limit = 256 << 20
 		}
 		if repo.ProtectDefaultBranch {
 			receive = &domain.ReceivePackOptions{
@@ -188,6 +189,12 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 			h.challengeGitAuth(w, r, authErr)
 			return nil, nil, authErr
 		}
+
+		if !presented && (service == usecase.GitReceivePack || h.git.AnonymousReadDenied()) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return nil, nil, usecase.ErrUnauthorized
+		}
 		http.Error(w, "not found", http.StatusNotFound)
 
 		return nil, nil, err
@@ -195,6 +202,18 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 
 	needAuth := repo.IsPrivate || service == usecase.GitReceivePack
 	if needAuth && authErr != nil {
+		if !presented && service == usecase.GitReceivePack {
+			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return nil, nil, usecase.ErrUnauthorized
+		}
+
+		if !presented && h.git.AnonymousReadDenied() {
+			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return nil, nil, usecase.ErrUnauthorized
+		}
+
 		if !presented && repo.IsPrivate {
 			http.Error(w, "not found", http.StatusNotFound)
 			return nil, nil, usecase.ErrRepoNotFound
@@ -210,16 +229,38 @@ func (h *GitHandler) resolveAndAuth(w http.ResponseWriter, r *http.Request, repo
 
 	if err := h.git.Authorize(r.Context(), repo, viewer, service); err != nil {
 		if errors.Is(err, usecase.ErrUnauthorized) {
+			if !presented && service == usecase.GitReceivePack {
+				w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return nil, nil, err
+			}
+
+			if !presented && h.git.AnonymousReadDenied() {
+				w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return nil, nil, err
+			}
+
 			if !presented && repo.IsPrivate {
 				http.Error(w, "not found", http.StatusNotFound)
 				return nil, nil, err
 			}
+
 			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return nil, nil, err
 		}
 		if errors.Is(err, usecase.ErrMirrorReadOnly) {
 			http.Error(w, "mirror is read-only", http.StatusForbidden)
+			return nil, nil, err
+		}
+		if errors.Is(err, usecase.ErrRepoForbidden) {
+			if service == usecase.GitReceivePack {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return nil, nil, err
+			}
+			http.Error(w, "not found", http.StatusNotFound)
+
 			return nil, nil, err
 		}
 
@@ -255,7 +296,17 @@ func (h *GitHandler) challengeGitAuth(w http.ResponseWriter, r *http.Request, au
 	}
 
 	if errors.Is(authErr, usecase.ErrTooManyAttempts) {
+		login, _, _ := r.BasicAuth()
+		if ra := h.git.LoginRetryAfter(r.Context(), login, middleware.ClientIPKey(r)); ra > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(ra.Seconds())+1))
+		}
 		http.Error(w, "too many attempts", http.StatusTooManyRequests)
+		return
+	}
+
+	if errors.Is(authErr, usecase.ErrBusy) {
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, "server busy", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -266,7 +317,7 @@ func (h *GitHandler) challengeGitAuth(w http.ResponseWriter, r *http.Request, au
 func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) {
 	if user, pass, ok := r.BasicAuth(); ok {
 		u, err := h.git.Authenticate(r.Context(), middleware.ClientIPKey(r), user, pass)
-		if errors.Is(err, usecase.ErrTooManyAttempts) {
+		if errors.Is(err, usecase.ErrTooManyAttempts) || errors.Is(err, usecase.ErrBusy) {
 			return nil, err
 		}
 
@@ -281,7 +332,7 @@ func (h *GitHandler) authenticateRequest(r *http.Request) (*domain.User, error) 
 	if len(auth) > 7 && strings.EqualFold(auth[:7], "bearer ") {
 		tok := strings.TrimSpace(auth[7:])
 		u, err := h.git.Authenticate(r.Context(), middleware.ClientIPKey(r), "", tok)
-		if errors.Is(err, usecase.ErrTooManyAttempts) {
+		if errors.Is(err, usecase.ErrTooManyAttempts) || errors.Is(err, usecase.ErrBusy) {
 			return nil, err
 		}
 

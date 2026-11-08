@@ -56,12 +56,10 @@ type configureMirrorRequest struct {
 	ClearSSHKey     bool    `json:"clear_ssh_key"`
 	InsecureTLS     *bool   `json:"insecure_tls"`
 	PinnedHosts     *string `json:"pinned_hosts"`
-	LFS             *bool   `json:"lfs"`
 	MaxBytes        *int64  `json:"max_bytes"`
 	ConflictPolicy  *string `json:"conflict_policy"`
 	OwnerOnly       *bool   `json:"owner_only"`
 	GroupID         *uint   `json:"group_id"`
-	Partial         *bool   `json:"partial"`
 	VerifySigned    *bool   `json:"verify_signed"`
 	CurrentPassword string  `json:"current_password"`
 }
@@ -121,6 +119,10 @@ func (h *RepositoryHandler) List(c *httpx.Context) error {
 	scope := c.Query("scope")
 	q := strings.TrimSpace(c.Query("q"))
 	user, loggedIn := middleware.UserFromContext(c.Ctx())
+	if !loggedIn && h.repos.AnonymousReadDenied() {
+		return mapError(c, usecase.ErrUnauthorized)
+	}
+
 	publicOnly := scope == "public" || scope == "home" || !loggedIn
 
 	var ownerID uint
@@ -320,18 +322,16 @@ func (h *RepositoryHandler) Delete(c *httpx.Context) error {
 		return c.Error(http.StatusBadRequest, err.Error())
 	}
 
-	confirm := ""
-	currentPassword := ""
-	if req, bindErr := httpx.BindJSON[deleteRepoRequest](c); bindErr == nil {
-		confirm = req.Confirm
-		currentPassword = req.CurrentPassword
+	req, bindErr := httpx.BindJSON[deleteRepoRequest](c)
+	if bindErr != nil {
+		return c.Error(http.StatusBadRequest, "invalid_json")
 	}
 
 	err = h.repos.Delete(c.Ctx(), usecase.DeleteRepositoryInput{
 		Name:            name,
 		ViewerID:        user.ID,
-		Confirm:         confirm,
-		CurrentPassword: currentPassword,
+		Confirm:         req.Confirm,
+		CurrentPassword: req.CurrentPassword,
 	})
 	if err != nil {
 		return mapError(c, err)
@@ -385,12 +385,10 @@ func (h *RepositoryHandler) ConfigureMirror(c *httpx.Context) error {
 		ClearSSHKey:     req.ClearSSHKey,
 		InsecureTLS:     req.InsecureTLS,
 		PinnedHosts:     req.PinnedHosts,
-		LFS:             req.LFS,
 		MaxBytes:        req.MaxBytes,
 		ConflictPolicy:  req.ConflictPolicy,
 		OwnerOnly:       req.OwnerOnly,
 		GroupID:         req.GroupID,
-		Partial:         req.Partial,
 		VerifySigned:    req.VerifySigned,
 		CurrentPassword: req.CurrentPassword,
 	})

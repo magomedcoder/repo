@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { cloneUrl } from '@/api'
+import { useAnchoredMenu } from '@/composables/useAnchoredMenu'
 import Icon from '@/components/ui/Icon.vue'
 
 const props = defineProps<{
@@ -9,8 +10,17 @@ const props = defineProps<{
 
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
+const menu = ref<HTMLElement | null>(null)
 const copied = ref(false)
 let copiedTimer: ReturnType<typeof setTimeout> | undefined
+
+const { style: menuStyle, place: placeMenu } = useAnchoredMenu({
+  open,
+  anchor: root,
+  menu,
+  width: 'min(22rem, calc(100vw - 2rem))',
+  align: 'end',
+})
 
 const url = () => cloneUrl(props.repoPath)
 
@@ -40,13 +50,16 @@ async function copy() {
 }
 
 function onDocPointerDown(ev: PointerEvent) {
-  if (!(ev.target instanceof Node)) {
+  if (!(ev.target instanceof Node) || !open.value) {
     return
   }
-  
-  if (open.value && root.value && !root.value.contains(ev.target)) {
-    close()
+
+  const target = ev.target
+  if (root.value?.contains(target) || menu.value?.contains(target)) {
+    return
   }
+
+  close()
 }
 
 function onDocKeydown(ev: KeyboardEvent) {
@@ -81,29 +94,37 @@ onUnmounted(() => {
       <Icon name="chevron-down" size="sm" />
     </button>
 
-    <Transition name="pop">
-      <div
-        v-if="open"
-        role="dialog"
-        :aria-label="$t('repo.clone')"
-        class="glass-menu absolute right-0 top-full z-[70] mt-1 w-[min(22rem,calc(100vw-2rem))] p-3"
-      >
-        <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-          {{ $t('repo.cloneHttps') }}
-        </p>
-        <div class="flex gap-2">
-          <input
-            class="field font-mono text-[11px]"
-            :value="url()"
-            readonly
-            @focus="($event.target as HTMLInputElement).select()"
-          >
-          <button type="button" class="btn shrink-0" @click="copy">
-            <Icon :name="copied ? 'check' : 'copy'" size="sm" />
-            {{ copied ? $t('repo.copied') : $t('common.copy') }}
-          </button>
+    <Teleport to="body">
+      <Transition name="pop">
+        <div
+          v-if="open"
+          ref="menu"
+          role="dialog"
+          :aria-label="$t('repo.clone')"
+          class="glass-menu p-3"
+          :style="menuStyle"
+          @vue:mounted="placeMenu"
+        >
+          <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+            {{ $t('repo.cloneHttps') }}
+          </p>
+          <div class="flex gap-2">
+            <input
+              class="field font-mono text-[11px]"
+              :value="url()"
+              readonly
+              @focus="($event.target as HTMLInputElement).select()"
+            >
+            <button type="button" class="btn shrink-0" @click="copy">
+              <Icon :name="copied ? 'check' : 'copy'" size="sm" />
+              {{ copied ? $t('repo.copied') : $t('common.copy') }}
+            </button>
+          </div>
+          <p class="mt-2 text-[11px] leading-snug text-ink-muted">
+            {{ $t('repo.cloneAuthHint') }}
+          </p>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>

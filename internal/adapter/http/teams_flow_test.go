@@ -19,7 +19,7 @@ func TestGuestCannotUseTeams(t *testing.T) {
 
 func TestOrgGroupAPIRemoved(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "nogroups", "nogroups@example.com", "password1")
+	cookies := loginUser(t, env, "nogroups", "nogroups@example.com", "test-pass-1")
 
 	for _, path := range []string{"/api/groups", "/api/folders", "/api/admin/groups", "/api/admin/folders"} {
 		res := doJSON(t, env.Server, http.MethodGet, path, "", cookies)
@@ -37,21 +37,14 @@ func TestOrgGroupAPIRemoved(t *testing.T) {
 func TestTeamsGlobalFlow(t *testing.T) {
 	env := newTestServer(t)
 	srv := env.Server
-	utest := loginUser(t, env, "utest", "utest@example.com", "password1")
-	utest2 := loginUser(t, env, "utest2", "utest2@example.com", "password1")
-	carol := loginUser(t, env, "carol", "carol@example.com", "password1")
+	utest := loginUser(t, env, "utest", "utest@example.com", "test-pass-1")
+	utest2 := loginUser(t, env, "utest2", "utest2@example.com", "test-pass-1")
+	carol := loginUser(t, env, "carol", "carol@example.com", "test-pass-1")
 
-	if res := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"work","private":true}`, utest); res.StatusCode != http.StatusCreated {
-		t.Fatalf("create repo %d %s", res.StatusCode, res.Body)
-	}
+	work := createRepo(t, srv, "work", true, utest)
 
-	if res := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"utest2s-secret","private":true}`, utest2); res.StatusCode != http.StatusCreated {
-		t.Fatalf("create utest2 repo %d %s", res.StatusCode, res.Body)
-	}
-
-	if res := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"utest2s-public"}`, utest2); res.StatusCode != http.StatusCreated {
-		t.Fatalf("create utest2 public repo %d %s", res.StatusCode, res.Body)
-	}
+	secret2 := createRepo(t, srv, "utest2s-secret", true, utest2)
+	public2 := createRepo(t, srv, "utest2s-public", false, utest2)
 
 	created := doJSON(t, srv, http.MethodPost, "/api/teams", `{"name":"Core Devs"}`, utest)
 	if created.StatusCode != http.StatusCreated {
@@ -102,11 +95,11 @@ func TestTeamsGlobalFlow(t *testing.T) {
 		t.Fatalf("list members %d %s", members.StatusCode, members.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodGet, "/api/repos/work", "", utest2); res.StatusCode != http.StatusNotFound {
+	if res := doJSON(t, srv, http.MethodGet, "/api/repos/"+work, "", utest2); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("utest2 before grant %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"work","role":"write"}`, utest); res.StatusCode != http.StatusOK {
+	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"`+work+`","role":"write"}`, utest); res.StatusCode != http.StatusOK {
 		t.Fatalf("grant repo %d %s", res.StatusCode, res.Body)
 	}
 
@@ -125,7 +118,7 @@ func TestTeamsGlobalFlow(t *testing.T) {
 		t.Fatalf("grants body %s err=%v", grants.Body, err)
 	}
 
-	got := doJSON(t, srv, http.MethodGet, "/api/repos/work", "", utest2)
+	got := doJSON(t, srv, http.MethodGet, "/api/repos/"+work, "", utest2)
 	if got.StatusCode != http.StatusOK {
 		t.Fatalf("utest2 after grant %d %s", got.StatusCode, got.Body)
 	}
@@ -139,11 +132,11 @@ func TestTeamsGlobalFlow(t *testing.T) {
 		t.Fatalf("utest2 caps %s err=%v", got.Body, err)
 	}
 
-	if res := doJSON(t, srv, http.MethodGet, "/api/repos/work/issues", "", utest2); res.StatusCode != http.StatusOK {
+	if res := doJSON(t, srv, http.MethodGet, "/api/repos/"+work+"/issues", "", utest2); res.StatusCode != http.StatusOK {
 		t.Fatalf("utest2 issues %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodGet, "/api/repos/work", "", carol); res.StatusCode != http.StatusNotFound {
+	if res := doJSON(t, srv, http.MethodGet, "/api/repos/"+work, "", carol); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("carol is not on the team %d %s", res.StatusCode, res.Body)
 	}
 
@@ -155,11 +148,11 @@ func TestTeamsGlobalFlow(t *testing.T) {
 		t.Fatalf("utest2 delete utest team %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"utest2s-secret","role":"read"}`, utest); res.StatusCode != http.StatusNotFound {
+	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"`+secret2+`","role":"read"}`, utest); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("grant foreign private repo %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodDelete, base+"/repos/utest2s-secret", "", utest); res.StatusCode != http.StatusNotFound {
+	if res := doJSON(t, srv, http.MethodDelete, base+"/repos/"+secret2, "", utest); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("remove foreign private repo oracle %d %s", res.StatusCode, res.Body)
 	}
 
@@ -167,11 +160,11 @@ func TestTeamsGlobalFlow(t *testing.T) {
 		t.Fatalf("remove missing repo %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"utest2s-public","role":"read"}`, utest); res.StatusCode != http.StatusForbidden {
+	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"`+public2+`","role":"read"}`, utest); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("grant foreign public repo %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"work","role":"admin"}`, utest); res.StatusCode != http.StatusOK {
+	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"`+work+`","role":"admin"}`, utest); res.StatusCode != http.StatusOK {
 		t.Fatalf("set grant %d %s", res.StatusCode, res.Body)
 	}
 
@@ -184,7 +177,7 @@ func TestTeamsGlobalFlow(t *testing.T) {
 		t.Fatalf("remove member %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodGet, "/api/repos/work", "", utest2); res.StatusCode != http.StatusNotFound {
+	if res := doJSON(t, srv, http.MethodGet, "/api/repos/"+work, "", utest2); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("utest2 after removal %d %s", res.StatusCode, res.Body)
 	}
 
@@ -192,19 +185,19 @@ func TestTeamsGlobalFlow(t *testing.T) {
 		t.Fatalf("re-add member %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodGet, "/api/repos/work", "", utest2); res.StatusCode != http.StatusOK {
+	if res := doJSON(t, srv, http.MethodGet, "/api/repos/"+work, "", utest2); res.StatusCode != http.StatusOK {
 		t.Fatalf("utest2 re-added %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodDelete, base+"/repos/work", "", utest); res.StatusCode != http.StatusNoContent {
+	if res := doJSON(t, srv, http.MethodDelete, base+"/repos/"+work, "", utest); res.StatusCode != http.StatusNoContent {
 		t.Fatalf("revoke grant %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodGet, "/api/repos/work", "", utest2); res.StatusCode != http.StatusNotFound {
+	if res := doJSON(t, srv, http.MethodGet, "/api/repos/"+work, "", utest2); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("utest2 after revoke %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"work","role":"read"}`, utest); res.StatusCode != http.StatusOK {
+	if res := doJSON(t, srv, http.MethodPost, base+"/repos", `{"repo":"`+work+`","role":"read"}`, utest); res.StatusCode != http.StatusOK {
 		t.Fatalf("regrant %d %s", res.StatusCode, res.Body)
 	}
 
@@ -212,7 +205,7 @@ func TestTeamsGlobalFlow(t *testing.T) {
 		t.Fatalf("delete team %d %s", res.StatusCode, res.Body)
 	}
 
-	if res := doJSON(t, srv, http.MethodGet, "/api/repos/work", "", utest2); res.StatusCode != http.StatusNotFound {
+	if res := doJSON(t, srv, http.MethodGet, "/api/repos/"+work, "", utest2); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("utest2 after team delete %d %s", res.StatusCode, res.Body)
 	}
 
@@ -223,27 +216,20 @@ func TestTeamsGlobalFlow(t *testing.T) {
 
 func TestFlatRepoCreateAndDeepPathRejected(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "flat", "flat@example.com", "password1")
+	cookies := loginUser(t, env, "flat", "flat@example.com", "test-pass-1")
 	srv := env.Server
 
 	if res := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"api","private":false}`, cookies); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("reserved name %d %s", res.StatusCode, res.Body)
 	}
 
-	created := doJSON(t, srv, http.MethodPost, "/api/repos", `{"name":"notes","private":false}`, cookies)
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %s", created.StatusCode, created.Body)
-	}
-
-	var repo struct {
-		RepoPath string `json:"repo_path"`
-	}
-	if err := json.Unmarshal([]byte(created.Body), &repo); err != nil || repo.RepoPath != "notes.git" {
-		t.Fatalf("repo body %s err=%v", created.Body, err)
+	notes := createRepo(t, srv, "notes", false, cookies)
+	if notes != "notes" {
+		t.Fatalf("path key must be name, got %q", notes)
 	}
 
 	if res := doJSON(t, srv, http.MethodGet, "/api/repos/notes", "", cookies); res.StatusCode != http.StatusOK {
-		t.Fatalf("get %d %s", res.StatusCode, res.Body)
+		t.Fatalf("get by name %d %s", res.StatusCode, res.Body)
 	}
 
 	if res := doJSON(t, srv, http.MethodGet, "/api/repos/flat/notes", "", cookies); res.StatusCode == http.StatusOK {

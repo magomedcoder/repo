@@ -145,7 +145,7 @@ const {
             type="password"
             class="field"
             :required="!editing"
-            minlength="8"
+            minlength="10"
             autocomplete="new-password"
           >
         </label>

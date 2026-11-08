@@ -60,11 +60,49 @@ func InternalIP(ip net.IP) bool {
 		return true
 	}
 
+	if blockedEmbeddedIPv4(ip) {
+		return true
+	}
+
 	if ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x0d && ip[3] == 0xb8 { // 2001:db8::/32
 		return true
 	}
 
 	return false
+}
+
+func blockedEmbeddedIPv4(ip net.IP) bool {
+	ip = ip.To16()
+	if ip == nil {
+		return false
+	}
+
+	check := func(b []byte) bool {
+		v4 := net.IPv4(b[0], b[1], b[2], b[3])
+		return InternalIP(v4) || CloudMetadataHost(v4.String())
+	}
+
+	switch {
+	case ip[0] == 0x00 && ip[1] == 0x64 && ip[2] == 0xff && ip[3] == 0x9b: // 64:ff9b::/16
+		if ip[4] == 0 && ip[5] == 0 && ip[6] == 0 && ip[7] == 0 && ip[8] == 0 && ip[9] == 0 && ip[10] == 0 && ip[11] == 0 {
+			return check(ip[12:16]) // 64:ff9b::/96
+		}
+
+		return ip[4] == 0x00 && ip[5] == 0x01 // 64:ff9b:1::/48
+	case ip[0] == 0x20 && ip[1] == 0x02: // 2002::/16 6to4
+		return check(ip[2:6])
+	case ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x00 && ip[3] == 0x00: // 2001::/32
+		client := []byte{ip[12] ^ 0xff, ip[13] ^ 0xff, ip[14] ^ 0xff, ip[15] ^ 0xff}
+		return check(ip[4:8]) || check(client)
+	}
+
+	for _, b := range ip[:12] {
+		if b != 0 {
+			return false
+		}
+	}
+
+	return check(ip[12:16])
 }
 
 func CloudMetadataHost(host string) bool {

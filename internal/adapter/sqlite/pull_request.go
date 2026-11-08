@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
@@ -52,6 +53,26 @@ func (s *PullRequest) Update(pr *domain.PullRequest) error {
 	}
 
 	*pr = m.ToDomain()
+	return nil
+}
+
+func (s *PullRequest) MarkMerged(id, mergedBy uint, at time.Time) error {
+	res := s.DB(context.Background()).Model(&model.PullRequest{}).
+		Where("id = ? AND state = ?", id, "open").
+		Updates(map[string]any{
+			"state":      "merged",
+			"merged_at":  at,
+			"merged_by":  mergedBy,
+			"updated_at": at,
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return nil
+	}
+
 	return nil
 }
 

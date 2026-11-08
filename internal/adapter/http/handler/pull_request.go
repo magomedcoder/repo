@@ -38,9 +38,9 @@ func (h *PullRequestHandler) get(c *httpx.Context, in usecase.ResolveRepositoryI
 
 		return httpx.OK(c, pullsResponse{Pulls: items})
 	case "pull":
-		number, ok := parsePositive(extra[0])
-		if !ok {
-			return c.Error(http.StatusBadRequest, "pull_not_found")
+		number, err := requireExtraPositive(c, extra, "pull_not_found")
+		if err != nil {
+			return err
 		}
 
 		item, err := h.pulls.Get(c.Ctx(), in, number)
@@ -50,9 +50,9 @@ func (h *PullRequestHandler) get(c *httpx.Context, in usecase.ResolveRepositoryI
 
 		return httpx.OK(c, item)
 	case "pull-diff":
-		number, ok := parsePositive(extra[0])
-		if !ok {
-			return c.Error(http.StatusBadRequest, "pull_not_found")
+		number, err := requireExtraPositive(c, extra, "pull_not_found")
+		if err != nil {
+			return err
 		}
 
 		item, err := h.pulls.Diff(c.Ctx(), in, number)
@@ -61,18 +61,6 @@ func (h *PullRequestHandler) get(c *httpx.Context, in usecase.ResolveRepositoryI
 		}
 
 		return httpx.OK(c, item)
-	case "pull-commits":
-		number, ok := parsePositive(extra[0])
-		if !ok {
-			return c.Error(http.StatusBadRequest, "pull_not_found")
-		}
-
-		items, err := h.pulls.Commits(c.Ctx(), in, number)
-		if err != nil {
-			return mapError(c, err)
-		}
-
-		return httpx.OK(c, commitsResponse{Commits: items})
 	default:
 		return c.Error(http.StatusNotFound, "not_found")
 	}
@@ -81,43 +69,26 @@ func (h *PullRequestHandler) get(c *httpx.Context, in usecase.ResolveRepositoryI
 func (h *PullRequestHandler) post(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "pulls":
-		req, err := httpx.BindJSON[pullWriteRequest](c)
+		req, err := bindJSON[pullWriteRequest](c)
 		if err != nil {
-			return c.Error(http.StatusBadRequest, "invalid_json")
+			return err
 		}
 
-		title, body, base, head := "", "", "", ""
-		if req.Title != nil {
-			title = *req.Title
-		}
-
-		if req.Body != nil {
-			body = *req.Body
-		}
-
-		if req.BaseBranch != nil {
-			base = *req.BaseBranch
-		}
-
-		if req.HeadBranch != nil {
-			head = *req.HeadBranch
-		}
-
-		item, err := h.pulls.Create(c.Ctx(), in, title, body, base, head)
+		item, err := h.pulls.Create(c.Ctx(), in, derefStr(req.Title), derefStr(req.Body), derefStr(req.BaseBranch), derefStr(req.HeadBranch))
 		if err != nil {
 			return mapError(c, err)
 		}
 
 		return httpx.Created(c, item)
 	case "pull-comments":
-		number, ok := parsePositive(extra[0])
-		if !ok {
-			return c.Error(http.StatusBadRequest, "pull_not_found")
+		number, err := requireExtraPositive(c, extra, "pull_not_found")
+		if err != nil {
+			return err
 		}
 
-		req, err := httpx.BindJSON[commentWriteRequest](c)
+		req, err := bindJSON[commentWriteRequest](c)
 		if err != nil {
-			return c.Error(http.StatusBadRequest, "invalid_json")
+			return err
 		}
 
 		item, err := h.pulls.AddComment(c.Ctx(), in, number, req.Body)
@@ -127,12 +98,16 @@ func (h *PullRequestHandler) post(c *httpx.Context, in usecase.ResolveRepository
 
 		return httpx.Created(c, item)
 	case "pull-merge":
-		number, ok := parsePositive(extra[0])
-		if !ok {
-			return c.Error(http.StatusBadRequest, "pull_not_found")
+		number, err := requireExtraPositive(c, extra, "pull_not_found")
+		if err != nil {
+			return err
 		}
 
-		req, _ := httpx.BindJSON[pullMergeRequest](c)
+		req, err := bindJSON[pullMergeRequest](c)
+		if err != nil {
+			return err
+		}
+
 		item, err := h.pulls.Merge(c.Ctx(), in, number, req.Strategy)
 		if err != nil {
 			return mapError(c, err)
@@ -147,14 +122,14 @@ func (h *PullRequestHandler) post(c *httpx.Context, in usecase.ResolveRepository
 func (h *PullRequestHandler) patch(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "pull":
-		number, ok := parsePositive(extra[0])
-		if !ok {
-			return c.Error(http.StatusBadRequest, "pull_not_found")
+		number, err := requireExtraPositive(c, extra, "pull_not_found")
+		if err != nil {
+			return err
 		}
 
-		req, err := httpx.BindJSON[pullWriteRequest](c)
+		req, err := bindJSON[pullWriteRequest](c)
 		if err != nil {
-			return c.Error(http.StatusBadRequest, "invalid_json")
+			return err
 		}
 
 		item, err := h.pulls.Update(c.Ctx(), in, number, req.Title, req.Body, req.State, req.BaseBranch, req.HeadBranch)
@@ -164,15 +139,14 @@ func (h *PullRequestHandler) patch(c *httpx.Context, in usecase.ResolveRepositor
 
 		return httpx.OK(c, item)
 	case "pull-comment":
-		number, ok := parsePositive(extra[0])
-		commentID, okID := parsePositive(extra[1])
-		if !ok || !okID {
-			return c.Error(http.StatusBadRequest, "comment_not_found")
+		number, commentID, err := requireCommentIDs(c, extra)
+		if err != nil {
+			return err
 		}
 
-		req, err := httpx.BindJSON[commentWriteRequest](c)
+		req, err := bindJSON[commentWriteRequest](c)
 		if err != nil {
-			return c.Error(http.StatusBadRequest, "invalid_json")
+			return err
 		}
 
 		item, err := h.pulls.UpdateComment(c.Ctx(), in, number, uint(commentID), req.Body)
@@ -189,9 +163,9 @@ func (h *PullRequestHandler) patch(c *httpx.Context, in usecase.ResolveRepositor
 func (h *PullRequestHandler) delete(c *httpx.Context, in usecase.ResolveRepositoryInput, action string, extra []string) error {
 	switch action {
 	case "pull":
-		number, ok := parsePositive(extra[0])
-		if !ok {
-			return c.Error(http.StatusBadRequest, "pull_not_found")
+		number, err := requireExtraPositive(c, extra, "pull_not_found")
+		if err != nil {
+			return err
 		}
 
 		if err := h.pulls.Delete(c.Ctx(), in, number); err != nil {
@@ -200,10 +174,9 @@ func (h *PullRequestHandler) delete(c *httpx.Context, in usecase.ResolveReposito
 
 		return c.NoContent()
 	case "pull-comment":
-		number, ok := parsePositive(extra[0])
-		commentID, okID := parsePositive(extra[1])
-		if !ok || !okID {
-			return c.Error(http.StatusBadRequest, "comment_not_found")
+		number, commentID, err := requireCommentIDs(c, extra)
+		if err != nil {
+			return err
 		}
 
 		if err := h.pulls.DeleteComment(c.Ctx(), in, number, uint(commentID)); err != nil {
@@ -218,37 +191,14 @@ func (h *PullRequestHandler) delete(c *httpx.Context, in usecase.ResolveReposito
 
 func splitPullPath(parts []string) (action string, repoParts, extra []string, ok bool) {
 	n := len(parts)
-	if n < 2 {
-		return "", nil, nil, false
+	if n >= 3 && parts[n-3] == "pulls" {
+		switch parts[n-1] {
+		case "merge":
+			return "pull-merge", parts[:n-3], []string{parts[n-2]}, true
+		case "diff":
+			return "pull-diff", parts[:n-3], []string{parts[n-2]}, true
+		}
 	}
 
-	if n >= 4 && parts[n-2] == "comments" && parts[n-4] == "pulls" {
-		return "pull-comment", parts[:n-4], []string{parts[n-3], parts[n-1]}, true
-	}
-
-	if n >= 3 && parts[n-1] == "comments" && parts[n-3] == "pulls" {
-		return "pull-comments", parts[:n-3], []string{parts[n-2]}, true
-	}
-
-	if n >= 3 && parts[n-1] == "merge" && parts[n-3] == "pulls" {
-		return "pull-merge", parts[:n-3], []string{parts[n-2]}, true
-	}
-
-	if n >= 3 && parts[n-1] == "diff" && parts[n-3] == "pulls" {
-		return "pull-diff", parts[:n-3], []string{parts[n-2]}, true
-	}
-
-	if n >= 3 && parts[n-1] == "commits" && parts[n-3] == "pulls" {
-		return "pull-commits", parts[:n-3], []string{parts[n-2]}, true
-	}
-
-	if parts[n-1] == "pulls" {
-		return "pulls", parts[:n-1], nil, true
-	}
-
-	if parts[n-2] == "pulls" {
-		return "pull", parts[:n-2], []string{parts[n-1]}, true
-	}
-
-	return "", nil, nil, false
+	return splitNamedResource(parts, "pulls", "pull")
 }

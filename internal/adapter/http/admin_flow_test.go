@@ -7,7 +7,7 @@ import (
 
 func TestAdminAPIRejectsNonAdmin(t *testing.T) {
 	env := newTestServer(t)
-	cookies := loginUser(t, env, "plainu", "plainu@example.com", "password1")
+	cookies := loginUser(t, env, "plainu", "plainu@example.com", "test-pass-1")
 	srv := env.Server
 
 	for _, path := range []string{
