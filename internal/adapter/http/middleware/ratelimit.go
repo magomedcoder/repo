@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"magomedcoder.ru/repo/pkg/httpware"
+	"github.com/magomedcoder/repo/pkg/httpware"
 )
 
 type RateLimiter = httpware.RateLimiter

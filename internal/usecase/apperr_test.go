@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"magomedcoder.ru/repo/internal/usecase"
+	"github.com/magomedcoder/repo/internal/usecase"
 )
 
 func TestErrorIs(t *testing.T) {

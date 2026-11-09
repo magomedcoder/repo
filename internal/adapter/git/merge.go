@@ -14,7 +14,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	"github.com/go-git/go-git/v6/plumbing/object"
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 func (r *Repository) Compare(ctx context.Context, repoPath, base, head string) (*domain.CompareResult, error) {

@@ -1,6 +1,6 @@
 package sqlite
 
-import "magomedcoder.ru/repo/pkg/sqlutil"
+import "github.com/magomedcoder/repo/pkg/sqlutil"
 
 func escapeLike(s string) string {
 	return sqlutil.EscapeLike(s)

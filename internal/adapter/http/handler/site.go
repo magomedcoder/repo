@@ -1,6 +1,6 @@
 package handler
 
-import "magomedcoder.ru/repo/pkg/httpx"
+import "github.com/magomedcoder/repo/pkg/httpx"
 
 type SiteHandler struct {
 	name string

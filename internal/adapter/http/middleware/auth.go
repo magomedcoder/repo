@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/internal/usecase"
-	"magomedcoder.ru/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/usecase"
+	"github.com/magomedcoder/repo/pkg/httpx"
 )
 
 type contextKey string

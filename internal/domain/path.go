@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"magomedcoder.ru/repo/pkg/gitpath"
+	"github.com/magomedcoder/repo/pkg/gitpath"
 )
 
 const MaxPathDepth = 1

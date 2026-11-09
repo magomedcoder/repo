@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"magomedcoder.ru/repo/pkg/httpware"
+	"github.com/magomedcoder/repo/pkg/httpware"
 )
 
 func TestRateLimiterHardCap(t *testing.T) {

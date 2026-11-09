@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/argon2id"
-	"magomedcoder.ru/repo/pkg/attempts"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/argon2id"
+	"github.com/magomedcoder/repo/pkg/attempts"
 )
 
 const (

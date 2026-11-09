@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"magomedcoder.ru/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/pkg/httpx"
 )
 
 func parsePositive(raw string) (int, bool) {

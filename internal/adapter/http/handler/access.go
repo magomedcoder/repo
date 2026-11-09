@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"magomedcoder.ru/repo/internal/adapter/http/audit"
-	"magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"magomedcoder.ru/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/internal/adapter/http/audit"
+	"github.com/magomedcoder/repo/internal/adapter/http/middleware"
+	"github.com/magomedcoder/repo/pkg/httpx"
 )
 
 type AccessHandler struct {

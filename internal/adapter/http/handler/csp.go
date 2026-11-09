@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"magomedcoder.ru/repo/pkg/httpware"
-	"magomedcoder.ru/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/internal/adapter/http/middleware"
+	"github.com/magomedcoder/repo/pkg/httpware"
+	"github.com/magomedcoder/repo/pkg/httpx"
 )
 
 const (

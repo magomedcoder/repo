@@ -13,7 +13,7 @@ const { name: siteName } = useSite()
     <p class="m-0 justify-self-center whitespace-nowrap text-center">
       {{ $t('footer.poweredBy') }}
       <a
-        href="https://magomedcoder.ru/repo"
+        href="https://github.com/magomedcoder/repo"
         class="text-ink-muted no-underline hover:text-ink hover:underline"
         target="_blank"
         rel="noopener noreferrer"

@@ -1,6 +1,6 @@
 package usecase
 
-import "magomedcoder.ru/repo/internal/domain"
+import "github.com/magomedcoder/repo/internal/domain"
 
 type Authz struct {
 	TeamRepos        domain.TeamRepoGrantStore

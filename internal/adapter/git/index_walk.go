@@ -10,7 +10,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/storer"
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 const (

@@ -13,8 +13,8 @@ import (
 	gogit "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/transport"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/fsutil"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/fsutil"
 )
 
 const openCacheMax = 16

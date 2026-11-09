@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"magomedcoder.ru/repo/internal/adapter/http/audit"
-	"magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/internal/usecase"
-	"magomedcoder.ru/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/internal/adapter/http/audit"
+	"github.com/magomedcoder/repo/internal/adapter/http/middleware"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/usecase"
+	"github.com/magomedcoder/repo/pkg/httpx"
 )
 
 type AdminHandler struct {

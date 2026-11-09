@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 func TestAdminCannotDeleteOrDemoteSelf(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/magomedcoder/repo/internal/domain"
 	"gorm.io/gorm"
-	"magomedcoder.ru/repo/internal/domain"
 )
 
 type CodeIndex struct {

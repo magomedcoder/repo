@@ -8,7 +8,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/storer"
 	"github.com/go-git/go-git/v6/plumbing/transport"
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 func enforceProtectedBranches(ctx context.Context, info *transport.PreReceiveInfo) error {

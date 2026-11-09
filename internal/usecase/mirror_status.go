@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/urlredact"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/urlredact"
 )
 
 const mirrorCheckRefsCap = 50

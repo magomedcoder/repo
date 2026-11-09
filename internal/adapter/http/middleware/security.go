@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"magomedcoder.ru/repo/pkg/httpware"
+	"github.com/magomedcoder/repo/pkg/httpware"
 )
 
 func SecurityHeaders(secure bool) func(http.Handler) http.Handler {

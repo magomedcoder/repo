@@ -1,8 +1,8 @@
 package sqlite
 
 import (
+	"github.com/magomedcoder/repo/pkg/sqliteutil"
 	"gorm.io/gorm"
-	"magomedcoder.ru/repo/pkg/sqliteutil"
 )
 
 func CheckpointWAL(db *gorm.DB) error {

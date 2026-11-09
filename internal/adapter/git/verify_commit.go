@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
-	"magomedcoder.ru/repo/pkg/fsutil"
-	"magomedcoder.ru/repo/pkg/sshsig"
+	"github.com/magomedcoder/repo/pkg/fsutil"
+	"github.com/magomedcoder/repo/pkg/sshsig"
 )
 
 type TrustMaterial struct {

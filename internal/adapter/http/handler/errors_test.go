@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"magomedcoder.ru/repo/internal/usecase"
-	"magomedcoder.ru/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/internal/usecase"
+	"github.com/magomedcoder/repo/pkg/httpx"
 )
 
 func TestStatusFor(t *testing.T) {

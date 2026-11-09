@@ -3,8 +3,8 @@ package handler
 import (
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/internal/usecase"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/usecase"
 )
 
 type registrationResponse struct {

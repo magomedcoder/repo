@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"magomedcoder.ru/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/pkg/httpx"
 )
 
 func TestNamedRepoParts(t *testing.T) {

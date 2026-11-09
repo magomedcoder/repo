@@ -23,10 +23,10 @@ import (
 	githttp "github.com/go-git/go-git/v6/plumbing/transport/http"
 	xssh "github.com/go-git/go-git/v6/plumbing/transport/ssh"
 	"github.com/go-git/go-git/v6/storage/memory"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/fsutil"
-	"magomedcoder.ru/repo/pkg/ssrf"
-	"magomedcoder.ru/repo/pkg/urlredact"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/fsutil"
+	"github.com/magomedcoder/repo/pkg/ssrf"
+	"github.com/magomedcoder/repo/pkg/urlredact"
 )
 
 const (

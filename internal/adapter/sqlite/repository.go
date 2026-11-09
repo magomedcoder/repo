@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/magomedcoder/repo/internal/adapter/sqlite/model"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/gormutil"
+	"github.com/magomedcoder/repo/pkg/sqliteutil"
 	"gorm.io/gorm"
-	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/gormutil"
-	"magomedcoder.ru/repo/pkg/sqliteutil"
 )
 
 func NewDB(dataDir string) (*gorm.DB, error) {

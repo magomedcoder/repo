@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/internal/usecase"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/usecase"
 )
 
 func TestLoginSoftLockReturns429(t *testing.T) {

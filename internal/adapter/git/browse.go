@@ -17,8 +17,8 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	"github.com/go-git/go-git/v6/plumbing/object"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/fsutil"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/fsutil"
 )
 
 func (r *Repository) open(repoPath string) (*gogit.Repository, error) {

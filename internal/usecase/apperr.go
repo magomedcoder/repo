@@ -1,6 +1,6 @@
 package usecase
 
-import "magomedcoder.ru/repo/pkg/apperr"
+import "github.com/magomedcoder/repo/pkg/apperr"
 
 type Kind = apperr.Kind
 type Error = apperr.Error

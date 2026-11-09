@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/magomedcoder/repo/pkg/netutil"
 	"gopkg.in/yaml.v3"
-	"magomedcoder.ru/repo/pkg/netutil"
 )
 
 const (

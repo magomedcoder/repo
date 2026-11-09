@@ -3,8 +3,8 @@ package sqlite
 import (
 	"errors"
 
+	"github.com/magomedcoder/repo/internal/domain"
 	"gorm.io/gorm"
-	"magomedcoder.ru/repo/internal/domain"
 )
 
 func mapDBErr(err error) error {

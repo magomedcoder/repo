@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"magomedcoder.ru/repo/pkg/secretbox"
+	"github.com/magomedcoder/repo/pkg/secretbox"
 )
 
 func TestGitHTTPPrivateRepoNotFoundForOutsider(t *testing.T) {

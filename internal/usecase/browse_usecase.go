@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	gitadapter "github.com/magomedcoder/repo/internal/adapter/git"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/pagination"
 	"golang.org/x/sync/errgroup"
-	gitadapter "magomedcoder.ru/repo/internal/adapter/git"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/pagination"
 )
 
 var (

@@ -3,10 +3,10 @@ package http
 import (
 	"net/http"
 
-	"magomedcoder.ru/repo/internal/adapter/http/handler"
-	"magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"magomedcoder.ru/repo/pkg/httpx"
-	"magomedcoder.ru/repo/pkg/i18n"
+	"github.com/magomedcoder/repo/internal/adapter/http/handler"
+	"github.com/magomedcoder/repo/internal/adapter/http/middleware"
+	"github.com/magomedcoder/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/pkg/i18n"
 )
 
 func NewRouter(

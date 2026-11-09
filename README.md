@@ -23,7 +23,7 @@ Built for a small self-hosted instance where short clone URLs matter more than m
 ## Build and run
 
 ```bash
-git clone https://magomedcoder.ru/repo.git
+git clone https://github.com/magomedcoder/repo.git
 cd repo
 
 cp config.example.yaml config.yaml

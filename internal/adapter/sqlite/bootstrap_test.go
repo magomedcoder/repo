@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/adapter/sqlite/model"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 func TestBootstrapFreshDatabase(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	gitadapter "magomedcoder.ru/repo/internal/adapter/git"
-	"magomedcoder.ru/repo/internal/domain"
+	gitadapter "github.com/magomedcoder/repo/internal/adapter/git"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 var (

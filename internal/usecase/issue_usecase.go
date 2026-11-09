@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 var (

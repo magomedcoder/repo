@@ -1,9 +1,9 @@
 package sqlite
 
 import (
+	"github.com/magomedcoder/repo/internal/adapter/sqlite/model"
+	"github.com/magomedcoder/repo/pkg/gormutil"
 	"gorm.io/gorm"
-	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
-	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
 func bootstrapModels() []any {

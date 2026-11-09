@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"magomedcoder.ru/repo/internal/adapter/http/middleware"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/hashutil"
+	"github.com/magomedcoder/repo/internal/adapter/http/middleware"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/hashutil"
 )
 
 const (

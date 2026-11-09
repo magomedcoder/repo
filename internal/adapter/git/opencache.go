@@ -4,8 +4,8 @@ import (
 	"maps"
 
 	gogit "github.com/go-git/go-git/v6"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/lrucache"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/lrucache"
 )
 
 type openCache struct {

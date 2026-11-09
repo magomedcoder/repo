@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/secretbox"
-	"magomedcoder.ru/repo/pkg/ssrf"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/secretbox"
+	"github.com/magomedcoder/repo/pkg/ssrf"
 )
 
 type fakeStore struct {

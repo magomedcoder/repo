@@ -12,12 +12,12 @@ import (
 
 	"github.com/go-git/go-git/v6/config"
 
-	appconfig "magomedcoder.ru/repo/internal/config"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/metrics"
-	"magomedcoder.ru/repo/pkg/secretbox"
-	"magomedcoder.ru/repo/pkg/sshkey"
-	"magomedcoder.ru/repo/pkg/ssrf"
+	appconfig "github.com/magomedcoder/repo/internal/config"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/metrics"
+	"github.com/magomedcoder/repo/pkg/secretbox"
+	"github.com/magomedcoder/repo/pkg/sshkey"
+	"github.com/magomedcoder/repo/pkg/ssrf"
 )
 
 var (

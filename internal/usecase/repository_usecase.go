@@ -12,11 +12,11 @@ import (
 
 	"github.com/go-git/go-git/v6/plumbing"
 
-	"magomedcoder.ru/repo/internal/config"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/ssrf"
-	"magomedcoder.ru/repo/pkg/syncutil"
-	"magomedcoder.ru/repo/pkg/urlredact"
+	"github.com/magomedcoder/repo/internal/config"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/ssrf"
+	"github.com/magomedcoder/repo/pkg/syncutil"
+	"github.com/magomedcoder/repo/pkg/urlredact"
 )
 
 var repoNameLocks syncutil.KeyedMutex

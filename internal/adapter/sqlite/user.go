@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/magomedcoder/repo/internal/adapter/sqlite/model"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/gormutil"
 	"gorm.io/gorm"
-	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
 type User struct {

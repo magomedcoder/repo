@@ -14,15 +14,15 @@ import (
 	"strings"
 	"testing"
 
-	"magomedcoder.ru/repo/internal/adapter/git"
-	deliveryhttp "magomedcoder.ru/repo/internal/adapter/http"
-	"magomedcoder.ru/repo/internal/adapter/http/handler"
-	"magomedcoder.ru/repo/internal/adapter/sqlite"
-	"magomedcoder.ru/repo/internal/usecase"
-	"magomedcoder.ru/repo/pkg/argon2id"
-	"magomedcoder.ru/repo/pkg/secretbox"
-	"magomedcoder.ru/repo/pkg/ssrf"
-	"magomedcoder.ru/repo/pkg/token"
+	"github.com/magomedcoder/repo/internal/adapter/git"
+	deliveryhttp "github.com/magomedcoder/repo/internal/adapter/http"
+	"github.com/magomedcoder/repo/internal/adapter/http/handler"
+	"github.com/magomedcoder/repo/internal/adapter/sqlite"
+	"github.com/magomedcoder/repo/internal/usecase"
+	"github.com/magomedcoder/repo/pkg/argon2id"
+	"github.com/magomedcoder/repo/pkg/secretbox"
+	"github.com/magomedcoder/repo/pkg/ssrf"
+	"github.com/magomedcoder/repo/pkg/token"
 )
 
 func testMirrorLookup(_ context.Context, host string) ([]net.IP, error) {

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/fsutil"
-	"magomedcoder.ru/repo/pkg/gitref"
-	"magomedcoder.ru/repo/pkg/syncutil"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/fsutil"
+	"github.com/magomedcoder/repo/pkg/gitref"
+	"github.com/magomedcoder/repo/pkg/syncutil"
 )
 
 const (

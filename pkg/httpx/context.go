@@ -6,7 +6,7 @@ import (
 
 	json "encoding/json/v2"
 
-	"magomedcoder.ru/repo/pkg/i18n"
+	"github.com/magomedcoder/repo/pkg/i18n"
 )
 
 type Context struct {

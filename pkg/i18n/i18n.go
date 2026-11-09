@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"magomedcoder.ru/repo/langs"
+	"github.com/magomedcoder/repo/langs"
 )
 
 type Locale string

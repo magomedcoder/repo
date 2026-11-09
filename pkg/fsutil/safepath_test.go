@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"magomedcoder.ru/repo/pkg/fsutil"
+	"github.com/magomedcoder/repo/pkg/fsutil"
 )
 
 func TestSafePathAllowsDotDotInName(t *testing.T) {

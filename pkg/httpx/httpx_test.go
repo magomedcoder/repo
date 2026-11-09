@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"magomedcoder.ru/repo/pkg/httpx"
+	"github.com/magomedcoder/repo/pkg/httpx"
 )
 
 func TestRouterOK(t *testing.T) {

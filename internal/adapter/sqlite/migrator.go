@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/magomedcoder/repo/pkg/sqliteutil"
 	"gorm.io/gorm"
-	"magomedcoder.ru/repo/pkg/sqliteutil"
 )
 
 func runMigrations(db *gorm.DB) error {

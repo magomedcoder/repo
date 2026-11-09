@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 func mirrorRuntimeState(uc *RepositoryUseCase, id uint) (lock, debounce, pending bool) {

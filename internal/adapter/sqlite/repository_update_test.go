@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 func TestRepositoryUpdateOptimisticLock(t *testing.T) {

@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/magomedcoder/repo/internal/adapter/sqlite/model"
+	"github.com/magomedcoder/repo/pkg/gormutil"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
-	"magomedcoder.ru/repo/pkg/gormutil"
 )
 
 type RepoNameHold struct {

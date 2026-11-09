@@ -8,12 +8,12 @@ import (
 	"os"
 	"strings"
 
-	"magomedcoder.ru/repo/internal/adapter/sqlite"
-	"magomedcoder.ru/repo/internal/config"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/internal/usecase"
-	"magomedcoder.ru/repo/pkg/argon2id"
-	"magomedcoder.ru/repo/pkg/token"
+	"github.com/magomedcoder/repo/internal/adapter/sqlite"
+	"github.com/magomedcoder/repo/internal/config"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/usecase"
+	"github.com/magomedcoder/repo/pkg/argon2id"
+	"github.com/magomedcoder/repo/pkg/token"
 )
 
 func runUser(args []string) error {

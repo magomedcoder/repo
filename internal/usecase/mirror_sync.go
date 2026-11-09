@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/metrics"
-	"magomedcoder.ru/repo/pkg/urlredact"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/metrics"
+	"github.com/magomedcoder/repo/pkg/urlredact"
 )
 
 var (

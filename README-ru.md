@@ -23,7 +23,7 @@
 ## Сборка и запуск
 
 ```bash
-git clone https://magomedcoder.ru/repo.git
+git clone https://github.com/magomedcoder/repo.git
 cd repo
 
 cp config.example.yaml config.yaml

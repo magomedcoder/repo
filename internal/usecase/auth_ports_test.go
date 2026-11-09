@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/attempts"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/attempts"
 )
 
 type memUsers struct {

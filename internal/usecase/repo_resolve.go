@@ -3,7 +3,7 @@ package usecase
 import (
 	"context"
 
-	"magomedcoder.ru/repo/internal/domain"
+	"github.com/magomedcoder/repo/internal/domain"
 )
 
 func ResolveReadable(ctx context.Context, repos domain.RepositoryStore, authz *Authz, in ResolveRepositoryInput) (*domain.Repository, error) {

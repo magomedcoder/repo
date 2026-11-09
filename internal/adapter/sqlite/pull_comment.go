@@ -3,9 +3,9 @@ package sqlite
 import (
 	"context"
 
-	"magomedcoder.ru/repo/internal/adapter/sqlite/model"
-	"magomedcoder.ru/repo/internal/domain"
-	"magomedcoder.ru/repo/pkg/gormutil"
+	"github.com/magomedcoder/repo/internal/adapter/sqlite/model"
+	"github.com/magomedcoder/repo/internal/domain"
+	"github.com/magomedcoder/repo/pkg/gormutil"
 )
 
 func (s *PullRequest) pullComments() *gormutil.Repo[model.PullComment] {

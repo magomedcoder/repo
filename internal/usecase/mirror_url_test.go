@@ -5,7 +5,7 @@ import (
 	"net"
 	"testing"
 
-	"magomedcoder.ru/repo/pkg/ssrf"
+	"github.com/magomedcoder/repo/pkg/ssrf"
 )
 
 func testMirrorLookup(_ context.Context, host string) ([]net.IP, error) {
