@@ -21,7 +21,8 @@ type userJSON struct {
 }
 
 type siteResponse struct {
-	Name string `json:"name"`
+	Name      string `json:"name"`
+	PublicURL string `json:"public_url,omitempty"`
 }
 
 type stepUpRequest struct {

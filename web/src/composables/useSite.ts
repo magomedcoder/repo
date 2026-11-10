@@ -3,6 +3,7 @@ import { siteApi } from '@/api'
 import { i18n } from '@/i18n'
 
 const name = ref('')
+const publicURL = ref('')
 const ready = ref(false)
 let loading: Promise<void> | null = null
 
@@ -26,8 +27,10 @@ export function useSite() {
       try {
         const res = await siteApi.get()
         name.value = (res.name || '').trim() || i18n.global.t('brand.name')
+        publicURL.value = (res.public_url || '').trim()
       } catch {
         name.value = i18n.global.t('brand.name')
+        publicURL.value = ''
       } finally {
         applyTitle()
         ready.value = true
@@ -40,6 +43,7 @@ export function useSite() {
 
   return {
     name: computed(() => name.value || i18n.global.t('brand.name')),
+    publicURL: computed(() => publicURL.value),
     ready,
     fetchSite,
   }

@@ -58,7 +58,6 @@ const showTeamForm = ref(false)
 const name = ref('')
 const description = ref('')
 const isPrivate = ref(false)
-const showOnHome = ref(false)
 const protectBranch = ref(true)
 const issuesEnabled = ref(true)
 const defaultBranch = ref('main')
@@ -90,7 +89,6 @@ function syncFormFromRepo() {
   name.value = repo.value.name
   description.value = repo.value.description
   isPrivate.value = repo.value.is_private
-  showOnHome.value = !!repo.value.show_on_home && !repo.value.is_private
   protectBranch.value = repo.value.protect_default_branch !== false
   issuesEnabled.value = repo.value.issues_enabled !== false
   defaultBranch.value = repo.value.default_branch
@@ -167,7 +165,6 @@ async function save() {
       name: nextName,
       description: description.value,
       private: isPrivate.value,
-      show_on_home: !isPrivate.value && showOnHome.value,
       default_branch: defaultBranch.value,
       protect_default_branch: protectBranch.value,
       issues_enabled: issuesEnabled.value,
@@ -322,7 +319,6 @@ watch([() => props.repoPath, repo, canAdmin], load, { immediate: true })
             v-model:description="description"
             v-model:default-branch="defaultBranch"
             v-model:is-private="isPrivate"
-            v-model:show-on-home="showOnHome"
             v-model:protect-branch="protectBranch"
             v-model:issues-enabled="issuesEnabled"
             :branch-options="branchOptions"

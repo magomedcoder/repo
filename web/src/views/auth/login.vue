@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRegistration } from '@/composables/useRegistration'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { usePageMeta } from '@/composables/usePageMeta'
 import { localizeError } from '@/i18n'
 import { safeRedirect } from '@/lib/safeRedirect'
 import AppFooter from '@/components/layout/AppFooter.vue'
@@ -14,6 +15,11 @@ const auth = useAuth()
 const route = useRoute()
 const router = useRouter()
 const { allowRegistration, fetchAllowRegistration } = useRegistration()
+usePageMeta(() => ({ 
+  title: 'Sign in', 
+  noindex: true, 
+  canonicalPath: '/login' 
+}))
 
 onMounted(() => {
   void fetchAllowRegistration()

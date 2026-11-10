@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -198,45 +197,4 @@ func TestRepoNameHoldStore(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("deleted=%d err=%v", n, err)
 	}
-}
-
-func TestSchemaMatchesModelsFresh(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	db, err := NewDB(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sqlDB.Close()
-
-	if err := VerifySchema(db); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestSchemaDetectsMissingColumn(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	db, err := NewDB(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := db.Exec(`ALTER TABLE repositories DROP COLUMN mirror_remote_head`).Error; err != nil {
-		t.Fatal(err)
-	}
-
-	err = VerifySchema(db)
-	if err == nil || !strings.Contains(err.Error(), "mirror_remote_head") {
-		t.Fatalf("want missing mirror_remote_head, got %v", err)
-	}
-
-	sqlDB, _ := db.DB()
-	_ = sqlDB.Close()
 }

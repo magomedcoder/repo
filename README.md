@@ -77,6 +77,7 @@ http:
 server:
   data_dir: "data"               # SQLite, Git repos, avatars
   site_name: "Repo"              # UI title
+  public_url: ""                 # optional https://host for canonical/OG/sitemap
   soft_deleted_retention: 168h   # purge soft-deleted repos after this
 
 secrets:

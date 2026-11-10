@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/magomedcoder/repo/internal/adapter/http/audit"
 	"github.com/magomedcoder/repo/internal/adapter/http/handler"
 	"github.com/magomedcoder/repo/internal/adapter/http/middleware"
+	"github.com/magomedcoder/repo/internal/adapter/http/seo"
 	"github.com/magomedcoder/repo/internal/adapter/sqlite"
 	"github.com/magomedcoder/repo/internal/config"
 	"github.com/magomedcoder/repo/internal/domain"
@@ -193,7 +195,7 @@ func runServe() {
 	profileHandler := handler.NewProfileHandler(profileUC)
 	profileHandler.SetCookieSecure(cfg.HTTP.CookieSecure)
 	activityHandler := handler.NewActivityHandler(activityUC)
-	siteHandler := handler.NewSiteHandler(cfg.Server.SiteName)
+	siteHandler := handler.NewSiteHandler(cfg.Server.SiteName, cfg.Server.PublicURL)
 	adminHandler := handler.NewAdminHandler(adminUC, accessUC)
 	adminHandler.SetAccessLogger(accessLog)
 	adminHandler.SetMirrors(adminMirrorUC)
@@ -201,9 +203,17 @@ func runServe() {
 
 	router := deliveryhttp.NewRouter(authHandler, repoHandler, membershipHandler, teamHandler, tokenHandler, gitHandler, issueHandler, pullHandler, profileHandler, activityHandler, siteHandler, adminHandler, accessHandler, authUC, cfg.HTTP.CookieSecure, cfg.CSRFSecretMaterial())
 
+	webFS, err := repo.WebFS()
+	if err != nil {
+		slog.Error("web", "err", err)
+		os.Exit(1)
+	}
+
+	seoSvc := newSEOService(cfg, authUC, repoStore, repoUC, webFS)
+
 	srv := &http.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           withStatic(router, accessLog, authUC, cfg.HTTP.CookieSecure),
+		Handler:           withStatic(router, accessLog, authUC, cfg.HTTP.CookieSecure, seoSvc),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Minute,
 		WriteTimeout:      15 * time.Minute,
@@ -360,7 +370,7 @@ func maintenanceOnce(ctx context.Context, d maintenanceDeps, now time.Time) {
 	}
 }
 
-func withStatic(api http.Handler, access *audit.Logger, auth middleware.Authenticator, cookieSecure bool) http.Handler {
+func withStatic(api http.Handler, access *audit.Logger, auth middleware.Authenticator, cookieSecure bool, seoSvc *seo.Service) http.Handler {
 	frontend, err := repo.WebHandler()
 	if err != nil {
 		slog.Error("web", "err", err)
@@ -379,7 +389,20 @@ func withStatic(api http.Handler, access *audit.Logger, auth middleware.Authenti
 			}
 			access.Visit(r, user)
 		}
-		frontend.ServeHTTP(w, r)
+
+		switch r.URL.Path {
+		case "/robots.txt":
+			seoSvc.Robots(w, r)
+			return
+		case "/sitemap.xml":
+			seoSvc.Sitemap(w, r)
+			return
+		case "/site.webmanifest":
+			seoSvc.Manifest(w, r)
+			return
+		}
+
+		seoSvc.ServeDocument(w, r, frontend)
 	}))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -395,4 +418,48 @@ func withStatic(api http.Handler, access *audit.Logger, auth middleware.Authenti
 
 func isAPIPath(urlPath string) bool {
 	return urlPath == "/api" || strings.HasPrefix(urlPath, "/api/")
+}
+
+func newSEOService(cfg config.Config, auth *usecase.AuthUseCase, store domain.RepositoryStore, repos *usecase.RepositoryUseCase, webFS fs.FS) *seo.Service {
+	return &seo.Service{
+		SiteName:            cfg.Server.SiteName,
+		PublicURL:           cfg.Server.PublicURL,
+		CookieSecure:        cfg.HTTP.CookieSecure,
+		AnonymousReadDenied: cfg.RequireAuthRead(),
+		Auth:                auth,
+		IndexFS:             webFS,
+		FindRepo: func(ctx context.Context, logical string) (*seo.RepoInfo, error) {
+			repo, err := store.FindByRepoPath(ctx, logical)
+			if err != nil {
+				return nil, err
+			}
+
+			return &seo.RepoInfo{
+				Name:           repo.Name,
+				Description:    repo.Description,
+				RepoPath:       repo.RepoPath,
+				IsPrivate:      repo.IsPrivate,
+				LastActivityAt: repo.LastActivityAt,
+			}, nil
+		},
+		ListPublic: func(ctx context.Context, limit, offset int) ([]seo.RepoInfo, error) {
+			items, err := repos.ListPublic(ctx, limit, offset, domain.RepoOrderUpdated)
+			if err != nil {
+				return nil, err
+			}
+
+			out := make([]seo.RepoInfo, 0, len(items))
+			for _, item := range items {
+				out = append(out, seo.RepoInfo{
+					Name:           item.Name,
+					Description:    item.Description,
+					RepoPath:       item.RepoPath,
+					IsPrivate:      item.IsPrivate,
+					LastActivityAt: item.LastActivityAt,
+				})
+			}
+
+			return out, nil
+		},
+	}
 }

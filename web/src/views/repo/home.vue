@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { reposApi } from '@/api'
 import type { BlobContent, CommitInfo, RepoStats, TreeEntry } from '@/api/types'
 import CloneButton from '@/components/repo/CloneButton.vue'
+import EmptyRepoGuide from '@/components/repo/EmptyRepoGuide.vue'
 import FileTable from '@/components/repo/FileTable.vue'
 import LanguageBar from '@/components/repo/LanguageBar.vue'
 import ReadmePanel from '@/components/repo/ReadmePanel.vue'
@@ -50,6 +51,10 @@ const parentTo = computed(() => {
 })
 
 const hasReadme = () => !!readme.value?.content && !readme.value.is_binary
+
+const isEmptyRepo = computed(() => !browsingSubdir.value && !dataLoading.value && !error.value && tree.value.length === 0 && !latest.value)
+
+const canPush = computed(() => !!repo.value?.can_write)
 
 const commitLabel = computed(() => {
   const n = stats.value?.commit_count ?? 0
@@ -120,7 +125,15 @@ watch(
     :error="repoError"
   >
     <PageState :loading="dataLoading" :error="error">
-      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <EmptyRepoGuide
+        v-if="isEmptyRepo && canPush"
+        :repo-path="repoPath"
+        :default-branch="repo?.default_branch"
+      />
+      <div
+        v-else
+        class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]"
+      >
         <div class="min-w-0 space-y-4">
           <section class="min-w-0">
             <FileTable

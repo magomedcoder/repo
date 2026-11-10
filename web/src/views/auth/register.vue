@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { usePageMeta } from '@/composables/usePageMeta'
 import { useRegistration } from '@/composables/useRegistration'
 import { localizeError } from '@/i18n'
 import { safeRedirect } from '@/lib/safeRedirect'
@@ -14,6 +15,11 @@ const auth = useAuth()
 const route = useRoute()
 const router = useRouter()
 const { fetchAllowRegistration } = useRegistration()
+usePageMeta(() => ({ 
+  title: 'Register', 
+  noindex: true, 
+  canonicalPath: '/register' 
+}))
 
 const username = ref('')
 const email = ref('')

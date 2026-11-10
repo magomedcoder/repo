@@ -43,4 +43,11 @@ export const adminReposApi = {
       `/api/admin/repos${qs ? `?${qs}` : ''}`,
     )
   },
+
+  syncActivity() {
+    return api<{ updated: number; skipped: number; failed: number }>(
+      '/api/admin/repos/sync-activity',
+      { method: 'POST' },
+    )
+  },
 }

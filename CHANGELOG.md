@@ -1,5 +1,13 @@
 # Changelog
 
+## dev
+
+- Updated time on home and lists: from `last_activity_at` only (git push and merge); mirror sync and settings no longer bump it
+- Admin repositories: sync Updated from the tip commit on each default branch
+- Default branch change: set Updated from the new branch tip commit
+- SQLite: `schema_migrations` journal; pending steps only; schema verify after bootstrap or new migrations
+- SEO: `public_url`, document meta injection, robots.txt, sitemap.xml
+
 ## v1.0.0 - November 8, 2026
 
 - Accounts: register, login, logout, sessions, password change, registration toggle, login attempt lockouts

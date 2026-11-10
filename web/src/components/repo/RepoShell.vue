@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { Repository } from '@/api/types'
 import { useCanWrite } from '@/composables/useCanWrite'
+import { useRepoSeo } from '@/composables/useRouteSeo'
 import { normalizeRepoPath } from '@/lib/repoPath'
 import Icon from '@/components/ui/Icon.vue'
 import PageState from '@/components/ui/PageState.vue'
@@ -18,6 +19,7 @@ const props = defineProps<{
 }>()
 
 const { canAdmin } = useCanWrite(() => props.repo)
+useRepoSeo(() => props.repoPath)
 
 function isNotFound(error: PageError | string | null | undefined) {
   return typeof error === 'object' && error?.kind === 'not_found'

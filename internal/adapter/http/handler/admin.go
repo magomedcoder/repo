@@ -129,6 +129,20 @@ func (h *AdminHandler) ListRepos(c *httpx.Context) error {
 	return httpx.OK(c, out)
 }
 
+func (h *AdminHandler) SyncRepoActivity(c *httpx.Context) error {
+	actor, ok := middleware.UserFromContext(c.Ctx())
+	if !ok {
+		return c.Error(http.StatusUnauthorized, "unauthorized")
+	}
+
+	out, err := h.admin.SyncActivityFromTips(c.Ctx(), actor.ID)
+	if err != nil {
+		return mapError(c, err)
+	}
+
+	return httpx.OK(c, out)
+}
+
 func (h *AdminHandler) ListAccessLogs(c *httpx.Context) error {
 	if h.accessUC == nil {
 		return c.Error(http.StatusNotFound, "not_found")

@@ -180,7 +180,7 @@ onMounted(load)
                 <img
                   v-if="avatarSrc"
                   :src="avatarSrc"
-                  alt=""
+                  :alt="profile.username"
                   class="h-full w-full object-cover"
                 >
                 <span v-else>{{ profile.username.slice(0, 1).toUpperCase() }}</span>

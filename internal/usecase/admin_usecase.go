@@ -56,7 +56,6 @@ type AdminRepoItem struct {
 	Owner           string     `json:"owner"`
 	RepoPath        string     `json:"repo_path"`
 	IsPrivate       bool       `json:"is_private"`
-	ShowOnHome      bool       `json:"show_on_home"`
 	MirrorDirection string     `json:"mirror_direction,omitzero"`
 	MirrorStatus    string     `json:"mirror_status,omitzero"`
 	UpdatedAt       time.Time  `json:"updated_at"`
@@ -70,17 +69,21 @@ type AdminRepoListResult struct {
 	Offset int             `json:"offset"`
 }
 
-type AdminUseCase struct {
-	users    domain.UserStore
-	sessions domain.SessionStore
-	tokens   domain.AccessTokenStore
-	auth     *AuthUseCase
-	hasher   domain.PasswordHasher
-	gate     *PasswordGate
-	repos    domain.RepositoryStore
-	logs     domain.AccessLogStore
-	files    repoFileRemover
+type tipCommitReader interface {
+	ListCommits(repoPath, ref string, offset, limit int) ([]domain.CommitInfo, error)
+}
 
+type AdminUseCase struct {
+	users       domain.UserStore
+	sessions    domain.SessionStore
+	tokens      domain.AccessTokenStore
+	auth        *AuthUseCase
+	hasher      domain.PasswordHasher
+	gate        *PasswordGate
+	repos       domain.RepositoryStore
+	logs        domain.AccessLogStore
+	files       repoFileRemover
+	git         tipCommitReader
 	collabs     domain.RepoCollaboratorStore
 	teams       domain.TeamStore
 	teamMembers domain.TeamMemberStore
@@ -155,6 +158,78 @@ func (uc *AdminUseCase) SetRepoFiles(files repoFileRemover) {
 	if uc != nil {
 		uc.files = files
 	}
+}
+
+func (uc *AdminUseCase) SetGit(git tipCommitReader) {
+	if uc != nil {
+		uc.git = git
+	}
+}
+
+type AdminSyncActivityResult struct {
+	Updated int `json:"updated"`
+	Skipped int `json:"skipped"`
+	Failed  int `json:"failed"`
+}
+
+func (uc *AdminUseCase) SyncActivityFromTips(ctx context.Context, actorID uint) (*AdminSyncActivityResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := uc.requireSiteAdmin(ctx, actorID); err != nil {
+		return nil, err
+	}
+
+	if uc.repos == nil || uc.git == nil {
+		return nil, ErrUnauthorized
+	}
+
+	out := &AdminSyncActivityResult{}
+	const page = 100
+	for offset := 0; ; offset += page {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+
+		repos, total, err := uc.repos.ListAdmin(ctx, domain.AdminRepoFilter{
+			Limit:  page,
+			Offset: offset,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list repos: %w", err)
+		}
+
+		for i := range repos {
+			r := &repos[i]
+			ref := strings.TrimSpace(r.DefaultBranch)
+			commits, err := uc.git.ListCommits(r.Path, ref, 0, 1)
+			if err != nil || len(commits) == 0 || commits[0].AuthoredAt.IsZero() {
+				out.Skipped++
+				continue
+			}
+
+			at := commits[0].AuthoredAt.UTC()
+			if r.LastActivityAt != nil && r.LastActivityAt.Equal(at) {
+				out.Skipped++
+				continue
+			}
+
+			if err := uc.repos.TouchLastActivity(r.ID, at); err != nil {
+				slog.Warn("sync activity", "repo_id", r.ID, "err", err)
+				out.Failed++
+				continue
+			}
+
+			out.Updated++
+		}
+
+		if offset+page >= total || len(repos) == 0 {
+			break
+		}
+	}
+
+	return out, nil
 }
 
 func (uc *AdminUseCase) SetNameHolds(h domain.RepoNameHoldStore) {
@@ -334,7 +409,6 @@ func (uc *AdminUseCase) ListRepos(ctx context.Context, actorID uint, filter doma
 			Owner:           owner,
 			RepoPath:        r.RepoPath,
 			IsPrivate:       r.IsPrivate,
-			ShowOnHome:      r.ShowOnHome,
 			MirrorDirection: r.MirrorDirection,
 			MirrorStatus:    r.MirrorStatus,
 			UpdatedAt:       r.UpdatedAt,

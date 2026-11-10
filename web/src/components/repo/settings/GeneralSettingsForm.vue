@@ -18,15 +18,8 @@ const name = defineModel<string>('name', { required: true })
 const description = defineModel<string>('description', { required: true })
 const defaultBranch = defineModel<string>('defaultBranch', { required: true })
 const isPrivate = defineModel<boolean>('isPrivate', { required: true })
-const showOnHome = defineModel<boolean>('showOnHome', { required: true })
 const protectBranch = defineModel<boolean>('protectBranch', { required: true })
 const issuesEnabled = defineModel<boolean>('issuesEnabled', { required: true })
-
-function onPrivateChange() {
-  if (isPrivate.value) {
-    showOnHome.value = false
-  }
-}
 </script>
 
 <template>
@@ -63,12 +56,8 @@ function onPrivateChange() {
         </p>
       </label>
       <label class="flex items-center gap-2 text-sm">
-        <input v-model="isPrivate" type="checkbox" class="accent-ink" @change="onPrivateChange" />
+        <input v-model="isPrivate" type="checkbox" class="accent-ink" />
         {{ $t('settings.private') }}
-      </label>
-      <label class="flex items-center gap-2 text-sm" :class="isPrivate && 'opacity-50'">
-        <input v-model="showOnHome" type="checkbox" class="accent-ink" :disabled="isPrivate" />
-        {{ $t('settings.showOnHome') }}
       </label>
       <label class="flex items-center gap-2 text-sm">
         <input v-model="protectBranch" type="checkbox" class="accent-ink" />

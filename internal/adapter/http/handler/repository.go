@@ -30,7 +30,6 @@ type createRepoRequest struct {
 	Name            string `json:"name"`
 	Description     string `json:"description"`
 	Private         bool   `json:"private"`
-	ShowOnHome      bool   `json:"show_on_home"`
 	DefaultBranch   string `json:"default_branch"`
 	MirrorDirection string `json:"mirror_direction"`
 	MirrorURL       string `json:"mirror_url"`
@@ -68,7 +67,6 @@ type updateRepoRequest struct {
 	Name                 *string `json:"name"`
 	Description          *string `json:"description"`
 	Private              *bool   `json:"private"`
-	ShowOnHome           *bool   `json:"show_on_home"`
 	DefaultBranch        *string `json:"default_branch"`
 	ProtectDefaultBranch *bool   `json:"protect_default_branch"`
 	IssuesEnabled        *bool   `json:"issues_enabled"`
@@ -97,7 +95,6 @@ func (h *RepositoryHandler) Create(c *httpx.Context) error {
 		ViewerID:        user.ID,
 		OwnerID:         user.ID,
 		Private:         req.Private,
-		ShowOnHome:      req.ShowOnHome,
 		DefaultBranch:   req.DefaultBranch,
 		MirrorDirection: req.MirrorDirection,
 		MirrorURL:       req.MirrorURL,
@@ -236,15 +233,19 @@ func sortRepoItems(items []usecase.RepositoryItem, key string) {
 			if a.LastActivityAt != nil {
 				at = a.LastActivityAt.Unix()
 			}
+
 			if b.LastActivityAt != nil {
 				bt = b.LastActivityAt.Unix()
 			}
+
 			if at == bt {
 				return 0
 			}
-			if at < bt {
+
+			if at > bt {
 				return -1
 			}
+
 			return 1
 		})
 	default:
@@ -298,7 +299,6 @@ func (h *RepositoryHandler) Update(c *httpx.Context) error {
 		NewName:              req.Name,
 		Description:          req.Description,
 		Private:              req.Private,
-		ShowOnHome:           req.ShowOnHome,
 		DefaultBranch:        req.DefaultBranch,
 		ProtectDefaultBranch: req.ProtectDefaultBranch,
 		IssuesEnabled:        req.IssuesEnabled,

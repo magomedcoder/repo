@@ -164,7 +164,7 @@ func buildTestAppWith(t *testing.T, requireAuthRead bool) (dir string, authUC *u
 		handler.NewPullRequestHandler(pullUC),
 		handler.NewProfileHandler(profileUC),
 		handler.NewActivityHandler(activityUC),
-		handler.NewSiteHandler("Repo"),
+		handler.NewSiteHandler("Repo", ""),
 		handler.NewAdminHandler(adminUC, nil),
 		nil,
 		authUC,

@@ -97,6 +97,7 @@ func NewRouter(
 	admin.PATCH("/admin/users/{id}", adminHandler.UpdateUser)
 	admin.DELETE("/admin/users/{id}", adminHandler.DeleteUser)
 	admin.GET("/admin/repos", adminHandler.ListRepos)
+	admin.POST("/admin/repos/sync-activity", adminHandler.SyncRepoActivity)
 	admin.GET("/admin/access-logs", adminHandler.ListAccessLogs)
 	admin.GET("/admin/mirrors", adminHandler.ListMirrors)
 	admin.GET("/admin/mirrors/health", adminHandler.MirrorHealth)

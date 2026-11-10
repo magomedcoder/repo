@@ -18,7 +18,6 @@ type Repository struct {
 	OwnerID              uint
 	Description          string
 	IsPrivate            bool
-	ShowOnHome           bool
 	ProtectDefaultBranch bool
 	IssuesEnabled        bool
 	DefaultBranch        string

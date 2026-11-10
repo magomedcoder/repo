@@ -56,7 +56,6 @@ type CreateRepositoryInput struct {
 	ViewerID        uint
 	OwnerID         uint
 	Private         bool
-	ShowOnHome      bool
 	DefaultBranch   string
 	MirrorDirection string
 	MirrorURL       string
@@ -77,7 +76,6 @@ type UpdateRepositoryInput struct {
 	NewName              *string
 	Description          *string
 	Private              *bool
-	ShowOnHome           *bool
 	DefaultBranch        *string
 	ProtectDefaultBranch *bool
 	IssuesEnabled        *bool
@@ -95,7 +93,6 @@ type RepositoryItem struct {
 	Description          string     `json:"description"`
 	Owner                string     `json:"owner"`
 	IsPrivate            bool       `json:"is_private"`
-	ShowOnHome           bool       `json:"show_on_home"`
 	ProtectDefaultBranch bool       `json:"protect_default_branch"`
 	IssuesEnabled        bool       `json:"issues_enabled"`
 	DefaultBranch        string     `json:"default_branch"`
@@ -259,7 +256,6 @@ func (uc *RepositoryUseCase) Create(ctx context.Context, in CreateRepositoryInpu
 		RepoPath:             logical,
 		Description:          strings.TrimSpace(in.Description),
 		IsPrivate:            in.Private,
-		ShowOnHome:           !in.Private && in.ShowOnHome,
 		ProtectDefaultBranch: true,
 		IssuesEnabled:        true,
 		DefaultBranch:        branch,
@@ -457,14 +453,6 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 		repo.IsPrivate = *in.Private
 	}
 
-	if in.ShowOnHome != nil {
-		repo.ShowOnHome = *in.ShowOnHome
-	}
-
-	if repo.IsPrivate {
-		repo.ShowOnHome = false
-	}
-
 	if in.DefaultBranch != nil {
 		branch := strings.TrimSpace(*in.DefaultBranch)
 		if err := validateBranchName(branch); err != nil {
@@ -490,7 +478,13 @@ func (uc *RepositoryUseCase) Update(ctx context.Context, in UpdateRepositoryInpu
 			}
 		}
 
+		prevBranch := repo.DefaultBranch
 		repo.DefaultBranch = branch
+		if branch != prevBranch {
+			if at, aerr := uc.tipAuthoredAt(repo.Path, branch); aerr == nil && at != nil {
+				repo.LastActivityAt = at
+			}
+		}
 	}
 
 	if in.ProtectDefaultBranch != nil {
@@ -830,6 +824,25 @@ func (uc *RepositoryUseCase) nameCollision(ctx context.Context, name string) err
 	return nil
 }
 
+func (uc *RepositoryUseCase) tipAuthoredAt(repoPath, ref string) (*time.Time, error) {
+	if uc.git == nil {
+		return nil, fmt.Errorf("git unavailable")
+	}
+
+	commits, err := uc.git.ListCommits(repoPath, strings.TrimSpace(ref), 0, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(commits) == 0 || commits[0].AuthoredAt.IsZero() {
+		return nil, fmt.Errorf("empty tip")
+	}
+
+	at := commits[0].AuthoredAt.UTC()
+
+	return &at, nil
+}
+
 func (uc *RepositoryUseCase) toRepositoryItem(repo *domain.Repository, ownerUsername string, viewerID uint) RepositoryItem {
 	item := RepositoryItem{
 		ID:                   repo.ID,
@@ -837,7 +850,6 @@ func (uc *RepositoryUseCase) toRepositoryItem(repo *domain.Repository, ownerUser
 		Description:          repo.Description,
 		Owner:                ownerUsername,
 		IsPrivate:            repo.IsPrivate,
-		ShowOnHome:           repo.ShowOnHome && !repo.IsPrivate,
 		ProtectDefaultBranch: repo.ProtectDefaultBranch,
 		IssuesEnabled:        repo.IssuesEnabled,
 		DefaultBranch:        repo.DefaultBranch,

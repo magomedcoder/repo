@@ -1,4 +1,20 @@
-import { i18n } from '@/i18n'
+import { getLocale } from '@/i18n'
+
+type Unit = Intl.RelativeTimeFormatUnit
+
+const DIVISIONS: { amount: number; unit: Unit }[] = [
+  { amount: 60, unit: 'second' },
+  { amount: 60, unit: 'minute' },
+  { amount: 24, unit: 'hour' },
+  { amount: 7, unit: 'day' },
+  { amount: 4.34524, unit: 'week' },
+  { amount: 12, unit: 'month' },
+  { amount: Number.POSITIVE_INFINITY, unit: 'year' },
+]
+
+function relativeLocale(): string {
+  return getLocale() === 'ru' ? 'ru-RU' : 'en'
+}
 
 export function idleAge(iso?: string | null): string {
   if (!iso) {
@@ -10,35 +26,24 @@ export function idleAge(iso?: string | null): string {
     return ''
   }
 
-  const t = i18n.global.t
-  const minutes = Math.max(0, (Date.now() - then) / 60000)
-  if (minutes < 2) {
-    return t('index.idleMin', 1)
+  let seconds = Math.round((then - Date.now()) / 1000)
+  if (seconds > 0) {
+    seconds = 0
   }
 
-  if (minutes < 90) {
-    return t('index.idleMin', Math.round(minutes))
+  const rtf = new Intl.RelativeTimeFormat(relativeLocale(), {
+    numeric: 'auto',
+    style: 'long',
+  })
+
+  let duration = seconds
+  for (const { amount, unit } of DIVISIONS) {
+    if (Math.abs(duration) < amount) {
+      return rtf.format(Math.round(duration), unit)
+    }
+
+    duration /= amount
   }
 
-  const hours = minutes / 60
-  if (hours < 36) {
-    return t('index.idleHour', Math.round(hours))
-  }
-
-  const days = hours / 24
-  if (days < 12) {
-    return t('index.idleDay', Math.round(days))
-  }
-
-  const weeks = days / 7
-  if (weeks < 8) {
-    return t('index.idleWeek', Math.round(weeks))
-  }
-
-  const months = days / 30
-  if (months < 20) {
-    return t('index.idleMonth', Math.round(months))
-  }
-
-  return t('index.idleYear', Math.round(days / 365))
+  return rtf.format(Math.round(duration), 'year')
 }

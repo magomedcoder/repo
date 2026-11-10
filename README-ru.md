@@ -77,6 +77,7 @@ http:
 server:
   data_dir: "data"               # SQLite, Git-репо, аватары
   site_name: "Repo"              # название в UI
+  public_url: ""                 # опционально https://host для canonical/OG/sitemap
   soft_deleted_retention: 168h   # через сколько чистить мягко удалённые репо
 
 secrets:

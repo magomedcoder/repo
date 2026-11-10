@@ -95,6 +95,10 @@ export function setLocale(locale: AppLocale) {
     localStorage.setItem(STORAGE_KEY, locale)
   } catch {}
 
+  try {
+    document.cookie = `repo.locale=${locale}; Path=/; Max-Age=31536000; SameSite=Lax`
+  } catch {}
+
   applyDocumentLocale(locale)
   document.title = i18n.global.t('brand.title')
 }

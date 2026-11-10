@@ -16,7 +16,6 @@ type Repository struct {
 	OwnerID              uint   `gorm:"not null"`
 	Description          string
 	IsPrivate            bool   `gorm:"not null;default:false"`
-	ShowOnHome           bool   `gorm:"not null;default:false"`
 	ProtectDefaultBranch bool   `gorm:"not null;default:true"`
 	IssuesEnabled        bool   `gorm:"not null;default:true"`
 	DefaultBranch        string `gorm:"size:255;not null;default:main"`
@@ -64,7 +63,6 @@ func (m Repository) ToDomain() domain.Repository {
 		OwnerID:              m.OwnerID,
 		Description:          m.Description,
 		IsPrivate:            m.IsPrivate,
-		ShowOnHome:           m.ShowOnHome && !m.IsPrivate,
 		ProtectDefaultBranch: m.ProtectDefaultBranch,
 		IssuesEnabled:        m.IssuesEnabled,
 		DefaultBranch:        m.DefaultBranch,
@@ -115,7 +113,6 @@ func RepositoryFromDomain(repo *domain.Repository) *Repository {
 		OwnerID:              repo.OwnerID,
 		Description:          repo.Description,
 		IsPrivate:            repo.IsPrivate,
-		ShowOnHome:           repo.ShowOnHome && !repo.IsPrivate,
 		ProtectDefaultBranch: repo.ProtectDefaultBranch,
 		IssuesEnabled:        repo.IssuesEnabled,
 		DefaultBranch:        repo.DefaultBranch,

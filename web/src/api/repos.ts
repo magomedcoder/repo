@@ -66,7 +66,6 @@ export const reposApi = {
     name: string
     description?: string
     private?: boolean
-    show_on_home?: boolean
     default_branch?: string
     mirror_direction?: string
     mirror_url?: string
@@ -113,7 +112,6 @@ export const reposApi = {
       name?: string
       description?: string
       private?: boolean
-      show_on_home?: boolean
       default_branch?: string
       protect_default_branch?: boolean
       issues_enabled?: boolean

@@ -133,7 +133,7 @@ async function onLogout() {
       >
         <img
           :src="logoUrl"
-          alt=""
+          :alt="siteName"
           width="28"
           height="28"
           class="size-6 shrink-0 sm:size-7"
@@ -201,7 +201,7 @@ async function onLogout() {
           <img
             v-if="avatarSrc"
             :src="avatarSrc"
-            alt=""
+            :alt="username"
             class="h-full w-full object-cover"
           >
           <span v-else>{{ avatarInitial }}</span>

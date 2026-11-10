@@ -65,7 +65,10 @@
       "repository": "Repository",
       "owner": "Owner",
       "visibility": "Visibility",
-      "empty": "No repositories yet."
+      "empty": "No repositories yet.",
+      "syncActivity": "Sync Updated from tips",
+      "confirmSyncActivity": "Set Updated time for all repositories from the tip commit on each default branch? This does not run mirror sync.",
+      "syncActivityDone": "Updated {updated}, skipped {skipped}, failed {failed}."
     },
     "accessLogs": {
       "title": "Access logs",
@@ -133,11 +136,16 @@
     "newRepository": "New repository",
     "importRepository": "Import repository",
     "mirrorRepository": "Mirror repository",
-    "pinned": "Pinned on home",
-    "emptyPinned": "Nothing pinned yet.",
+    "repositories": "Repositories",
+    "empty": "No repositories yet.",
     "private": "Private",
     "updated": "Updated {age}",
     "sort": "Sort"
+  },
+  "intro": {
+    "welcome": "Welcome to my Git profile. Glad to see you here!",
+    "headline": "I'm Test, a software developer.",
+    "body": "This is where my open-source projects live: utilities, helper scripts, and small tools for day-to-day development. Some repositories are mirrored from other Git hosts."
   },
   "collaborators": {
     "title": "Collaborators",
@@ -174,12 +182,6 @@
   "index": {
     "name": "Name",
     "idle": "Activity",
-    "idleMin": "1 min. | {n} min.",
-    "idleHour": "{n} hour | {n} hours",
-    "idleDay": "{n} day | {n} days",
-    "idleWeek": "{n} week | {n} weeks",
-    "idleMonth": "{n} month | {n} months",
-    "idleYear": "{n} year | {n} years",
     "tree": "tree",
     "age": "Age",
     "author": "Author",
@@ -196,7 +198,14 @@
     "languages": "Languages",
     "about": "About",
     "noneYet": "None yet",
-    "empty": "This repository is empty. ",
+    "empty": "This repository is empty.",
+    "emptyGuide": {
+      "title": "Quick setup",
+      "hint": "Get started by creating a new file or pushing an existing repository.",
+      "createTitle": "...or create a new repository on the command line",
+      "pushTitle": "...or push an existing repository from the command line",
+      "authHint": "Push uses HTTPS: your username and password, or a git:write access token."
+    },
     "commits": "{n} commit | {n} commits",
     "mirrorPullPrefix": "Mirror <- ",
     "mirrorPushPrefix": "Mirror -> ",
@@ -245,7 +254,6 @@
     "defaultBranch": "Default branch",
     "noBranches": "This repository has no branches yet",
     "private": "Private repository",
-    "showOnHome": "Show on the home page",
     "protectBranch": "Block force-push and deletion for all branches and tags (label says “default”; applies to every head/tag)",
     "issues": "Issues",
     "saving": "Saving...",
@@ -397,7 +405,6 @@
     "optional": "Optional",
     "defaultBranch": "Default branch",
     "private": "Private repository",
-    "showOnHome": "Show on the home page",
     "repoNamePlaceholder": "my-repo",
     "defaultBranchPlaceholder": "main",
     "importRepository": "Import repository",
@@ -795,5 +802,14 @@
     "syncAllQueued": "Sync queued for all mirrors",
     "paused": "Paused {n} mirror(s)",
     "resumed": "Resumed {n} mirror(s)"
+  },
+  "seo": {
+    "defaultDescription": "{site} - public Git repositories",
+    "homeDescription": "Browse public repositories on {site}.",
+    "searchTitle": "Search",
+    "searchDescription": "Search repositories on {site}.",
+    "searchResultsDescription": "Search results for “{q}” on {site}.",
+    "notFoundTitle": "Not found",
+    "repoDescriptionFallback": "{name} on {site}"
   }
 }

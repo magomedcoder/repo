@@ -7,12 +7,14 @@ import CreateRepoModal from '@/components/modals/CreateRepoModal.vue'
 import ImportRepoModal from '@/components/modals/ImportRepoModal.vue'
 import MirrorRepoModal from '@/components/modals/MirrorRepoModal.vue'
 import { useAuth } from '@/composables/useAuth'
+import { useRouteSeo } from '@/composables/useRouteSeo'
 
 type RepoModalKind = 'create' | 'import' | 'mirror' | null
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
+useRouteSeo()
 const repoModal = ref<RepoModalKind>(null)
 const repoPrefillURL = ref('')
 const contentKey = ref(0)

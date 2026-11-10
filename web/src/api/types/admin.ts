@@ -5,7 +5,6 @@ export type AdminRepo = {
   owner: string
   repo_path: string
   is_private: boolean
-  show_on_home: boolean
   mirror_direction?: string
   mirror_status?: string
   updated_at: string

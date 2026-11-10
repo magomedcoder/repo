@@ -19,7 +19,6 @@ const emit = defineEmits<{
 const name = ref('')
 const description = ref('')
 const isPrivate = ref(true)
-const showOnHome = ref(false)
 const defaultBranch = ref('main')
 const mirrorDirection = ref<MirrorDirection>('pull')
 const mirrorURL = ref(props.initialUrl ?? '')
@@ -71,7 +70,6 @@ async function submit() {
       name: name.value.trim(),
       description: description.value.trim(),
       private: isPrivate.value,
-      show_on_home: !isPrivate.value && showOnHome.value,
       default_branch: defaultBranch.value.trim() || 'main',
       mirror_direction: mirrorDirection.value,
       mirror_url: mirrorURL.value.trim(),
@@ -190,18 +188,8 @@ async function submit() {
         type="checkbox"
         class="accent-ink"
         :disabled="busy"
-        @change="isPrivate && (showOnHome = false)"
       >
       {{ $t('modal.private') }}
-    </label>
-    <label class="flex items-center gap-2 text-sm" :class="isPrivate && 'opacity-50'">
-      <input
-        v-model="showOnHome"
-        type="checkbox"
-        class="accent-ink"
-        :disabled="busy || isPrivate"
-      >
-      {{ $t('modal.showOnHome') }}
     </label>
     <p v-if="progressText" class="text-sm text-ink-muted" role="status" aria-live="polite">{{ progressText }}</p>
     <p v-if="error" class="text-sm text-warn">{{ error }}</p>

@@ -1,30 +1,14 @@
-package sqlite
+package migrate
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/magomedcoder/repo/pkg/sqliteutil"
+	"github.com/magomedcoder/repo/internal/adapter/sqlite/model"
 	"gorm.io/gorm"
 )
 
-func runMigrations(db *gorm.DB) error {
-	empty, err := sqliteutil.IsEmpty(db)
-	if err != nil {
-		return err
-	}
-
-	if empty {
-		if err := bootstrapSchema(db); err != nil {
-			return err
-		}
-
-		if err := NewCodeIndex(db).EnsureSchema(context.Background()); err != nil {
-			return err
-		}
-	}
-
-	return VerifySchema(db)
+func bootstrapModels() []any {
+	return model.BootstrapModels()
 }
 
 func bootstrapSchema(db *gorm.DB) error {

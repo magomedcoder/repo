@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/magomedcoder/repo/internal/adapter/sqlite/migrate"
 	"github.com/magomedcoder/repo/internal/adapter/sqlite/model"
 	"github.com/magomedcoder/repo/internal/domain"
 	"github.com/magomedcoder/repo/pkg/gormutil"
@@ -20,7 +21,7 @@ func NewDB(dataDir string) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	if err := runMigrations(db); err != nil {
+	if err := migrate.Run(db, NewCodeIndex(db).EnsureSchema); err != nil {
 		if sqlDB, dbErr := db.DB(); dbErr == nil {
 			_ = sqlDB.Close()
 		}
@@ -84,7 +85,6 @@ func repositoryUpdateColumns(m *model.Repository) map[string]any {
 		"owner_id":               m.OwnerID,
 		"description":            m.Description,
 		"is_private":             m.IsPrivate,
-		"show_on_home":           m.ShowOnHome,
 		"protect_default_branch": m.ProtectDefaultBranch,
 		"issues_enabled":         m.IssuesEnabled,
 		"default_branch":         m.DefaultBranch,
@@ -221,7 +221,7 @@ func (s *Repository) ListPublic(ctx context.Context, limit, offset int, order do
 func (s *Repository) ListHome(ctx context.Context, limit, offset int, order domain.RepoOrder) ([]domain.Repository, error) {
 	limit, offset = clampListBounds(limit, offset)
 	models, err := s.FindAll(ctx,
-		gormutil.WithWhere("is_private = ? AND show_on_home = ?", false, true),
+		gormutil.WithWhere("is_private = ?", false),
 		gormutil.WithOrder(repoOrderClause(order)),
 		gormutil.LimitOffset(limit, offset),
 	)
@@ -327,10 +327,7 @@ func (s *Repository) ExistsByName(name string) (bool, error) {
 }
 
 func (s *Repository) TouchLastActivity(id uint, at time.Time) error {
-	_, err := s.UpdateByID(context.Background(), id, map[string]any{
-		"last_activity_at": at,
-		"updated_at":       at,
-	})
+	_, err := s.UpdateColumnByID(context.Background(), id, "last_activity_at", at)
 	return err
 }
 
@@ -482,7 +479,7 @@ func (s *Repository) ListAdmin(ctx context.Context, filter domain.AdminRepoFilte
 }
 
 func (s *Repository) UpdateMirrorState(ctx context.Context, repo *domain.Repository) error {
-	_, err := s.UpdateByID(ctx, repo.ID, map[string]any{
+	res := s.Model(ctx).Where("id = ?", repo.ID).UpdateColumns(map[string]any{
 		"default_branch":       repo.DefaultBranch,
 		"mirror_last_sync_at":  repo.MirrorLastSyncAt,
 		"mirror_last_error":    repo.MirrorLastError,
@@ -492,7 +489,7 @@ func (s *Repository) UpdateMirrorState(ctx context.Context, repo *domain.Reposit
 		"mirror_last_progress": repo.MirrorLastProgress,
 		"mirror_remote_head":   repo.MirrorRemoteHEAD,
 	})
-	return err
+	return res.Error
 }
 
 func repoOrderClause(order domain.RepoOrder) string {

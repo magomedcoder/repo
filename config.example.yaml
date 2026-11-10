@@ -9,6 +9,7 @@ http:
 server:
   data_dir: "data"
   site_name: "Repo"
+  public_url: "" 
   soft_deleted_retention: 168h
 
 secrets:

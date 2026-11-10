@@ -45,7 +45,7 @@ function repoTo(row: ReturnType<typeof toContentRow>) {
 }
 
 function idleOf(row: ReturnType<typeof toContentRow>) {
-  return idleAge(row.last_activity_at || row.updated_at)
+  return idleAge(row.last_activity_at)
 }
 
 function onSortChange(ev: Event) {
@@ -65,9 +65,9 @@ function isPrivate(id: number) {
       class="flex flex-wrap items-end justify-between gap-x-3 gap-y-1.5 border-b border-line-strong/40 px-3 py-2 sm:px-4"
     >
       <div v-if="title" class="min-w-0">
-        <h2 class="text-[15px] font-semibold leading-snug text-ink">
+        <h1 class="text-[15px] font-semibold leading-snug text-ink">
           {{ title }}<template v-if="hint"><span class="font-normal text-ink-muted"> {{ hint }}</span></template>
-        </h2>
+        </h1>
       </div>
       <label
         v-if="sort !== undefined"

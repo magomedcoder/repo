@@ -6,9 +6,10 @@ import type { AdminRepo } from '@/api/types/admin'
 import CpPage from '@/components/admin/CpPage.vue'
 import CpPagination from '@/components/admin/CpPagination.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import Icon from '@/components/ui/Icon.vue'
 import PageState from '@/components/ui/PageState.vue'
 import Surface from '@/components/ui/Surface.vue'
-import { formatDate, localizeError } from '@/i18n'
+import { formatDate, i18n, localizeError } from '@/i18n'
 import { repoLocation } from '@/lib/repoNav'
 
 const repos = ref<AdminRepo[]>([])
@@ -17,7 +18,9 @@ const q = ref('')
 const privacy = ref<'' | '1' | '0'>('')
 const mirrorOnly = ref(false)
 const loading = ref(true)
+const busy = ref(false)
 const error = ref('')
+const message = ref('')
 const page = ref(1)
 const pageSize = 50
 
@@ -52,6 +55,29 @@ async function setPage(next: number) {
   await load()
 }
 
+async function syncActivity() {
+  if (!confirm(i18n.global.t('cp.repos.confirmSyncActivity'))) {
+    return
+  }
+
+  busy.value = true
+  error.value = ''
+  message.value = ''
+  try {
+    const res = await adminReposApi.syncActivity()
+    message.value = i18n.global.t('cp.repos.syncActivityDone', {
+      updated: res.updated,
+      skipped: res.skipped,
+      failed: res.failed,
+    })
+    await load()
+  } catch (err) {
+    error.value = localizeError(err, 'errors.loadFailed')
+  } finally {
+    busy.value = false
+  }
+}
+
 let timer: ReturnType<typeof setTimeout> | undefined
 watch([q, privacy, mirrorOnly], () => {
   clearTimeout(timer)
@@ -68,6 +94,18 @@ onMounted(() => {
 
 <template>
   <CpPage :title="$t('cp.repos.title')" :description="$t('cp.repos.description')">
+    <template #actions>
+      <button
+        type="button"
+        class="btn"
+        :disabled="busy || loading"
+        @click="syncActivity"
+      >
+        <Icon name="sync" size="sm" />
+        {{ $t('cp.repos.syncActivity') }}
+      </button>
+    </template>
+
     <div class="mb-3 flex flex-wrap gap-2">
       <input v-model="q" type="search" class="field min-w-[12rem] flex-1" :placeholder="$t('cp.repos.search')">
       <select v-model="privacy" class="field w-auto">
@@ -81,6 +119,7 @@ onMounted(() => {
       </label>
     </div>
 
+    <p v-if="message" class="mb-3 text-sm text-ink-muted">{{ message }}</p>
     <p v-if="error" class="mb-3 text-sm text-warn">{{ error }}</p>
 
     <PageState :loading="loading && !repos.length">
@@ -122,7 +161,7 @@ onMounted(() => {
                 <template v-else>-</template>
               </td>
               <td class="border-b border-line px-3 py-2 whitespace-nowrap text-ink-muted">
-                {{ formatDate(repo.last_activity_at || repo.updated_at) }}
+                {{ repo.last_activity_at ? formatDate(repo.last_activity_at) : '-' }}
               </td>
             </tr>
           </tbody>

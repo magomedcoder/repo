@@ -51,6 +51,7 @@ type HTTPConfig struct {
 type ServerConfig struct {
 	DataDir                 string        `yaml:"data_dir"`
 	SiteName                string        `yaml:"site_name"`
+	PublicURL               string        `yaml:"public_url"`
 	SoftDeletedRetention    string        `yaml:"soft_deleted_retention"`
 	SoftDeletedRetentionDur time.Duration `yaml:"-"`
 }
@@ -166,6 +167,8 @@ func Load(path string) (Config, error) {
 	if cfg.Server.SiteName == "" {
 		cfg.Server.SiteName = DefaultSiteName
 	}
+
+	cfg.Server.PublicURL = strings.TrimRight(strings.TrimSpace(cfg.Server.PublicURL), "/")
 
 	if cfg.HTTP.ReceiveMaxBytes <= 0 {
 		cfg.HTTP.ReceiveMaxBytes = DefaultReceiveMax

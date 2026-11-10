@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { reposApi } from '@/api'
 import type { Repository } from '@/api/types'
 import ContentsList from '@/components/ContentsList.vue'
+import HomeIntro from '@/components/HomeIntro.vue'
 import { useAuth } from '@/composables/useAuth'
 import { localizeError } from '@/i18n'
 import Icon from '@/components/ui/Icon.vue'
@@ -21,12 +22,23 @@ const hasMoreHome = ref(false)
 const sort = ref('idle')
 
 const repos = computed(() => {
+  let list: Repository[]
   if (!auth.isAuthenticated.value) {
-    return homeRepos.value
+    list = homeRepos.value
+  } else {
+    const seen = new Set(ownRepos.value.map((r) => r.id))
+    list = [...ownRepos.value, ...homeRepos.value.filter((r) => !seen.has(r.id))]
   }
 
-  const seen = new Set(ownRepos.value.map((r) => r.id))
-  return [...ownRepos.value, ...homeRepos.value.filter((r) => !seen.has(r.id))]
+  if (sort.value !== 'idle') {
+    return list
+  }
+
+  return [...list].sort((a, b) => {
+    const at = a.last_activity_at ? Date.parse(a.last_activity_at) : 0
+    const bt = b.last_activity_at ? Date.parse(b.last_activity_at) : 0
+    return bt - at
+  })
 })
 
 const hasMore = computed(() => auth.isAuthenticated.value ? hasMoreOwn.value || hasMoreHome.value : hasMoreHome.value)
@@ -110,14 +122,15 @@ onMounted(() => load())
 
 <template>
   <div class="page-enter">
+    <HomeIntro />
     <p v-if="loading" class="text-ink-muted">{{ $t('common.loading') }}</p>
     <p v-else-if="error" class="text-warn">{{ error }}</p>
     <template v-else>
       <ContentsList
         :repos="repos"
         :sort="sort"
-        :title="$t('home.pinned')"
-        :empty-text="$t('home.emptyPinned')"
+        :title="$t('home.repositories')"
+        :empty-text="$t('home.empty')"
         @sort="onSort"
       />
       <p
